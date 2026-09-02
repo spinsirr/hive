@@ -1,0 +1,155 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import {
+  applyHiveRunResult,
+  createInitialRoomState,
+  reduceRoom,
+  type RoomState,
+} from "./room.ts";
+
+function connectedRoom(): RoomState {
+  return reduceRoom(
+    createInitialRoomState(1),
+    {
+      type: "connect-repository",
+      actor: "spencer",
+      repositoryUrl: "https://github.com/spinsirr/hive.git",
+      repositoryName: "spinsirr/hive",
+      repositoryId: 1,
+      repositoryBranch: "main",
+      installationId: 2,
+      visibility: "private",
+      githubUserId: 3,
+      githubLogin: "spinsirr",
+    },
+    10,
+  );
+}
+
+test("team messages stay in discussion while Hive tasks start one shared run", () => {
+  const connected = connectedRoom();
+  const discussion = reduceRoom(
+    connected,
+    { type: "send-message", actor: "spencer", body: "@maya thoughts?" },
+    20,
+  );
+  const task = reduceRoom(
+    discussion,
+    { type: "send-message", actor: "maya", body: "Inspect the navigation" },
+    30,
+  );
+
+  assert.equal(discussion.stage, "waiting");
+  assert.equal(discussion.workspace.status, "ready");
+  assert.equal(task.stage, "running");
+  assert.equal(task.workspace.status, "running");
+  assert.equal(task.messages.at(-1)?.memberId, "maya");
+});
+
+test("an annotation created during a run waits for an explicit safe boundary", () => {
+  const running = reduceRoom(
+    connectedRoom(),
+    { type: "send-message", actor: "spencer", body: "Update the menu" },
+    20,
+  );
+  const sourceMessage = running.messages.at(-1);
+  assert.ok(sourceMessage);
+
+  const annotated = reduceRoom(
+    running,
+    {
+      type: "annotate-message",
+      actor: "maya",
+      messageId: sourceMessage.id,
+      body: "Keep the interaction keyboard accessible",
+    },
+    30,
+  );
+  const annotation = annotated.messages.at(-1)?.annotations?.[0];
+  assert.ok(annotation);
+
+  const queued = reduceRoom(
+    annotated,
+    {
+      type: "steer-message-annotation",
+      actor: "maya",
+      messageId: sourceMessage.id,
+      annotationId: annotation.id,
+    },
+    40,
+  );
+
+  assert.equal(queued.steeringQueue.length, 1);
+  assert.equal(queued.activeSteer, undefined);
+  assert.equal(
+    queued.messages.at(-1)?.annotations?.[0]?.status,
+    "queued",
+  );
+
+  const applied = reduceRoom(
+    queued,
+    { type: "apply-next-steer", actor: "spencer" },
+    50,
+  );
+  assert.equal(applied.steeringQueue.length, 0);
+  assert.equal(applied.activeSteer?.body, annotation.body);
+  assert.equal(
+    applied.messages.at(-1)?.annotations?.[0]?.status,
+    "steered",
+  );
+});
+
+test("a completed run stays running when another steer is queued", () => {
+  const running = {
+    ...connectedRoom(),
+    stage: "running" as const,
+    steeringQueue: [
+      {
+        id: "steer-1",
+        body: "Use the compact variant",
+        authorId: "maya" as const,
+        queuedAt: 20,
+        source: { kind: "workspace-annotation" as const },
+        sourceLabel: "Preview annotation",
+      },
+    ],
+  };
+  const completed = applyHiveRunResult(
+    running,
+    {
+      sandboxName: "hive-test",
+      summary: "Updated the navigation.",
+      diff: "+ compact",
+      files: [],
+      commands: [],
+      changedFiles: ["nav.tsx"],
+    },
+    30,
+  );
+
+  assert.equal(completed.stage, "running");
+  assert.equal(completed.workspace.status, "running");
+  assert.equal(completed.workspace.changedFiles[0], "nav.tsx");
+});
+
+test("reset preserves the repository but clears run artifacts", () => {
+  const room = {
+    ...connectedRoom(),
+    stage: "review" as const,
+    workspace: {
+      status: "review" as const,
+      diff: "+ change",
+      files: [{ path: "nav.tsx", content: "change" }],
+      commands: [{ command: "pnpm test", output: "ok", exitCode: 0 }],
+      changedFiles: ["nav.tsx"],
+    },
+  };
+  const reset = reduceRoom(room, { type: "reset", actor: "maya" }, 40);
+
+  assert.equal(reset.repository?.name, "spinsirr/hive");
+  assert.equal(reset.stage, "waiting");
+  assert.equal(reset.workspace.status, "ready");
+  assert.deepEqual(reset.workspace.changedFiles, []);
+  assert.equal(reset.messages.length, 1);
+});
