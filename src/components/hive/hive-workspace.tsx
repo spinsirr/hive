@@ -4,7 +4,6 @@ import {
   ArrowDown,
   ArrowUp,
   Check,
-  ChevronDown,
   Code2,
   Copy,
   FileTerminal,
@@ -14,12 +13,9 @@ import {
   LoaderCircle,
   MessageSquare,
   MessageSquarePlus,
-  MoreHorizontal,
   Play,
   RotateCcw,
   Send,
-  Users,
-  Wifi,
   WifiOff,
   X,
 } from "lucide-react";
@@ -58,7 +54,7 @@ const stageCopy: Record<RunStage, { label: string; detail: string }> = {
 };
 
 const tabs: Array<{ key: WorkspaceTab; label: string; icon: typeof Code2 }> = [
-  { key: "workspace", label: "Workspace", icon: FolderGit2 },
+  { key: "workspace", label: "Overview", icon: FolderGit2 },
   { key: "diff", label: "Diff", icon: Code2 },
   { key: "files", label: "Files", icon: FileCode2 },
   { key: "terminal", label: "Terminal", icon: FileTerminal },
@@ -116,7 +112,6 @@ function ProductHeader({
   copied,
   currentMember,
   repository,
-  revision,
   syncing,
   syncError,
   onCopyInvite,
@@ -127,7 +122,6 @@ function ProductHeader({
   copied: boolean;
   currentMember: MemberId;
   repository?: RepositoryState;
-  revision: number;
   syncing: boolean;
   syncError: boolean;
   onCopyInvite: () => void;
@@ -136,35 +130,69 @@ function ProductHeader({
 }) {
   const person = memberDirectory[currentMember];
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between border-b border-[#ebebeb] bg-[#fafafa] px-4">
-      <div className="flex min-w-0 items-center gap-3">
-        <div className="flex items-center gap-2 border-r border-[#dedede] pr-4">
-          <HiveMark className="size-6" />
-          <span className="text-sm font-semibold tracking-[-0.02em]">Hive</span>
+    <header className="flex h-13 shrink-0 items-center justify-between border-b border-[#e8e8e8] bg-white px-3 sm:px-4">
+      <div className="flex min-w-0 items-center gap-2.5">
+        <HiveMark className="size-7" />
+        <span className="text-sm font-semibold tracking-[-0.025em]">Hive</span>
+        <span className="text-[#d4d4d4]">/</span>
+        <div className="flex min-w-0 items-baseline gap-2">
+          <span className="truncate text-xs font-medium text-[#3d3d3d]">
+            {repository?.name ?? "No repository"}
+          </span>
+          <span className="hidden font-mono text-[9px] text-[#9a9a9a] sm:inline">
+            {repository?.branch ?? "GitHub"}
+          </span>
         </div>
-        <button className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-[#f0f0f0]">
-          <span className="truncate font-medium">{repository?.name ?? "Connect repository"}</span>
-          <span className="font-mono text-[10px] text-[#8f8f8f]">{repository?.branch ?? "GitHub"}</span>
-          <ChevronDown className="size-3.5 text-[#8f8f8f]" />
-        </button>
       </div>
       <div className="flex items-center gap-2">
-        <div className="hidden items-center gap-2 rounded-md border border-[#ebebeb] bg-white px-2.5 py-1.5 text-xs md:flex">
-          {syncError ? <WifiOff className="size-3" /> : <Wifi className={cn("size-3", syncing && "animate-pulse text-[#a1a1a1]")} />} {syncError ? "Room offline" : syncing ? "Connecting" : `Room live · ${activeMembers.length + 1} online`}
+        <div className="hidden items-center gap-1.5 font-mono text-[9px] text-[#777] sm:flex">
+          {syncError ? (
+            <WifiOff className="size-3" />
+          ) : (
+            <span
+              className={cn(
+                "size-1.5 rounded-full bg-[#171717]",
+                syncing && "animate-pulse bg-[#a1a1a1]",
+              )}
+            />
+          )}
+          {syncError ? "Offline" : syncing ? "Syncing" : "Live"}
         </div>
-        <Button className="hidden h-8 rounded-md bg-white px-2.5 text-[#171717] lg:inline-flex" onClick={onCopyInvite} size="sm" variant="outline">
-          <Copy className="size-3.5" /> {copied ? "Link copied" : "Invite teammate"}
+        <Button
+          className="hidden h-8 rounded-md bg-white px-2.5 text-xs text-[#333] md:inline-flex"
+          onClick={onCopyInvite}
+          size="sm"
+          variant="outline"
+        >
+          <Copy className="size-3.5" /> {copied ? "Copied" : "Invite"}
         </Button>
-        <Button className="h-8 rounded-md bg-white px-2.5 text-[#171717]" onClick={() => onMemberChange(currentMember === "spencer" ? "maya" : "spencer")} size="sm" title="Switch demo participant" variant="outline">
-          <span className="grid size-4 place-items-center rounded-full bg-[#171717] text-[7px] font-semibold text-white">{person.initials}</span>
-          <span className="hidden sm:inline">You: {person.shortName}</span>
+        <Button
+          className="h-8 rounded-md bg-white px-2 text-xs text-[#333]"
+          onClick={() =>
+            onMemberChange(currentMember === "spencer" ? "maya" : "spencer")
+          }
+          size="sm"
+          title="Switch demo participant"
+          variant="outline"
+        >
+          <span className="grid size-4 place-items-center rounded-full bg-[#171717] text-[7px] font-semibold text-white">
+            {person.initials}
+          </span>
+          <span className="hidden sm:inline">{person.shortName}</span>
         </Button>
-        <Button className="h-8 rounded-md bg-white px-2.5 text-[#171717]" onClick={onReset} size="sm" variant="outline">
-          <RotateCcw className="size-3.5" /> Reset
+        <div className="hidden sm:block">
+          <MemberStack activeMembers={activeMembers} />
+        </div>
+        <Button
+          aria-label="Reset session"
+          className="size-8 rounded-md text-[#777]"
+          onClick={onReset}
+          size="icon"
+          title="Reset shared session"
+          variant="ghost"
+        >
+          <RotateCcw className="size-3.5" />
         </Button>
-        <Button className="h-8 rounded-md bg-white px-2.5 font-mono text-[10px] text-[#737373]" size="sm" variant="outline">Run v{revision}</Button>
-        <MemberStack activeMembers={activeMembers} />
-        <Button aria-label="More options" className="rounded-md" size="icon-sm" variant="ghost"><MoreHorizontal /></Button>
       </div>
     </header>
   );
@@ -316,21 +344,27 @@ function SharedSession({ activeMembers, activeSteer, queued, queuedBy, queuePosi
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-white">
-      <div className="flex h-12 shrink-0 items-center justify-between border-b border-[#ebebeb] px-4">
-        <div className="flex items-center gap-2"><MessageSquare className="size-4" /><h2 className="text-sm font-semibold">Shared Session</h2></div>
-        <span className="flex items-center gap-1.5 font-mono text-[10px] text-[#8f8f8f]"><Users className="size-3" /> {activeMembers.length} {activeMembers.length === 1 ? "person" : "people"} + Hive</span>
-      </div>
-      <div className="flex shrink-0 items-center gap-3 border-b border-[#ebebeb] bg-[#fafafa] px-4 py-3">
-        <HiveMark />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2"><span className="text-xs font-semibold">Hive</span><Badge className="h-4 rounded-sm border-[#d8d8d8] bg-white px-1 font-mono text-[8px] text-[#737373]" variant="outline">SHARED AGENT</Badge></div>
-          <p className="mt-0.5 truncate text-[10px] text-[#737373]">Everyone is prompting the same agent.</p>
+      <div className="flex h-11 shrink-0 items-center justify-between border-b border-[#ebebeb] px-4">
+        <div className="flex items-center gap-2">
+          <MessageSquare className="size-3.5 text-[#666]" />
+          <h2 className="text-xs font-semibold">Team room</h2>
+          <span className="font-mono text-[9px] text-[#a0a0a0]">
+            {activeMembers.length} + Hive
+          </span>
         </div>
-        <span className="flex items-center gap-1.5 font-mono text-[9px] text-[#737373]"><span className="size-1.5 rounded-full bg-[#171717]" />{stageCopy[stage].label}</span>
+        <span className="flex items-center gap-1.5 font-mono text-[9px] text-[#777]">
+          <span
+            className={cn(
+              "size-1.5 rounded-full bg-[#171717]",
+              stage === "running" && "animate-pulse",
+            )}
+          />
+          {stageCopy[stage].label}
+        </span>
       </div>
       <SteeringQueue activeSteer={activeSteer} items={steeringQueue} onMove={onMoveSteer} onRemove={onRemoveSteer} />
       <Conversation className="min-h-0 flex-1">
-        <ConversationContent className={cn("gap-5 px-4 py-5", compact && "gap-3 py-3")}>
+        <ConversationContent className={cn("gap-5 px-5 py-6", compact && "gap-4")}>
           {messages.map((message) => {
             const isCurrentMember = message.memberId === currentMember;
             const messageAnnotations = message.annotations ?? [];
@@ -430,11 +464,12 @@ function SharedSession({ activeMembers, activeSteer, queued, queuedBy, queuePosi
         <ConversationScrollButton />
       </Conversation>
       {workspaceAnnotation ? <AnnotationCard onSteer={onSteer} queuePosition={queuePosition} queued={queued} queuedBy={queuedBy} stage={stage} steered={steered} steeredBy={steeredBy} /> : null}
-      <div className="border-t border-[#ebebeb] p-3">
-        <div className="flex items-end gap-2 rounded-lg border border-[#dedede] bg-white p-2 focus-within:border-[#a1a1a1]">
+      <div className="border-t border-[#ebebeb] bg-[#fafafa] p-3">
+        <div className="rounded-xl border border-[#d9d9d9] bg-white p-2 shadow-[0_1px_2px_rgba(0,0,0,0.03)] focus-within:border-[#999]">
+          <div className="flex items-end gap-2">
           <textarea
             aria-label="Ask Hive or mention a teammate"
-            className="max-h-24 min-h-9 flex-1 resize-none bg-transparent px-1 py-1.5 text-[13px] outline-none placeholder:text-[#a1a1a1]"
+            className="max-h-24 min-h-8 flex-1 resize-none bg-transparent px-1 py-1.5 text-[13px] leading-5 outline-none placeholder:text-[#aaa]"
             onChange={(event) => {
               setDraft(event.target.value);
               onTyping(Boolean(event.target.value.trim()));
@@ -446,9 +481,23 @@ function SharedSession({ activeMembers, activeSteer, queued, queuedBy, queuePosi
               }
             }}
             placeholder="Ask Hive or @mention a teammate…"
+            rows={1}
             value={draft}
           />
-          <Button aria-label="Send message" className="size-8 rounded-md" onClick={submit} size="icon"><Send className="size-3.5" /></Button>
+            <Button
+              aria-label="Send message"
+              className="size-8 rounded-lg"
+              disabled={!draft.trim()}
+              onClick={submit}
+              size="icon"
+            >
+              <Send className="size-3.5" />
+            </Button>
+          </div>
+          <div className="flex items-center justify-between px-1 pt-1 font-mono text-[8px] text-[#aaa]">
+            <span>@mention keeps it human</span>
+            <span>↵ send · ⇧↵ newline</span>
+          </div>
         </div>
       </div>
     </section>
@@ -474,24 +523,81 @@ function WorkspaceOverview({ repository, workspace }: {
   }
 
   return (
-    <div className="h-full overflow-auto bg-[#fafafa] p-6">
-      <div className="mx-auto max-w-4xl space-y-4">
-        <div className="rounded-xl border border-[#dedede] bg-white p-5">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2"><FolderGit2 className="size-4" /><span className="text-sm font-semibold">{repository.name}</span></div>
-              <a className="mt-2 block font-mono text-[10px] text-[#737373] hover:text-[#171717]" href={repository.url.replace(/\.git$/, "")} rel="noreferrer" target="_blank">{repository.url.replace(/\.git$/, "")}</a>
-              <p className="mt-2 font-mono text-[9px] uppercase tracking-[0.08em] text-[#a1a1a1]">GitHub App · {repository.visibility} · {repository.branch} · authorized by @{repository.authorizedByGitHub.login}</p>
+    <div className="h-full overflow-auto bg-[#fafafa] p-4 sm:p-6">
+      <div className="mx-auto max-w-3xl">
+        <div className="overflow-hidden rounded-xl border border-[#dedede] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+          <div className="flex items-start justify-between gap-4 border-b border-[#ededed] px-4 py-3.5">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <FolderGit2 className="size-3.5 text-[#666]" />
+                <span className="truncate text-xs font-semibold">
+                  {repository.name}
+                </span>
+                <span className="font-mono text-[9px] text-[#999]">
+                  {repository.branch}
+                </span>
+              </div>
+              <p className="mt-1.5 font-mono text-[8px] uppercase tracking-[0.08em] text-[#aaa]">
+                GitHub App · {repository.visibility} · authorized by @
+                {repository.authorizedByGitHub.login}
+              </p>
             </div>
-            <Badge className="rounded-sm border-[#dedede] bg-[#fafafa] font-mono text-[9px] uppercase" variant="outline">{workspace.status}</Badge>
+            <Badge
+              className="rounded-sm border-[#dedede] bg-[#fafafa] font-mono text-[8px] uppercase"
+              variant="outline"
+            >
+              {workspace.status}
+            </Badge>
           </div>
-          {workspace.status === "running" ? <div className="mt-5 flex items-center gap-2 border-t border-[#ebebeb] pt-4 text-xs"><LoaderCircle className="size-4 animate-spin" /> Hive is reading files and executing commands in Vercel Sandbox.</div> : null}
-          {workspace.summary ? <p className="mt-5 border-t border-[#ebebeb] pt-4 text-sm leading-6 text-[#4d4d4d]">{workspace.summary}</p> : null}
-          {workspace.error ? <p className="mt-5 border-t border-dashed border-[#d5d5d5] pt-4 text-sm leading-6 text-[#737373]">{workspace.error}</p> : null}
-        </div>
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="rounded-xl border border-[#dedede] bg-white p-4"><p className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#8f8f8f]">Changed files</p><p className="mt-3 text-2xl font-semibold">{workspace.changedFiles.length}</p></div>
-          <div className="rounded-xl border border-[#dedede] bg-white p-4"><p className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#8f8f8f]">Commands run</p><p className="mt-3 text-2xl font-semibold">{workspace.commands.length}</p></div>
+
+          <div className="min-h-36 px-4 py-5">
+            {workspace.status === "running" ? (
+              <div className="flex items-start gap-3 text-sm text-[#444]">
+                <LoaderCircle className="mt-0.5 size-4 animate-spin" />
+                <div>
+                  <p className="font-medium">Hive is working in Sandbox</p>
+                  <p className="mt-1 text-xs leading-5 text-[#888]">
+                    Reading the repository and running the commands needed for this task.
+                  </p>
+                </div>
+              </div>
+            ) : workspace.error ? (
+              <p className="text-sm leading-6 text-[#666]">{workspace.error}</p>
+            ) : workspace.summary ? (
+              <div>
+                <p className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#999]">
+                  Latest result
+                </p>
+                <p className="mt-3 text-sm leading-6 text-[#444]">
+                  {workspace.summary}
+                </p>
+              </div>
+            ) : (
+              <div className="grid min-h-24 place-items-center text-center">
+                <div>
+                  <p className="text-sm font-medium">No run yet</p>
+                  <p className="mt-1 text-xs text-[#888]">
+                    Give Hive a concrete task in the team room.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-3 border-t border-[#ededed] bg-[#fafafa]">
+            <div className="px-4 py-3">
+              <p className="font-mono text-[8px] uppercase tracking-[0.08em] text-[#999]">Files</p>
+              <p className="mt-1 text-sm font-semibold">{workspace.changedFiles.length}</p>
+            </div>
+            <div className="border-l border-[#ededed] px-4 py-3">
+              <p className="font-mono text-[8px] uppercase tracking-[0.08em] text-[#999]">Commands</p>
+              <p className="mt-1 text-sm font-semibold">{workspace.commands.length}</p>
+            </div>
+            <div className="border-l border-[#ededed] px-4 py-3">
+              <p className="font-mono text-[8px] uppercase tracking-[0.08em] text-[#999]">Runtime</p>
+              <p className="mt-1 text-sm font-semibold">Sandbox</p>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -544,14 +650,35 @@ function TerminalPane({ commands }: { commands: WorkspaceState["commands"] }) {
 function Workspace({ repository, revision, stage, tab, workspace, onTabChange }: { repository?: RepositoryState; revision: number; stage: RunStage; tab: WorkspaceTab; workspace: WorkspaceState; onTabChange: (tab: WorkspaceTab) => void }) {
   return (
     <section className="flex h-full min-h-0 flex-col bg-white">
-      <div className="shrink-0 border-b border-[#ebebeb] bg-white">
-        <div className="flex h-12 items-center justify-between border-b border-[#f0f0f0] px-4">
-          <div className="flex items-center gap-2.5"><HiveMark className="size-7" /><div><p className="text-xs font-semibold">Shared Workspace</p><p className="font-mono text-[9px] text-[#8f8f8f]">one run · visible to everyone</p></div></div>
-          <div className="flex items-center gap-2 font-mono text-[9px] text-[#737373]"><span className="rounded border border-[#e2e2e2] bg-[#fafafa] px-1.5 py-1">RUN v{revision}</span><span className="flex items-center gap-1.5"><span className={cn("size-1.5 rounded-full bg-[#171717]", workspace.status === "running" && "animate-pulse")} />{stageCopy[stage].label}</span></div>
+      <div className="flex h-11 shrink-0 items-center justify-between border-b border-[#ebebeb] bg-white px-2 sm:px-3">
+        <div className="flex min-w-0 items-center gap-0.5 overflow-x-auto">
+          {tabs.map((item) => {
+            const Icon = item.icon;
+            return (
+              <Button
+                className={cn(
+                  "h-7 rounded-md px-2.5 text-[11px] text-[#777]",
+                  tab === item.key && "bg-[#f1f1f1] text-[#171717]",
+                )}
+                key={item.key}
+                onClick={() => onTabChange(item.key)}
+                size="sm"
+                variant="ghost"
+              >
+                <Icon className="size-3.5" /> {item.label}
+              </Button>
+            );
+          })}
         </div>
-        <div className="flex h-10 items-center justify-between px-3">
-          <div className="flex items-center gap-1">{tabs.map((item) => { const Icon = item.icon; return <Button className={cn("h-7 rounded-md px-2.5 text-xs text-[#737373]", tab === item.key && "bg-[#f2f2f2] text-[#171717]")} key={item.key} onClick={() => onTabChange(item.key)} size="sm" variant="ghost"><Icon className="size-3.5" /> {item.label}</Button>; })}</div>
-          <div className="flex items-center gap-2 font-mono text-[9px] text-[#8f8f8f]"><span className="size-1.5 rounded-full bg-[#171717]" />Shared live</div>
+        <div className="ml-2 flex shrink-0 items-center gap-2 font-mono text-[8px] text-[#888]">
+          <span>RUN {revision}</span>
+          <span
+            className={cn(
+              "size-1.5 rounded-full bg-[#171717]",
+              workspace.status === "running" && "animate-pulse",
+            )}
+          />
+          <span className="hidden sm:inline">{stageCopy[stage].label}</span>
         </div>
       </div>
       <div className="min-h-0 flex-1">{tab === "workspace" ? <WorkspaceOverview repository={repository} workspace={workspace} /> : null}{tab === "diff" ? <DiffPane diff={workspace.diff} /> : null}{tab === "files" ? <FilesPane files={workspace.files} /> : null}{tab === "terminal" ? <TerminalPane commands={workspace.commands} /> : null}</div>
@@ -564,7 +691,21 @@ function RunBar({ activeSteer, queueCount, repository, stage, onAdvance }: { act
   const Icon = stage === "review" || stage === "approved" ? GitPullRequest : Play;
   const disabled = !repository || stage === "waiting" || stage === "approved" || Boolean(activeSteer) || (stage === "running" && queueCount === 0);
   return (
-    <div className="flex h-14 shrink-0 items-center justify-between border-t border-[#ebebeb] bg-[#fafafa] px-4"><div className="min-w-0"><p className="truncate text-xs font-medium">{stageCopy[stage].label}</p><p className="truncate text-[10px] text-[#8f8f8f]">{queueCount > 0 ? `${queueCount} steer${queueCount === 1 ? "" : "s"} waiting for a safe boundary.` : stageCopy[stage].detail}</p></div><Button className="h-8 rounded-md bg-[#171717] px-3 text-xs text-white" disabled={disabled} onClick={onAdvance} size="sm"><Icon className="size-3.5" /> {action}</Button></div>
+    <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-t border-[#ebebeb] bg-[#fafafa] px-3 sm:px-4">
+      <p className="min-w-0 truncate text-[10px] text-[#888]">
+        {queueCount > 0
+          ? `${queueCount} steer${queueCount === 1 ? "" : "s"} waiting for a safe boundary.`
+          : stageCopy[stage].detail}
+      </p>
+      <Button
+        className="h-8 shrink-0 rounded-md bg-[#171717] px-3 text-xs text-white"
+        disabled={disabled}
+        onClick={onAdvance}
+        size="sm"
+      >
+        <Icon className="size-3.5" /> {action}
+      </Button>
+    </div>
   );
 }
 
@@ -600,6 +741,7 @@ function normalizeMember(value?: string): MemberId {
 
 export function HiveWorkspace({ initialMember }: { initialMember?: string }) {
   const [currentMember, setCurrentMember] = useState<MemberId>(() => normalizeMember(initialMember));
+  const [pane, setPane] = useState<"chat" | "workspace">("chat");
   const [tab, setTab] = useState<WorkspaceTab>("workspace");
   const [copied, setCopied] = useState(false);
   const { dispatch, setTyping, snapshot, syncing, syncError } = useSharedRoom(currentMember);
@@ -656,6 +798,7 @@ export function HiveWorkspace({ initialMember }: { initialMember?: string }) {
     });
   }, [dispatch, stage, steeringQueue.length]);
   const reset = useCallback(() => {
+    setPane("chat");
     setTab("workspace");
     void dispatch({ type: "reset" });
   }, [dispatch]);
@@ -687,11 +830,57 @@ export function HiveWorkspace({ initialMember }: { initialMember?: string }) {
   }), [activeMembers, activeSteer, advance, annotate, annotation.queuedBy, annotation.steeredBy, annotation.text, currentMember, messages, moveSteer, queuePosition, queued, removeSteer, send, setTyping, stage, steer, steerMessageAnnotation, steered, steeringQueue, tab, typingMembers]);
 
   return (
-    <main className="flex h-dvh min-h-[620px] flex-col overflow-hidden bg-[#fafafa] text-[#171717]">
-      <ProductHeader activeMembers={activeMembers} copied={copied} currentMember={currentMember} onCopyInvite={copyInvite} onMemberChange={changeMember} onReset={reset} repository={repository} revision={revision} syncing={syncing} syncError={syncError} />
-      <div className="grid min-h-0 flex-1 grid-cols-1 min-[760px]:grid-cols-[430px_minmax(0,1fr)]">
-        <div className="min-h-0 border-r border-[#ebebeb]"><SharedSession {...shared} compact /></div>
-        <div className="flex min-h-0 flex-col"><div className="min-h-0 flex-1"><Workspace repository={repository} revision={revision} stage={shared.stage} tab={shared.tab} workspace={workspace} onTabChange={shared.onTabChange} /></div><RunBar activeSteer={activeSteer} queueCount={steeringQueue.length} repository={repository} stage={shared.stage} onAdvance={shared.onAdvance} /></div>
+    <main className="flex h-dvh min-h-[560px] flex-col overflow-hidden bg-[#fafafa] text-[#171717]">
+      <ProductHeader activeMembers={activeMembers} copied={copied} currentMember={currentMember} onCopyInvite={copyInvite} onMemberChange={changeMember} onReset={reset} repository={repository} syncing={syncing} syncError={syncError} />
+      <div className="flex h-10 shrink-0 items-center gap-1 border-b border-[#e8e8e8] bg-[#fafafa] p-1 min-[960px]:hidden">
+        <button
+          aria-pressed={pane === "chat"}
+          className={cn(
+            "flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md text-[11px] text-[#777]",
+            pane === "chat" && "border border-[#e1e1e1] bg-white text-[#171717] shadow-sm",
+          )}
+          onClick={() => setPane("chat")}
+          type="button"
+        >
+          <MessageSquare className="size-3.5" /> Team room
+        </button>
+        <button
+          aria-pressed={pane === "workspace"}
+          className={cn(
+            "flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md text-[11px] text-[#777]",
+            pane === "workspace" && "border border-[#e1e1e1] bg-white text-[#171717] shadow-sm",
+          )}
+          onClick={() => setPane("workspace")}
+          type="button"
+        >
+          <Code2 className="size-3.5" /> Workspace
+          {workspace.changedFiles.length > 0 ? (
+            <span className="grid size-4 place-items-center rounded-full bg-[#171717] font-mono text-[8px] text-white">
+              {workspace.changedFiles.length}
+            </span>
+          ) : null}
+        </button>
+      </div>
+      <div className="grid min-h-0 flex-1 grid-cols-1 min-[960px]:grid-cols-[minmax(360px,420px)_minmax(0,1fr)]">
+        <div
+          className={cn(
+            "min-h-0 border-r border-[#ebebeb]",
+            pane !== "chat" && "hidden min-[960px]:block",
+          )}
+        >
+          <SharedSession {...shared} compact />
+        </div>
+        <div
+          className={cn(
+            "min-h-0 flex-col",
+            pane === "workspace" ? "flex" : "hidden min-[960px]:flex",
+          )}
+        >
+          <div className="min-h-0 flex-1">
+            <Workspace repository={repository} revision={revision} stage={shared.stage} tab={shared.tab} workspace={workspace} onTabChange={shared.onTabChange} />
+          </div>
+          <RunBar activeSteer={activeSteer} queueCount={steeringQueue.length} repository={repository} stage={shared.stage} onAdvance={shared.onAdvance} />
+        </div>
       </div>
     </main>
   );

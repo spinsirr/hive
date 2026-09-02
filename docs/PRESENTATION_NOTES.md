@@ -387,3 +387,15 @@ supporting conflict mechanism rather than the product identity.
   clients.
 - Verified shared reordering, removal back to discussion-only, and one-at-a-time
   consumption at the next safe boundary.
+- Added focused state-machine coverage for the product's multiplayer contract:
+  teammate-directed discussion does not wake Hive, active-run annotations queue,
+  only an explicit safe boundary consumes the next steer, and reset preserves the
+  repository connection while clearing run artifacts. Together with the CJK input
+  regressions, the automated suite now has eight passing tests.
+- Kept the test boundary honest: the shared reducer is covered automatically and
+  the Postgres, GitHub App, Sandbox, and AI Gateway paths were verified end to end
+  against the live system; isolated API/database integration tests remain a next
+  production layer rather than take-home scope.
+- Refined the UI around one primary multiplayer conversation: one global header,
+  one status per surface, a compact composer, and a chat/workspace switch below
+  960px instead of stacking two full products in a narrow viewport.
