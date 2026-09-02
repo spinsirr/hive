@@ -343,6 +343,18 @@ supporting conflict mechanism rather than the product identity.
 - Kept user authentication and execution credentials separate. Hive discards
   the OAuth token after binding and mints a one-repository, `contents:read`
   installation token only when Vercel Sandbox clones the repository.
+- Verified the production OAuth round trip as `@spinsirr`. The shared room
+  persisted GitHub user ID `73987208`, installation `158515678`, and private
+  repository ID `1354870915` without persisting either OAuth or installation
+  credentials.
+- Verified the live `hive-orbit-nav-76a592497728` Vercel Sandbox cloned the
+  private repository on `main` at commit `4d0c15f`; `README.md` was present and
+  the git worktree was clean.
+- Diagnosed a blocked Vercel deployment from deployment metadata rather than
+  treating it as a build failure: the original commit email was not a member of
+  the Hobby team. A clean commit attributed to the project owner's Vercel
+  identity deployed successfully, and production was re-aliased to the stable
+  demo URL.
 - Renamed the product and shared agent to Hive.
 - Verified two browser participants synchronize messages and state transitions.
 - Added Postgres persistence and a reproducible Drizzle migration.
