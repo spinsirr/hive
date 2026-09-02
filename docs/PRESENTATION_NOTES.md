@@ -181,10 +181,9 @@ the product ends is part of the credibility of the submission.
   preview, test, diff, or PR artifacts left in the interface.
 - Messages addressed to Hive route through Vercel AI Gateway, and successful
   model responses persist back into the shared transcript. Production OIDC is
-  verified end to end: Gateway received the deployed request and returned
-  `customer_verification_required`. The remaining account action is billing
-  verification on the personal Vercel scope, or moving Hive to the credited
-  scope after Vercel confirms where the take-home credits were attached.
+  verified end to end after Hive was transferred to the credited team. A live
+  request completed through `poolside/laguna-s-2.1-free` and persisted the
+  response into the shared room without a personal provider key.
 - Messages explicitly addressed to a teammate stay human-to-human; promoting an
   annotation with **Steer Hive** explicitly wakes the agent.
 - Teammates can add attributed annotations directly to human messages. They sync
@@ -278,7 +277,10 @@ while the human still challenges architectural framing.
 The first production deploy also produced useful evidence instead of a vague
 "Gateway is broken" conclusion. Vercel OIDC authenticated successfully and the
 request reached AI Gateway; the actual response was a billing-verification 403
-on the personal scope. This separates application correctness from account
+on the personal scope. Moving the project to the credited team changed that
+failure to a model-tier restriction, proving the transfer and OIDC path worked.
+Switching debugging to the free, tool-capable Laguna model then completed the
+same request end to end. This separates application correctness from account
 configuration and preserves the decision not to ship a personal model token.
 
 The AI also over-indexed on “binding team intent” as the product wedge. The human
@@ -355,6 +357,12 @@ supporting conflict mechanism rather than the product identity.
   the Hobby team. A clean commit attributed to the project owner's Vercel
   identity deployed successfully, and production was re-aliased to the stable
   demo URL.
+- Transferred the existing Hive project into `spinsirrs-projects`, preserving
+  its stable domain and production environment variables while moving AI
+  Gateway usage onto the credited team scope.
+- Verified the transferred production deployment with a real persisted Hive
+  response. Kept debugging on the free, tool-capable Laguna model so credits
+  remain available for deliberate presentation-quality model runs.
 - Renamed the product and shared agent to Hive.
 - Verified two browser participants synchronize messages and state transitions.
 - Added Postgres persistence and a reproducible Drizzle migration.
@@ -362,7 +370,7 @@ supporting conflict mechanism rather than the product identity.
 - Verified state survives a development-server restart.
 - Passed TypeScript, ESLint, and a production webpack build.
 - Implemented the shared transcript's Vercel AI Gateway path with
-  `anthropic/claude-haiku-4.5` as the cost-conscious default model.
+  `poolside/laguna-s-2.1-free` as the zero-cost debugging default model.
 - Verified that a missing Gateway credential produces an attributed in-product
   error without losing the human prompt or taking the shared room offline.
 - Made the wake-up boundary explicit: team prompts wake Hive, teammate mentions

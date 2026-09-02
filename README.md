@@ -58,8 +58,8 @@ annotation → explicit steer → resume the same coding workspace
 - Steers created while Hive is already running enter an attributed shared queue
   instead of interrupting the current step. Teammates can reorder or remove
   them, and the next item is consumed only at an explicit safe boundary.
-- `anthropic/claude-haiku-4.5` is the cost-conscious default model and can be
-  replaced with `HIVE_MODEL`.
+- `poolside/laguna-s-2.1-free` is the zero-cost debugging default and can be
+  replaced with `HIVE_MODEL` for presentation-quality runs.
 - Hive uses AI SDK's `ToolLoopAgent` with four Vercel Sandbox tools: list files,
   read file, write file, and run command. The resulting changed files, command
   output, and `git diff` are persisted into the same shared room.
@@ -72,10 +72,9 @@ annotation → explicit steer → resume the same coding workspace
 - The deployed app is connected to Postgres and the shared multiplayer room is
   live. The current take-home database is temporary and must be replaced with a
   durable Vercel Marketplace Postgres integration before final submission.
-- Production OIDC authentication to AI Gateway is verified. The personal Vercel
-  scope currently returns `customer_verification_required`; adding billing
-  verification (or moving the project to the credited scope) unlocks model
-  responses without adding a personal provider key.
+- Production OIDC authentication to AI Gateway is verified after transferring
+  Hive to the credited Vercel scope. A live production request completed through
+  `poolside/laguna-s-2.1-free` without adding a personal provider key.
 - The previous Orbit preview, hardcoded diff, hardcoded test output, and fake PR
   number have been removed. The workspace only renders artifacts returned by a
   real sandbox run.

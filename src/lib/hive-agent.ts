@@ -6,7 +6,7 @@ import {
   type RoomState,
 } from "@/lib/room";
 
-const DEFAULT_MODEL = "anthropic/claude-haiku-4.5";
+const DEFAULT_MODEL = "poolside/laguna-s-2.1-free";
 const MAX_CONTEXT_MESSAGES = 18;
 
 type HiveTrigger =
@@ -57,6 +57,12 @@ export function hiveAgentFailureMessage(error: unknown) {
     details.includes("valid credit card on file")
   ) {
     return "I saved the team’s input and reached AI Gateway, but this Vercel account needs billing verification before I can respond.";
+  }
+  if (
+    details.includes("restrictedmodelserror") ||
+    details.includes("free tier users do not have access to this model")
+  ) {
+    return "I saved the team’s input and reached AI Gateway, but the selected model is not available on this account tier.";
   }
   if (statusCode === 402) {
     return "I saved the team’s input, but the AI Gateway account needs available credit before I can respond.";

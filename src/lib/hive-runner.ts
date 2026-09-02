@@ -15,7 +15,7 @@ import {
   type WorkspaceFile,
 } from "@/lib/room";
 
-const DEFAULT_MODEL = "anthropic/claude-haiku-4.5";
+const DEFAULT_MODEL = "poolside/laguna-s-2.1-free";
 const MAX_OUTPUT_CHARS = 20_000;
 const MAX_DIFF_CHARS = 60_000;
 const MAX_CHANGED_FILES = 12;
