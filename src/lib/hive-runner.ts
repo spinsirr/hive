@@ -48,6 +48,15 @@ function sandboxName(repositoryUrl: string) {
   return `hive-orbit-nav-${digest}`;
 }
 
+function repositoryDirectory(repositoryUrl: string) {
+  const pathname = new URL(repositoryUrl).pathname.replace(/\/+$/, "");
+  const directory = path.posix.basename(pathname).replace(/\.git$/, "");
+  if (!directory || directory === "." || directory === "..") {
+    throw new Error("Repository URL does not contain a valid directory name.");
+  }
+  return directory;
+}
+
 function latestTask(room: RoomState, actor: MemberId, steer?: string) {
   if (steer) return steer;
   return (
@@ -71,8 +80,14 @@ async function commandOutput(
   command: string,
   args: string[],
   timeoutMs = 120_000,
+  cwd?: string,
 ) {
-  const result = await sandbox.runCommand(command, args, { timeoutMs });
+  const result = await sandbox.runCommand({
+    cmd: command,
+    args,
+    timeoutMs,
+    cwd,
+  });
   const [stdout, stderr] = await Promise.all([
     result.stdout(),
     result.stderr(),
@@ -87,25 +102,41 @@ async function commandOutput(
 async function collectArtifacts(
   sandbox: Sandbox,
   commands: WorkspaceCommand[],
+  cwd: string,
 ) {
-  const changedFileResult = await commandOutput(sandbox, "bash", [
-    "-lc",
-    "git diff --name-only --diff-filter=ACMRTUXB HEAD; git ls-files --others --exclude-standard",
-  ]);
-  const changedFiles = [...new Set(changedFileResult.output
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-  )].slice(0, MAX_CHANGED_FILES);
+  const changedFileResult = await commandOutput(
+    sandbox,
+    "bash",
+    [
+      "-lc",
+      "git diff --name-only --diff-filter=ACMRTUXB HEAD; git ls-files --others --exclude-standard",
+    ],
+    120_000,
+    cwd,
+  );
+  const changedFiles = [
+    ...new Set(
+      changedFileResult.output
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean),
+    ),
+  ].slice(0, MAX_CHANGED_FILES);
 
-  const diffResult = await commandOutput(sandbox, "bash", [
-    "-lc",
-    "git diff --no-ext-diff HEAD; while IFS= read -r file; do git diff --no-index -- /dev/null \"$file\" || true; done < <(git ls-files --others --exclude-standard)",
-  ]);
+  const diffResult = await commandOutput(
+    sandbox,
+    "bash",
+    [
+      "-lc",
+      "git diff --no-ext-diff HEAD; while IFS= read -r file; do git diff --no-index -- /dev/null \"$file\" || true; done < <(git ls-files --others --exclude-standard)",
+    ],
+    120_000,
+    cwd,
+  );
 
   const files: WorkspaceFile[] = [];
   for (const filePath of changedFiles) {
-    const content = await sandbox.readFileToBuffer({ path: filePath });
+    const content = await sandbox.readFileToBuffer({ path: filePath, cwd });
     if (!content) continue;
     files.push({ path: filePath, content: truncate(content.toString("utf8")) });
   }
@@ -161,6 +192,10 @@ export async function runHiveCodingTask(
       keepLastSnapshots: { count: 2 },
       tags: { app: "hive", room: room.roomId },
     });
+    const repositoryCwd = path.posix.join(
+      sandbox.cwd,
+      repositoryDirectory(room.repository.url),
+    );
 
     const tools = {
       listFiles: tool({
@@ -173,19 +208,25 @@ export async function runHiveCodingTask(
         execute: async ({ directory, maxDepth }) => {
           const safeDirectory =
             directory === "." ? "." : safeRepositoryPath(directory);
-          const result = await commandOutput(sandbox, "find", [
-            safeDirectory,
-            "-maxdepth",
-            String(maxDepth),
-            "-type",
-            "f",
-            "-not",
-            "-path",
-            "*/.git/*",
-            "-not",
-            "-path",
-            "*/node_modules/*",
-          ]);
+          const result = await commandOutput(
+            sandbox,
+            "find",
+            [
+              safeDirectory,
+              "-maxdepth",
+              String(maxDepth),
+              "-type",
+              "f",
+              "-not",
+              "-path",
+              "*/.git/*",
+              "-not",
+              "-path",
+              "*/node_modules/*",
+            ],
+            120_000,
+            repositoryCwd,
+          );
           return result.output;
         },
       }),
@@ -194,7 +235,10 @@ export async function runHiveCodingTask(
         inputSchema: z.object({ path: z.string().min(1) }),
         execute: async ({ path: filePath }) => {
           const safePath = safeRepositoryPath(filePath);
-          const content = await sandbox.readFileToBuffer({ path: safePath });
+          const content = await sandbox.readFileToBuffer({
+            path: safePath,
+            cwd: repositoryCwd,
+          });
           if (!content) throw new Error(`${safePath} was not found.`);
           return truncate(content.toString("utf8"));
         },
@@ -210,9 +254,15 @@ export async function runHiveCodingTask(
           const safePath = safeRepositoryPath(filePath);
           const directory = path.posix.dirname(safePath);
           if (directory !== ".") {
-            await sandbox.runCommand("mkdir", ["-p", directory]);
+            await sandbox.runCommand({
+              cmd: "mkdir",
+              args: ["-p", directory],
+              cwd: repositoryCwd,
+            });
           }
-          await sandbox.writeFiles([{ path: safePath, content }]);
+          await sandbox.writeFiles([
+            { path: path.posix.join(repositoryCwd, safePath), content },
+          ]);
           return `Wrote ${Buffer.byteLength(content)} bytes to ${safePath}.`;
         },
       }),
@@ -223,7 +273,13 @@ export async function runHiveCodingTask(
           command: z.string().min(1).max(1_000),
         }),
         execute: async ({ command }) => {
-          const result = await commandOutput(sandbox, "bash", ["-lc", command]);
+          const result = await commandOutput(
+            sandbox,
+            "bash",
+            ["-lc", command],
+            120_000,
+            repositoryCwd,
+          );
           commands.push({ command, ...result });
           return result;
         },
@@ -263,7 +319,7 @@ export async function runHiveCodingTask(
         latestTask(room, actor, steer),
       ].join("\n\n"),
     });
-    const artifacts = await collectArtifacts(sandbox, commands);
+    const artifacts = await collectArtifacts(sandbox, commands, repositoryCwd);
 
     return {
       sandboxName: name,
