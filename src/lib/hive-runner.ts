@@ -6,6 +6,7 @@ import { stepCountIs, tool, ToolLoopAgent } from "ai";
 import { z } from "zod";
 
 import { hiveAgentFailureMessage, HiveAgentError } from "@/lib/hive-agent";
+import { getRepositoryCloneCredentials } from "@/lib/github-app";
 import {
   memberDirectory,
   type MemberId,
@@ -133,11 +134,24 @@ export async function runHiveCodingTask(
   const commands: WorkspaceCommand[] = [];
 
   try {
+    if (
+      room.repository.provider !== "github-app" ||
+      !room.repository.installationId ||
+      !room.repository.id
+    ) {
+      throw new HiveAgentError(
+        "Reconnect the repository through the Hive GitHub App before running code.",
+        new Error("Repository is missing GitHub App installation metadata."),
+      );
+    }
+
+    const cloneCredentials = await getRepositoryCloneCredentials(room.repository);
     const sandbox = await Sandbox.getOrCreate({
       name,
       source: {
         type: "git",
         url: room.repository.url,
+        ...cloneCredentials,
         depth: 20,
       },
       persistent: true,

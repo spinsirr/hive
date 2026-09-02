@@ -155,6 +155,7 @@ the product ends is part of the credibility of the submission.
 | Separate annotate from steer | People need to discuss work without every comment redirecting the run. | Treating all messages as prompts or requiring a formal decision card for every change. |
 | Queue and attribute concurrent steering | Multiplayer input must stay visible and deterministic while the agent is busy. | Last-write-wins prompts or silently merging instructions. |
 | Use AI SDK + Vercel Sandbox as the harness | The take-home should validate multiplayer control, not recreate agent loops or container infrastructure. | Building a new harness and VM platform within the six-hour exercise. |
+| Separate GitHub user identity from repository execution | OAuth proves which human may bind the App installation; a fresh installation token performs the clone with one-repository, read-only scope. | A personal access token, or trusting the spoofable `installation_id` query parameter by itself. |
 | Use an ordinary frontend change | Makes the intention problem understandable in seconds. | A deployment workflow that distracts from the core interaction. |
 | Use Vercel Marketplace Postgres | Vercel no longer operates a separate Vercel Postgres product; Marketplace provides the managed database and environment integration. | Presenting direct Neon and “Vercel database” as competing architectures. |
 | Do not reuse personal Claude/Codex subscription tokens | Product authentication and spend should be auditable and scoped to the app. | Shipping personal setup tokens in a deployed demo. |
@@ -165,7 +166,13 @@ the product ends is part of the credibility of the submission.
 - Messages, presence, typing, context revision, and run stage synchronize across
   clients.
 - Room state persists in Postgres across server restarts.
-- A public GitHub repository URL creates a named, persistent Vercel Sandbox.
+- A GitHub App is installed on exactly one private repository. GitHub user OAuth
+  verifies that the authorizing human can access the installation before Hive
+  persists repository metadata.
+- The OAuth user token is used only for that binding check and then discarded.
+  Each Sandbox clone gets a newly minted installation token limited to the
+  selected repository and `contents:read`; neither credential is persisted in
+  room state or exposed to the agent tool loop.
 - AI SDK's `ToolLoopAgent` can list files, read files, write files, and execute
   commands inside that sandbox; no production database or application secrets
   are passed into the workspace.
@@ -194,8 +201,9 @@ the product ends is part of the credibility of the submission.
 
 ## Current implementation boundary
 
-- Public repositories are supported by URL; private repositories still require
-  a GitHub App installation token flow.
+- Private repository connection is implemented with GitHub App installation
+  tokens plus user OAuth. The GitHub App is deliberately installed on one
+  selected repository for this single-team demo.
 - Sandbox execution is connected, but GitHub write-back is not. Hive does not
   push branches or create pull requests yet.
 - The deployed app currently uses the temporary Postgres database created during
@@ -218,6 +226,10 @@ execution infrastructure.
   serialization.
 - `src/lib/hive-runner.ts`: AI SDK tool loop, Vercel Sandbox lifecycle, guarded
   repository paths, command capture, changed files, and git diff collection.
+- `src/lib/github-oauth.ts`: signed OAuth state, one-time user authorization,
+  and user-to-installation verification.
+- `src/lib/github-app.ts`: App authentication and repository-scoped,
+  `contents:read` installation tokens for Sandbox cloning.
 - `src/app/api/rooms/orbit-nav/route.ts`: the small HTTP boundary for presence
   and room actions.
 - `src/hooks/use-shared-room.ts`: browser synchronization, presence heartbeat,
@@ -318,6 +330,19 @@ supporting conflict mechanism rather than the product identity.
   tool: AI Gateway returns `customer_verification_required` for the personal
   Vercel scope.
 - Promoted the selected black-and-white Vercel-style interface.
+
+### 2026-09-02
+
+- Registered the private `Hive Multiplayer Agent` GitHub App and installed it
+  only on `spinsirr/hive` rather than granting account-wide repository access.
+- Replaced the public repository URL input with a GitHub App installation flow.
+- Added GitHub user OAuth as a trust boundary: the setup URL's
+  `installation_id` is never sufficient on its own; Hive confirms that the
+  authorizing user can access that installation and records the GitHub identity
+  responsible for the connection.
+- Kept user authentication and execution credentials separate. Hive discards
+  the OAuth token after binding and mints a one-repository, `contents:read`
+  installation token only when Vercel Sandbox clones the repository.
 - Renamed the product and shared agent to Hive.
 - Verified two browser participants synchronize messages and state transitions.
 - Added Postgres persistence and a reproducible Drizzle migration.

@@ -18,32 +18,6 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-function parseGitHubRepository(value: unknown) {
-  if (typeof value !== "string") return null;
-  try {
-    const url = new URL(value.trim());
-    const parts = url.pathname.split("/").filter(Boolean);
-    if (
-      url.protocol !== "https:" ||
-      url.hostname !== "github.com" ||
-      parts.length !== 2 ||
-      url.search ||
-      url.hash
-    ) {
-      return null;
-    }
-    const owner = parts[0];
-    const repository = parts[1].replace(/\.git$/, "");
-    if (!owner || !repository) return null;
-    return {
-      url: `https://github.com/${owner}/${repository}.git`,
-      name: `${owner}/${repository}`,
-    };
-  } catch {
-    return null;
-  }
-}
-
 export async function GET() {
   return NextResponse.json(await getRoomSnapshot(), {
     headers: { "Cache-Control": "no-store" },
@@ -70,7 +44,6 @@ export async function POST(request: Request) {
 
   if (
     payload.type !== "send-message" &&
-    payload.type !== "connect-repository" &&
     payload.type !== "annotate-message" &&
     payload.type !== "steer-message-annotation" &&
     payload.type !== "apply-next-steer" &&
@@ -88,17 +61,6 @@ export async function POST(request: Request) {
     (!("body" in payload) || typeof payload.body !== "string" || !payload.body.trim())
   ) {
     return NextResponse.json({ error: "Message body is required" }, { status: 400 });
-  }
-
-  const repository =
-    payload.type === "connect-repository" && "repositoryUrl" in payload
-      ? parseGitHubRepository(payload.repositoryUrl)
-      : null;
-  if (payload.type === "connect-repository" && !repository) {
-    return NextResponse.json(
-      { error: "Enter a public GitHub repository URL" },
-      { status: 400 },
-    );
   }
 
   if (
@@ -132,16 +94,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid queue direction" }, { status: 400 });
   }
 
-  const action = (
-    payload.type === "connect-repository" && repository
-      ? {
-          type: "connect-repository",
-          actor: payload.actor,
-          repositoryUrl: repository.url,
-          repositoryName: repository.name,
-        }
-      : payload
-  ) as RoomAction;
+  const action = payload as RoomAction;
   const actionAt = Date.now();
   const snapshot = await applyRoomAction(action, actionAt);
 
@@ -207,7 +160,7 @@ export async function POST(request: Request) {
   if (!snapshot.room.repository) {
     return NextResponse.json(
       await appendHiveReply(
-        "Connect a public GitHub repository before asking Hive to inspect or change code.",
+        "Connect a repository through the Hive GitHub App before asking Hive to inspect or change code.",
         {
           forMessageId: sourceMessageId,
           forMessageAnnotation: sourceMessageAnnotation,

@@ -39,7 +39,8 @@ between both clients.
 ## Current vertical slice
 
 ```text
-connect public GitHub repo → persistent Vercel Sandbox workspace
+GitHub user OAuth → repository-scoped GitHub App installation
+short-lived installation token → private repo in persistent Vercel Sandbox
 team prompt → AI SDK tool loop → read/write/command → real git diff → shared room
 annotation → explicit steer → resume the same coding workspace
 ```
@@ -62,8 +63,12 @@ annotation → explicit steer → resume the same coding workspace
 - Hive uses AI SDK's `ToolLoopAgent` with four Vercel Sandbox tools: list files,
   read file, write file, and run command. The resulting changed files, command
   output, and `git diff` are persisted into the same shared room.
-- Public GitHub repositories can be connected by URL today. Private repository
-  access through short-lived GitHub App installation tokens is the next layer.
+- Repository connection uses a GitHub App installed on exactly one selected
+  repository. GitHub user OAuth verifies who is allowed to bind that
+  installation to Hive; the one-time user token is discarded immediately.
+- Vercel Sandbox receives a fresh installation token limited to that repository
+  and `contents:read`. Hive never stores a personal access token, and the
+  installation token expires within one hour.
 - The deployed app is connected to Postgres and the shared multiplayer room is
   live. The current take-home database is temporary and must be replaced with a
   durable Vercel Marketplace Postgres integration before final submission.
@@ -76,6 +81,21 @@ annotation → explicit steer → resume the same coding workspace
   real sandbox run.
 - GitHub write-back is intentionally not connected yet: Hive can clone, edit,
   and test in Sandbox, but cannot push a branch or open a pull request.
+
+## GitHub App setup
+
+Register a GitHub App with repository Contents read/write and Pull requests
+read/write permissions, then configure its setup and OAuth callback URLs:
+
+```text
+https://your-domain.example/api/github/setup
+https://your-domain.example/api/github/callback
+```
+
+The deployed server needs `GITHUB_APP_ID`, `GITHUB_APP_SLUG`,
+`GITHUB_APP_PRIVATE_KEY`, `GITHUB_APP_CLIENT_ID`,
+`GITHUB_APP_CLIENT_SECRET`, and `GITHUB_APP_CALLBACK_URL`. All credentials stay
+server-side; none are exposed to the sandbox or browser.
 
 ## State-machine driver
 

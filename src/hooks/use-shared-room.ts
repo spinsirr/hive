@@ -15,8 +15,10 @@ const fallbackSnapshot: RoomSnapshot = {
   typingMembers: [],
 };
 
-type RoomDispatchAction = RoomAction extends infer Action
-  ? Action extends RoomAction
+type ClientRoomAction = Exclude<RoomAction, { type: "connect-repository" }>;
+
+type RoomDispatchAction = ClientRoomAction extends infer Action
+  ? Action extends ClientRoomAction
     ? Omit<Action, "actor">
     : never
   : never;

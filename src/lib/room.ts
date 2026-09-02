@@ -63,9 +63,17 @@ export type ChatMessage = {
 };
 
 export type RepositoryState = {
+  provider: "github-app";
+  id: number;
+  installationId: number;
   url: string;
   name: string;
   branch: string;
+  visibility: "private" | "public";
+  authorizedByGitHub: {
+    id: number;
+    login: string;
+  };
   connectedBy: MemberId;
   connectedAt: number;
 };
@@ -134,6 +142,12 @@ export type RoomAction =
       actor: MemberId;
       repositoryUrl: string;
       repositoryName: string;
+      repositoryId: number;
+      repositoryBranch: string;
+      installationId: number;
+      visibility: "private" | "public";
+      githubUserId: number;
+      githubLogin: string;
     }
   | {
       type: "annotate-message";
@@ -266,9 +280,17 @@ export function reduceRoom(state: RoomState, action: RoomAction, now = Date.now(
 
   if (action.type === "connect-repository") {
     const repository: RepositoryState = {
+      provider: "github-app",
+      id: action.repositoryId,
+      installationId: action.installationId,
       url: action.repositoryUrl,
       name: action.repositoryName,
-      branch: "default",
+      branch: action.repositoryBranch,
+      visibility: action.visibility,
+      authorizedByGitHub: {
+        id: action.githubUserId,
+        login: action.githubLogin,
+      },
       connectedBy: action.actor,
       connectedAt: now,
     };
@@ -287,7 +309,7 @@ export function reduceRoom(state: RoomState, action: RoomAction, now = Date.now(
       },
       messages: appendAgentMessage(
         state,
-        `${memberDirectory[action.actor].shortName} connected ${repository.name}. Hive can now inspect and execute against the real repository.`,
+        `${memberDirectory[action.actor].shortName} connected ${repository.name} as @${repository.authorizedByGitHub.login}. Hive can now inspect and execute against the private repository.`,
         now,
       ),
       updatedAt: now,

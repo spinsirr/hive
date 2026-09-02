@@ -454,40 +454,20 @@ function SharedSession({ activeMembers, activeSteer, queued, queuedBy, queuePosi
   );
 }
 
-function WorkspaceOverview({ repository, workspace, onConnect }: {
+function WorkspaceOverview({ repository, workspace }: {
   repository?: RepositoryState;
   workspace: WorkspaceState;
-  onConnect: (repositoryUrl: string) => void;
 }) {
-  const [repositoryUrl, setRepositoryUrl] = useState("");
-
   if (!repository) {
     return (
       <div className="hairline-grid flex h-full min-h-[420px] items-center justify-center bg-[#fafafa] p-8">
-        <form
-          className="w-full max-w-lg rounded-xl border border-[#dcdcdc] bg-white p-6 shadow-[0_10px_40px_rgba(0,0,0,0.05)]"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (repositoryUrl.trim()) onConnect(repositoryUrl.trim());
-          }}
-        >
+        <div className="w-full max-w-lg rounded-xl border border-[#dcdcdc] bg-white p-6 shadow-[0_10px_40px_rgba(0,0,0,0.05)]">
           <FolderGit2 className="size-7" />
           <h3 className="mt-5 text-lg font-semibold tracking-[-0.03em]">Connect the repository Hive will operate</h3>
-          <p className="mt-2 text-sm leading-6 text-[#737373]">Hive will clone this repository into an isolated Vercel Sandbox and return real files, commands, and git diff.</p>
-          <label className="mt-5 block font-mono text-[9px] uppercase tracking-[0.1em] text-[#737373]" htmlFor="repository-url">Public GitHub URL</label>
-          <div className="mt-2 flex gap-2">
-            <input
-              className="h-10 min-w-0 flex-1 rounded-md border border-[#dcdcdc] bg-white px-3 text-sm outline-none placeholder:text-[#a1a1a1] focus:border-[#8f8f8f]"
-              id="repository-url"
-              onChange={(event) => setRepositoryUrl(event.target.value)}
-              placeholder="https://github.com/owner/repository"
-              type="url"
-              value={repositoryUrl}
-            />
-            <Button className="h-10 rounded-md bg-[#171717] px-4 text-white" disabled={!repositoryUrl.trim()} type="submit">Connect</Button>
-          </div>
-          <p className="mt-3 font-mono text-[9px] text-[#a1a1a1]">Public repositories first · GitHub App access is the next layer</p>
-        </form>
+          <p className="mt-2 text-sm leading-6 text-[#737373]">Install the repository-scoped GitHub App. Hive will mint a short-lived read token only when Vercel Sandbox needs to clone the selected repository.</p>
+          <a className="mt-5 inline-flex h-10 items-center gap-2 rounded-md bg-[#171717] px-4 text-sm font-medium text-white transition hover:bg-black" href="/api/github/install"><FolderGit2 className="size-4" /> Connect GitHub</a>
+          <p className="mt-3 font-mono text-[9px] text-[#a1a1a1]">One selected repository · no PAT · token expires within one hour</p>
+        </div>
       </div>
     );
   }
@@ -500,6 +480,7 @@ function WorkspaceOverview({ repository, workspace, onConnect }: {
             <div>
               <div className="flex items-center gap-2"><FolderGit2 className="size-4" /><span className="text-sm font-semibold">{repository.name}</span></div>
               <a className="mt-2 block font-mono text-[10px] text-[#737373] hover:text-[#171717]" href={repository.url.replace(/\.git$/, "")} rel="noreferrer" target="_blank">{repository.url.replace(/\.git$/, "")}</a>
+              <p className="mt-2 font-mono text-[9px] uppercase tracking-[0.08em] text-[#a1a1a1]">GitHub App · {repository.visibility} · {repository.branch} · authorized by @{repository.authorizedByGitHub.login}</p>
             </div>
             <Badge className="rounded-sm border-[#dedede] bg-[#fafafa] font-mono text-[9px] uppercase" variant="outline">{workspace.status}</Badge>
           </div>
@@ -559,7 +540,7 @@ function TerminalPane({ commands }: { commands: WorkspaceState["commands"] }) {
   );
 }
 
-function Workspace({ repository, revision, stage, tab, workspace, onConnect, onTabChange }: { repository?: RepositoryState; revision: number; stage: RunStage; tab: WorkspaceTab; workspace: WorkspaceState; onConnect: (repositoryUrl: string) => void; onTabChange: (tab: WorkspaceTab) => void }) {
+function Workspace({ repository, revision, stage, tab, workspace, onTabChange }: { repository?: RepositoryState; revision: number; stage: RunStage; tab: WorkspaceTab; workspace: WorkspaceState; onTabChange: (tab: WorkspaceTab) => void }) {
   return (
     <section className="flex h-full min-h-0 flex-col bg-white">
       <div className="shrink-0 border-b border-[#ebebeb] bg-white">
@@ -572,7 +553,7 @@ function Workspace({ repository, revision, stage, tab, workspace, onConnect, onT
           <div className="flex items-center gap-2 font-mono text-[9px] text-[#8f8f8f]"><span className="size-1.5 rounded-full bg-[#171717]" />Shared live</div>
         </div>
       </div>
-      <div className="min-h-0 flex-1">{tab === "workspace" ? <WorkspaceOverview onConnect={onConnect} repository={repository} workspace={workspace} /> : null}{tab === "diff" ? <DiffPane diff={workspace.diff} /> : null}{tab === "files" ? <FilesPane files={workspace.files} /> : null}{tab === "terminal" ? <TerminalPane commands={workspace.commands} /> : null}</div>
+      <div className="min-h-0 flex-1">{tab === "workspace" ? <WorkspaceOverview repository={repository} workspace={workspace} /> : null}{tab === "diff" ? <DiffPane diff={workspace.diff} /> : null}{tab === "files" ? <FilesPane files={workspace.files} /> : null}{tab === "terminal" ? <TerminalPane commands={workspace.commands} /> : null}</div>
     </section>
   );
 }
@@ -658,10 +639,6 @@ export function HiveWorkspace({ initialMember }: { initialMember?: string }) {
   const removeSteer = useCallback((steerId: string) => {
     void dispatch({ type: "remove-queued-steer", steerId });
   }, [dispatch]);
-  const connectRepository = useCallback((repositoryUrl: string) => {
-    setTab("workspace");
-    void dispatch({ type: "connect-repository", repositoryUrl, repositoryName: "" });
-  }, [dispatch]);
   const send = useCallback((body: string) => {
     if (repository && !body.trim().match(/^@(maya|spencer)\b/i)) setTab("terminal");
     void dispatch({ type: "send-message", body }).then((nextSnapshot) => {
@@ -713,7 +690,7 @@ export function HiveWorkspace({ initialMember }: { initialMember?: string }) {
       <ProductHeader activeMembers={activeMembers} copied={copied} currentMember={currentMember} onCopyInvite={copyInvite} onMemberChange={changeMember} onReset={reset} repository={repository} revision={revision} syncing={syncing} syncError={syncError} />
       <div className="grid min-h-0 flex-1 grid-cols-1 min-[760px]:grid-cols-[430px_minmax(0,1fr)]">
         <div className="min-h-0 border-r border-[#ebebeb]"><SharedSession {...shared} compact /></div>
-        <div className="flex min-h-0 flex-col"><div className="min-h-0 flex-1"><Workspace onConnect={connectRepository} repository={repository} revision={revision} stage={shared.stage} tab={shared.tab} workspace={workspace} onTabChange={shared.onTabChange} /></div><RunBar activeSteer={activeSteer} queueCount={steeringQueue.length} repository={repository} stage={shared.stage} onAdvance={shared.onAdvance} /></div>
+        <div className="flex min-h-0 flex-col"><div className="min-h-0 flex-1"><Workspace repository={repository} revision={revision} stage={shared.stage} tab={shared.tab} workspace={workspace} onTabChange={shared.onTabChange} /></div><RunBar activeSteer={activeSteer} queueCount={steeringQueue.length} repository={repository} stage={shared.stage} onAdvance={shared.onAdvance} /></div>
       </div>
     </main>
   );
