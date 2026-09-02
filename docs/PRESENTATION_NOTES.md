@@ -363,6 +363,9 @@ supporting conflict mechanism rather than the product identity.
 - Verified the transferred production deployment with a real persisted Hive
   response. Kept debugging on the free, tool-capable Laguna model so credits
   remain available for deliberate presentation-quality model runs.
+- Reproduced duplicate CJK sends as two server-persisted messages 113ms apart.
+  Added an IME-aware Enter guard (`isComposing`, plus Safari's `keyCode 229`)
+  and a focused regression test without changing normal Enter or Shift+Enter.
 - Renamed the product and shared agent to Hive.
 - Verified two browser participants synchronize messages and state transitions.
 - Added Postgres persistence and a reproducible Drizzle migration.

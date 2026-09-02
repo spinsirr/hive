@@ -45,6 +45,7 @@ import {
   type SteeringQueueItem,
   type WorkspaceState,
 } from "@/lib/room";
+import { shouldSubmitMessage } from "@/lib/message-keyboard";
 import { cn } from "@/lib/utils";
 
 type WorkspaceTab = "workspace" | "diff" | "files" | "terminal";
@@ -439,7 +440,7 @@ function SharedSession({ activeMembers, activeSteer, queued, queuedBy, queuePosi
               onTyping(Boolean(event.target.value.trim()));
             }}
             onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
+              if (shouldSubmitMessage(event)) {
                 event.preventDefault();
                 submit();
               }
