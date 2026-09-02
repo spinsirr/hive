@@ -1,0 +1,2 @@
+ALTER TABLE "rooms" ADD COLUMN "repository" jsonb;--> statement-breakpoint
+ALTER TABLE "rooms" ADD COLUMN "workspace" jsonb DEFAULT '{"status":"disconnected","diff":"","files":[],"commands":[],"changedFiles":[]}'::jsonb NOT NULL;
