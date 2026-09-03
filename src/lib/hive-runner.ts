@@ -26,6 +26,8 @@ const CODEX_BRIDGE_PORT = 4319;
 const MAX_OUTPUT_CHARS = 20_000;
 const MAX_DIFF_CHARS = 60_000;
 const MAX_CHANGED_FILES = 12;
+const CODEX_BRIDGE_DEPENDENCY_CHECK =
+  'node --input-type=module -e "await import(\'ws\'); await import(\'@openai/codex-sdk\')"';
 
 function truncate(value: string, max = MAX_OUTPUT_CHARS) {
   return value.length <= max
@@ -60,6 +62,50 @@ async function commandOutput(
     ),
     durationMs: Date.now() - startedAt,
   };
+}
+
+async function ensureCodexBridgeDependencies(
+  sandbox: Experimental_SandboxSession,
+  sessionWorkDir: string,
+  abortSignal?: AbortSignal,
+) {
+  const bootstrapDirectory = path.posix.join(
+    path.posix.dirname(sessionWorkDir),
+    ".harness-bootstrap/codex",
+  );
+  let check = await sandbox.run({
+    command: CODEX_BRIDGE_DEPENDENCY_CHECK,
+    workingDirectory: bootstrapDirectory,
+    abortSignal,
+  });
+  if (check.exitCode === 0) return;
+
+  const install = await sandbox.run({
+    command:
+      "pnpm install --frozen-lockfile --store-dir .pnpm-store --force",
+    workingDirectory: bootstrapDirectory,
+    abortSignal,
+  });
+  if (install.exitCode !== 0) {
+    throw new Error(
+      `Codex bridge dependency repair failed: ${truncate(
+        install.stderr || install.stdout,
+      )}`,
+    );
+  }
+
+  check = await sandbox.run({
+    command: CODEX_BRIDGE_DEPENDENCY_CHECK,
+    workingDirectory: bootstrapDirectory,
+    abortSignal,
+  });
+  if (check.exitCode !== 0) {
+    throw new Error(
+      `Codex bridge dependencies are unavailable after install: ${truncate(
+        check.stderr || check.stdout,
+      )}`,
+    );
+  }
 }
 
 async function collectArtifacts(
@@ -225,8 +271,13 @@ export async function runHiveCodingTask(
       sandbox,
       sandboxConfig: {
         workDir: repositoryCwd,
-        onSession: async ({ session, sessionWorkDir }) => {
+        onSession: async ({ session, sessionWorkDir, abortSignal }) => {
           sandboxSession = session;
+          await ensureCodexBridgeDependencies(
+            session,
+            sessionWorkDir,
+            abortSignal,
+          );
           const check = await session.run({
             command: "git rev-parse --show-toplevel",
             workingDirectory: sessionWorkDir,
