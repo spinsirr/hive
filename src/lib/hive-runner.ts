@@ -12,6 +12,7 @@ import type { Experimental_SandboxSession } from "ai";
 import { hiveAgentFailureMessage, HiveAgentError } from "@/lib/hive-agent";
 import { getRepositoryCloneCredentials } from "@/lib/github-app";
 import { buildCodexPrompt } from "@/lib/hive-prompt";
+import { resolvePersistentSandboxName } from "@/lib/hive-session";
 import {
   createAgentSessionId,
   type MemberId,
@@ -176,6 +177,7 @@ export async function runHiveCodingTask(
     | HarnessAgentResumeSessionState
     | undefined;
   const repositoryCwd = repositoryDirectory(room.repository.url);
+  const sandboxName = resolvePersistentSandboxName(room, sessionId);
   let sandboxSession: Experimental_SandboxSession | undefined;
   let persistentSandbox: Sandbox | undefined;
   let sessionEnded = false;
@@ -183,7 +185,7 @@ export async function runHiveCodingTask(
   try {
     const cloneCredentials = await getRepositoryCloneCredentials(room.repository);
     persistentSandbox = await Sandbox.getOrCreate({
-      name: `ai-sdk-harness-session-${sessionId}`,
+      name: sandboxName,
       runtime: "node24",
       ports: [CODEX_BRIDGE_PORT],
       source: {
@@ -260,7 +262,7 @@ export async function runHiveCodingTask(
       });
 
       return {
-        sandboxName: `ai-sdk-harness-session-${sessionId}`,
+        sandboxName,
         agentSession: {
           id: sessionId,
           runtime: "codex" as const,
