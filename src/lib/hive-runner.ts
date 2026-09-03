@@ -108,6 +108,44 @@ async function ensureCodexBridgeDependencies(
   }
 }
 
+async function ensureRepositoryWorkingCopy(
+  sandbox: Experimental_SandboxSession,
+  sessionWorkDir: string,
+  abortSignal?: AbortSignal,
+) {
+  const existingRepository = await sandbox.run({
+    command: "git rev-parse --show-toplevel",
+    workingDirectory: sessionWorkDir,
+    abortSignal,
+  });
+  if (existingRepository.exitCode === 0) return;
+
+  const sandboxRoot = path.posix.dirname(sessionWorkDir);
+  const sourceRepository = await sandbox.run({
+    command: "git rev-parse --show-toplevel",
+    workingDirectory: sandboxRoot,
+    abortSignal,
+  });
+  if (sourceRepository.exitCode !== 0) {
+    throw new Error("The connected repository is missing from the sandbox.");
+  }
+
+  const clone = await sandbox.run({
+    command:
+      'rmdir "$TARGET_DIR" && git clone --no-hardlinks . "$TARGET_DIR"',
+    workingDirectory: sandboxRoot,
+    env: { TARGET_DIR: sessionWorkDir },
+    abortSignal,
+  });
+  if (clone.exitCode !== 0) {
+    throw new Error(
+      `Hive could not create the persistent repository working copy: ${truncate(
+        clone.stderr || clone.stdout,
+      )}`,
+    );
+  }
+}
+
 async function collectArtifacts(
   sandbox: Experimental_SandboxSession,
   commands: WorkspaceCommand[],
@@ -281,6 +319,11 @@ export async function runHiveCodingTask(
         onSession: async ({ session, sessionWorkDir, abortSignal }) => {
           sandboxSession = session;
           await ensureCodexBridgeDependencies(
+            session,
+            sessionWorkDir,
+            abortSignal,
+          );
+          await ensureRepositoryWorkingCopy(
             session,
             sessionWorkDir,
             abortSignal,
