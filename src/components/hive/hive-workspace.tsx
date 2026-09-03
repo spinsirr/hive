@@ -28,7 +28,6 @@ import {
 } from "@/components/ai-elements/conversation";
 import { Message, MessageContent } from "@/components/ai-elements/message";
 import { Terminal } from "@/components/ai-elements/terminal";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useSharedRoom } from "@/hooks/use-shared-room";
 import { displayHiveErrorMessage } from "@/lib/hive-error-copy";
@@ -140,13 +139,13 @@ function ProductHeader({
           <span className="truncate text-xs font-medium text-[#3d3d3d]">
             {repository?.name ?? "No repository"}
           </span>
-          <span className="hidden font-mono text-[9px] text-[#9a9a9a] sm:inline">
+          <span className="hidden text-[11px] text-[#8a8a8a] sm:inline">
             {repository?.branch ?? "GitHub"}
           </span>
         </div>
       </div>
       <div className="flex items-center gap-2">
-        <div className="hidden items-center gap-1.5 font-mono text-[9px] text-[#777] sm:flex">
+        <div className="hidden items-center gap-1.5 text-[11px] text-[#777] sm:flex">
           {syncError ? (
             <WifiOff className="size-3" />
           ) : (
@@ -207,20 +206,19 @@ function AnnotationCard({ queued, queuedBy, queuePosition, steered, steeredBy, o
           <span className="grid size-5 place-items-center rounded-full bg-[#171717] text-[7px] font-semibold text-white">MC</span>
           <span className="text-[11px] font-medium">Maya annotated Preview</span>
         </div>
-        <Badge className="rounded-sm border-[#e4e4e4] bg-[#fafafa] px-1.5 font-mono text-[9px] text-[#737373]" variant="outline">ANNOTATION</Badge>
+        <span className="text-[11px] text-[#8a8a8a]">Preview</span>
       </div>
       <div className="space-y-2 px-3 py-3">
         <p className="text-[13px] font-medium leading-5">Keep the parent expanded, but highlight only the active child route.</p>
-        <p className="text-[10px] leading-4 text-[#8f8f8f]">Attached to the navigation preview · just now</p>
       </div>
       <div className="flex items-center justify-between gap-1.5 border-t border-[#eeeeee] bg-[#fafafa] px-2.5 py-2">
         {steered ? (
           <span className="flex items-center gap-1.5 px-1 text-[11px] font-medium"><Check className="size-3.5" /> Steered by {steeredBy ? memberDirectory[steeredBy].shortName : "team"} · added to run</span>
         ) : queued ? (
-          <span className="flex items-center gap-1.5 px-1 text-[11px] font-medium"><span className="grid size-4 place-items-center rounded bg-[#171717] font-mono text-[8px] text-white">{queuePosition ?? "·"}</span> Queued by {queuedBy ? memberDirectory[queuedBy].shortName : "team"}</span>
+          <span className="flex items-center gap-1.5 px-1 text-[11px] font-medium"><span className="grid size-4 place-items-center rounded bg-[#171717] text-[9px] text-white">{queuePosition ?? "·"}</span> Queued by {queuedBy ? memberDirectory[queuedBy].shortName : "team"}</span>
         ) : (
           <>
-            <span className="px-1 font-mono text-[9px] text-[#8f8f8f]">{stage === "running" ? "Hive is working" : "Start a follow-up turn"}</span>
+            <span className="px-1 text-[11px] text-[#777]">{stage === "running" ? "Hive is working" : "Start a follow-up turn"}</span>
             <div className="flex items-center gap-1.5">
               <Button className="h-7 rounded-md text-xs" size="sm" variant="ghost">Reply</Button>
               <Button className="h-7 rounded-md bg-[#171717] px-2.5 text-xs text-white" onClick={onSteer} size="sm">{stage === "waiting" ? "Steer Hive" : "Queue steer"}</Button>
@@ -244,16 +242,14 @@ function SteeringQueue({ activeSteer, items, onMove, onRemove }: {
     <div className="shrink-0 border-b border-[#dedede] bg-[#f7f7f7] px-3 py-2">
       <div className="mb-1.5 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="font-mono text-[9px] font-medium uppercase tracking-[0.1em]">Steering queue</span>
-          <span className="grid min-w-4 place-items-center rounded bg-[#171717] px-1 font-mono text-[8px] text-white">{items.length}</span>
+          <span className="text-[11px] font-semibold">Queued steering</span>
+          <span className="grid min-w-4 place-items-center rounded bg-[#171717] px-1 text-[9px] text-white">{items.length}</span>
         </div>
-        <span className="font-mono text-[8px] uppercase tracking-[0.08em] text-[#8f8f8f]">Next safe boundary</span>
       </div>
       {activeSteer ? (
         <div className="mb-1.5 flex items-center gap-2 border border-[#171717] bg-[#171717] px-2 py-1.5 text-white">
           <span className="size-1.5 animate-pulse rounded-full bg-white" />
-          <span className="min-w-0 flex-1 truncate text-[10px]">Applying {memberDirectory[activeSteer.authorId].shortName}’s steer</span>
-          <span className="font-mono text-[8px] uppercase tracking-[0.08em] text-[#a1a1a1]">Active</span>
+          <span className="min-w-0 flex-1 truncate text-[11px]">Applying {memberDirectory[activeSteer.authorId].shortName}’s steer</span>
         </div>
       ) : null}
       <div className="max-h-28 space-y-1 overflow-y-auto">
@@ -261,10 +257,10 @@ function SteeringQueue({ activeSteer, items, onMove, onRemove }: {
           const member = memberDirectory[item.authorId];
           return (
             <div className="group/queue flex items-center gap-2 border border-[#e3e3e3] bg-white px-2 py-1.5" key={item.id}>
-              <span className="grid size-5 shrink-0 place-items-center rounded-sm bg-[#171717] font-mono text-[8px] text-white">{String(index + 1).padStart(2, "0")}</span>
+              <span className="grid size-5 shrink-0 place-items-center rounded-sm bg-[#171717] text-[9px] text-white">{index + 1}</span>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-[10px] font-medium">{item.body}</p>
-                <p className="mt-0.5 truncate font-mono text-[8px] uppercase tracking-[0.06em] text-[#a1a1a1]">{member.shortName} · {item.sourceLabel}</p>
+                <p className="truncate text-[12px] font-medium">{item.body}</p>
+                <p className="mt-0.5 truncate text-[11px] text-[#8a8a8a]">{member.shortName}</p>
               </div>
               <div className="flex items-center opacity-0 transition group-hover/queue:opacity-100 group-focus-within/queue:opacity-100">
                 <button aria-label={`Move steer ${index + 1} up`} className="grid size-5 place-items-center text-[#737373] hover:bg-[#f2f2f2] hover:text-[#171717] disabled:opacity-25" disabled={index === 0} onClick={() => onMove(item.id, "up")} type="button"><ArrowUp className="size-3" /></button>
@@ -342,23 +338,12 @@ function SharedSession({ activeMembers, activeSteer, queued, queuedBy, queuePosi
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-white">
-      <div className="flex h-11 shrink-0 items-center justify-between border-b border-[#ebebeb] px-4">
+      <div className="flex h-11 shrink-0 items-center border-b border-[#ebebeb] px-4">
         <div className="flex items-center gap-2">
           <MessageSquare className="size-3.5 text-[#666]" />
           <h2 className="text-xs font-semibold">Team room</h2>
-          <span className="font-mono text-[9px] text-[#a0a0a0]">
-            {activeMembers.length} + Hive
-          </span>
+          <span className="text-[11px] text-[#8a8a8a]">{activeMembers.length} online</span>
         </div>
-        <span className="flex items-center gap-1.5 font-mono text-[9px] text-[#777]">
-          <span
-            className={cn(
-              "size-1.5 rounded-full bg-[#171717]",
-              stage === "running" && "animate-pulse",
-            )}
-          />
-          {stageCopy[stage].label}
-        </span>
       </div>
       <SteeringQueue activeSteer={activeSteer} items={steeringQueue} onMove={onMoveSteer} onRemove={onRemoveSteer} />
       <Conversation className="min-h-0 flex-1">
@@ -375,7 +360,7 @@ function SharedSession({ activeMembers, activeSteer, queued, queuedBy, queuePosi
                 >
                   <WifiOff className="size-3 shrink-0" />
                   <span>{displayHiveErrorMessage(message.body)}</span>
-                  <span className="font-mono text-[9px] text-[#b0b0b0]">
+                  <span className="text-[10px] text-[#b0b0b0]">
                     {message.time}
                   </span>
                 </div>
@@ -385,12 +370,12 @@ function SharedSession({ activeMembers, activeSteer, queued, queuedBy, queuePosi
               <Message className="max-w-full gap-2" from={message.role === "agent" || !isCurrentMember ? "assistant" : "user"} key={message.id}>
                 <div className={cn("flex items-center gap-2", isCurrentMember && "justify-end")}>
                   {message.role === "agent" ? <HiveMark className="size-5 rounded-full border border-[#dedede]" light /> : <span className="grid size-5 place-items-center rounded-full border border-[#dedede] bg-[#fafafa] text-[8px] font-semibold">{message.initials}</span>}
-                  <span className="text-[11px] font-medium">{message.name}</span>
-                  <span className="font-mono text-[9px] text-[#a1a1a1]">{message.time}</span>
+                  <span className="text-[12px] font-medium">{message.name}</span>
+                  <span className="text-[10px] text-[#999]">{message.time}</span>
                   {message.role === "human" ? (
                     <button
                       aria-label={`Annotate ${message.name}'s message`}
-                      className="flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[9px] text-[#8f8f8f] opacity-0 transition hover:bg-[#f2f2f2] hover:text-[#171717] focus:opacity-100 group-hover:opacity-100"
+                      className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-[#8f8f8f] opacity-0 transition hover:bg-[#f2f2f2] hover:text-[#171717] focus:opacity-100 group-hover:opacity-100"
                       onClick={() => beginAnnotation(message.id)}
                       type="button"
                     >
@@ -410,20 +395,19 @@ function SharedSession({ activeMembers, activeSteer, queued, queuedBy, queuePosi
                         <div className="bg-[#fafafa] px-2.5 py-2 text-left" key={annotation.id}>
                           <div className="flex items-center gap-1.5">
                             <span className="grid size-4 place-items-center rounded-full bg-[#171717] text-[6px] font-semibold text-white">{author.initials}</span>
-                            <span className="text-[10px] font-medium">{author.shortName}</span>
-                            <span className="font-mono text-[8px] uppercase tracking-[0.08em] text-[#a1a1a1]">Annotation · {annotationTime(annotation.createdAt)}</span>
+                            <span className="text-[11px] font-medium">{author.shortName}</span>
+                            <span className="text-[10px] text-[#999]">{annotationTime(annotation.createdAt)}</span>
                           </div>
                           <p className="mt-1.5 text-[12px] leading-4 text-[#4d4d4d]">{annotation.body}</p>
                           <div className="mt-2 flex items-center justify-between gap-2 border-t border-[#ebebeb] pt-1.5">
                             {annotation.status === "steered" ? (
-                              <span className="flex items-center gap-1 font-mono text-[8px] uppercase tracking-[0.08em]"><Check className="size-3" /> Steered by {annotation.steeredBy ? memberDirectory[annotation.steeredBy].shortName : "team"}</span>
+                              <span className="flex items-center gap-1 text-[11px] text-[#666]"><Check className="size-3" /> Steered by {annotation.steeredBy ? memberDirectory[annotation.steeredBy].shortName : "team"}</span>
                             ) : annotation.status === "queued" ? (
-                              <span className="flex items-center gap-1 font-mono text-[8px] uppercase tracking-[0.08em]"><span className="grid size-4 place-items-center rounded-sm bg-[#171717] text-[7px] text-white">{steeringQueue.findIndex((item) => item.source.kind === "message-annotation" && item.source.annotationId === annotation.id) + 1}</span> Queued by {annotation.queuedBy ? memberDirectory[annotation.queuedBy].shortName : "team"}</span>
+                              <span className="flex items-center gap-1 text-[11px] text-[#666]"><span className="grid size-4 place-items-center rounded-sm bg-[#171717] text-[9px] text-white">{steeringQueue.findIndex((item) => item.source.kind === "message-annotation" && item.source.annotationId === annotation.id) + 1}</span> Queued by {annotation.queuedBy ? memberDirectory[annotation.queuedBy].shortName : "team"}</span>
                             ) : (
-                              <>
-                                <span className="font-mono text-[8px] uppercase tracking-[0.08em] text-[#a1a1a1]">Discussion only</span>
+                              <div className="ml-auto">
                                 <Button
-                                  className="h-6 rounded px-2 text-[10px]"
+                                  className="h-7 rounded px-2.5 text-[11px]"
                                   onClick={() => onSteerMessageAnnotation(message.id, annotation.id)}
                                   size="sm"
                                   title={stage === "running" ? "Queue this steer for Hive's next safe boundary" : "Promote this annotation into a follow-up turn"}
@@ -431,7 +415,7 @@ function SharedSession({ activeMembers, activeSteer, queued, queuedBy, queuePosi
                                 >
                                   {stage === "running" ? "Queue steer" : "Steer Hive"}
                                 </Button>
-                              </>
+                              </div>
                             )}
                           </div>
                         </div>
@@ -442,9 +426,8 @@ function SharedSession({ activeMembers, activeSteer, queued, queuedBy, queuePosi
 
                 {annotationTarget === message.id ? (
                   <div className={cn("w-[88%] border border-[#d8d8d8] bg-white p-2 shadow-[0_8px_24px_rgba(0,0,0,0.05)]", isCurrentMember ? "ml-auto mr-0" : "ml-7")}>
-                    <div className="mb-1.5 flex items-center justify-between">
-                      <span className="font-mono text-[8px] uppercase tracking-[0.08em] text-[#737373]">Annotation · won’t steer Hive</span>
-                      <span className="font-mono text-[8px] text-[#a1a1a1]">⌘↵ to add</span>
+                    <div className="mb-1.5">
+                      <span className="text-[11px] text-[#737373]">Comment only — you can promote it to a steer later.</span>
                     </div>
                     <textarea
                       aria-label={`Annotation for ${message.name}'s message`}
@@ -463,15 +446,15 @@ function SharedSession({ activeMembers, activeSteer, queued, queuedBy, queuePosi
                       value={annotationDraft}
                     />
                     <div className="mt-2 flex justify-end gap-1.5">
-                      <Button className="h-6 rounded px-2 text-[10px]" onClick={cancelAnnotation} size="sm" variant="ghost">Cancel</Button>
-                      <Button className="h-6 rounded bg-[#171717] px-2 text-[10px] text-white" disabled={!annotationDraft.trim()} onClick={submitAnnotation} size="sm">Add annotation</Button>
+                      <Button className="h-7 rounded px-2.5 text-[11px]" onClick={cancelAnnotation} size="sm" variant="ghost">Cancel</Button>
+                      <Button className="h-7 rounded bg-[#171717] px-2.5 text-[11px] text-white" disabled={!annotationDraft.trim()} onClick={submitAnnotation} size="sm">Add annotation</Button>
                     </div>
                   </div>
                 ) : null}
               </Message>
             );
           })}
-          {otherTyping.length > 0 ? <p className="px-1 font-mono text-[9px] text-[#8f8f8f]">{otherTyping.map((memberId) => memberDirectory[memberId].shortName).join(", ")} {otherTyping.length === 1 ? "is" : "are"} typing…</p> : null}
+          {otherTyping.length > 0 ? <p className="px-1 text-[11px] text-[#8f8f8f]">{otherTyping.map((memberId) => memberDirectory[memberId].shortName).join(", ")} {otherTyping.length === 1 ? "is" : "are"} typing…</p> : null}
         </ConversationContent>
         <ConversationScrollButton />
       </Conversation>
@@ -505,10 +488,6 @@ function SharedSession({ activeMembers, activeSteer, queued, queuedBy, queuePosi
             >
               <Send className="size-3.5" />
             </Button>
-          </div>
-          <div className="flex items-center justify-between px-1 pt-1 font-mono text-[8px] text-[#aaa]">
-            <span>@mention keeps it human</span>
-            <span>↵ send · ⇧↵ newline</span>
           </div>
         </div>
       </div>
@@ -545,33 +524,21 @@ function WorkspaceOverview({ repository, workspace }: {
                 <span className="truncate text-xs font-semibold">
                   {repository.name}
                 </span>
-                <span className="font-mono text-[9px] text-[#999]">
+                <span className="text-[11px] text-[#888]">
                   {repository.branch}
                 </span>
               </div>
-              <p className="mt-1.5 font-mono text-[8px] uppercase tracking-[0.08em] text-[#aaa]">
-                GitHub App · {repository.visibility} · authorized by @
-                {repository.authorizedByGitHub.login}
+              <p className="mt-1.5 text-[11px] text-[#888]">
+                {repository.visibility} repository · GitHub App
               </p>
             </div>
-            <Badge
-              className="rounded-sm border-[#dedede] bg-[#fafafa] font-mono text-[8px] uppercase"
-              variant="outline"
-            >
-              {workspace.status}
-            </Badge>
           </div>
 
           <div className="min-h-36 px-4 py-5">
             {workspace.status === "running" ? (
               <div className="flex items-start gap-3 text-sm text-[#444]">
                 <LoaderCircle className="mt-0.5 size-4 animate-spin" />
-                <div>
-                  <p className="font-medium">Hive is working in Sandbox</p>
-                  <p className="mt-1 text-xs leading-5 text-[#888]">
-                    Reading the repository and running the commands needed for this task.
-                  </p>
-                </div>
+                <p className="font-medium">Working in Sandbox…</p>
               </div>
             ) : workspace.error ? (
               <div className="flex items-center gap-2 text-xs text-[#777]">
@@ -580,7 +547,7 @@ function WorkspaceOverview({ repository, workspace }: {
               </div>
             ) : workspace.summary ? (
               <div>
-                <p className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#999]">
+                <p className="text-[11px] font-medium text-[#777]">
                   Latest result
                 </p>
                 <p className="mt-3 text-sm leading-6 text-[#444]">
@@ -601,15 +568,15 @@ function WorkspaceOverview({ repository, workspace }: {
 
           <div className="grid grid-cols-3 border-t border-[#ededed] bg-[#fafafa]">
             <div className="px-4 py-3">
-              <p className="font-mono text-[8px] uppercase tracking-[0.08em] text-[#999]">Files</p>
+              <p className="text-[11px] text-[#888]">Files</p>
               <p className="mt-1 text-sm font-semibold">{workspace.changedFiles.length}</p>
             </div>
             <div className="border-l border-[#ededed] px-4 py-3">
-              <p className="font-mono text-[8px] uppercase tracking-[0.08em] text-[#999]">Commands</p>
+              <p className="text-[11px] text-[#888]">Commands</p>
               <p className="mt-1 text-sm font-semibold">{workspace.commands.length}</p>
             </div>
             <div className="border-l border-[#ededed] px-4 py-3">
-              <p className="font-mono text-[8px] uppercase tracking-[0.08em] text-[#999]">Runtime</p>
+              <p className="text-[11px] text-[#888]">Runtime</p>
               <p className="mt-1 text-sm font-semibold">Sandbox</p>
             </div>
           </div>
@@ -626,7 +593,7 @@ function DiffPane({ diff }: { diff: string }) {
   return (
     <div className="h-full overflow-auto bg-white p-5">
       <div className="mx-auto max-w-5xl overflow-hidden rounded-lg border border-[#e2e2e2]">
-        <div className="flex items-center justify-between border-b border-[#ebebeb] bg-[#fafafa] px-3 py-2"><span className="font-mono text-[11px]">git diff --no-ext-diff HEAD</span><span className="font-mono text-[10px] text-[#737373]">REAL WORKSPACE</span></div>
+        <div className="border-b border-[#ebebeb] bg-[#fafafa] px-3 py-2 font-mono text-[11px]">git diff --no-ext-diff HEAD</div>
         <div className="overflow-x-auto py-2 font-mono text-[12px] leading-6">
           {diff.split("\n").map((line, index) => (
             <div className={cn("flex min-w-[720px]", line.startsWith("+") && !line.startsWith("+++") && "bg-[#f2f2f2]", line.startsWith("-") && !line.startsWith("---") && "bg-[#fafafa] text-[#737373]")} key={`${index}-${line}`}>
@@ -662,10 +629,10 @@ function TerminalPane({ commands }: { commands: WorkspaceState["commands"] }) {
   );
 }
 
-function Workspace({ repository, revision, stage, tab, workspace, onTabChange }: { repository?: RepositoryState; revision: number; stage: RunStage; tab: WorkspaceTab; workspace: WorkspaceState; onTabChange: (tab: WorkspaceTab) => void }) {
+function Workspace({ repository, tab, workspace, onTabChange }: { repository?: RepositoryState; tab: WorkspaceTab; workspace: WorkspaceState; onTabChange: (tab: WorkspaceTab) => void }) {
   return (
     <section className="flex h-full min-h-0 flex-col bg-white">
-      <div className="flex h-11 shrink-0 items-center justify-between border-b border-[#ebebeb] bg-white px-2 sm:px-3">
+      <div className="flex h-11 shrink-0 items-center border-b border-[#ebebeb] bg-white px-2 sm:px-3">
         <div className="flex min-w-0 items-center gap-0.5 overflow-x-auto">
           {tabs.map((item) => {
             const Icon = item.icon;
@@ -685,16 +652,6 @@ function Workspace({ repository, revision, stage, tab, workspace, onTabChange }:
             );
           })}
         </div>
-        <div className="ml-2 flex shrink-0 items-center gap-2 font-mono text-[8px] text-[#888]">
-          <span>RUN {revision}</span>
-          <span
-            className={cn(
-              "size-1.5 rounded-full bg-[#171717]",
-              workspace.status === "running" && "animate-pulse",
-            )}
-          />
-          <span className="hidden sm:inline">{stageCopy[stage].label}</span>
-        </div>
       </div>
       <div className="min-h-0 flex-1">{tab === "workspace" ? <WorkspaceOverview repository={repository} workspace={workspace} /> : null}{tab === "diff" ? <DiffPane diff={workspace.diff} /> : null}{tab === "files" ? <FilesPane files={workspace.files} /> : null}{tab === "terminal" ? <TerminalPane commands={workspace.commands} /> : null}</div>
     </section>
@@ -707,7 +664,7 @@ function RunBar({ activeSteer, queueCount, repository, stage, onAdvance }: { act
   const disabled = !repository || stage === "waiting" || stage === "approved" || Boolean(activeSteer) || (stage === "running" && queueCount === 0);
   return (
     <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-t border-[#ebebeb] bg-[#fafafa] px-3 sm:px-4">
-      <p className="min-w-0 truncate text-[10px] text-[#888]">
+      <p className="min-w-0 truncate text-[11px] text-[#777]">
         {queueCount > 0
           ? `${queueCount} steer${queueCount === 1 ? "" : "s"} waiting for a safe boundary.`
           : stageCopy[stage].detail}
@@ -761,7 +718,7 @@ export function HiveWorkspace({ initialMember }: { initialMember?: string }) {
   const [copied, setCopied] = useState(false);
   const { dispatch, setTyping, snapshot, syncing, syncError } = useSharedRoom(currentMember);
   const { room, activeMembers, typingMembers } = snapshot;
-  const { activeSteer, annotation, messages, repository, revision, stage, steeringQueue, workspace } = room;
+  const { activeSteer, annotation, messages, repository, stage, steeringQueue, workspace } = room;
   const steered = annotation.status === "steered";
   const queued = annotation.status === "queued";
   const queuePosition = steeringQueue.findIndex(
@@ -891,7 +848,7 @@ export function HiveWorkspace({ initialMember }: { initialMember?: string }) {
           )}
         >
           <div className="min-h-0 flex-1">
-            <Workspace repository={repository} revision={revision} stage={shared.stage} tab={shared.tab} workspace={workspace} onTabChange={shared.onTabChange} />
+            <Workspace repository={repository} tab={shared.tab} workspace={workspace} onTabChange={shared.onTabChange} />
           </div>
           <RunBar activeSteer={activeSteer} queueCount={steeringQueue.length} repository={repository} stage={shared.stage} onAdvance={shared.onAdvance} />
         </div>
