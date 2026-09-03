@@ -6,6 +6,7 @@ import {
 } from "@ai-sdk/harness/agent";
 import { createCodex } from "@ai-sdk/harness-codex";
 import { createVercelSandbox } from "@ai-sdk/sandbox-vercel";
+import { Sandbox } from "@vercel/sandbox";
 import type { Experimental_SandboxSession } from "ai";
 
 import { hiveAgentFailureMessage, HiveAgentError } from "@/lib/hive-agent";
@@ -176,11 +177,13 @@ export async function runHiveCodingTask(
     | undefined;
   const repositoryCwd = repositoryDirectory(room.repository.url);
   let sandboxSession: Experimental_SandboxSession | undefined;
+  let persistentSandbox: Sandbox | undefined;
   let sessionEnded = false;
 
   try {
     const cloneCredentials = await getRepositoryCloneCredentials(room.repository);
-    const sandbox = createVercelSandbox({
+    persistentSandbox = await Sandbox.getOrCreate({
+      name: `ai-sdk-harness-session-${sessionId}`,
       runtime: "node24",
       ports: [CODEX_BRIDGE_PORT],
       source: {
@@ -190,9 +193,13 @@ export async function runHiveCodingTask(
         depth: 20,
       },
       timeout: 10 * 60 * 1000,
+      persistent: true,
+      snapshotExpiration: 0,
+      keepLastSnapshots: { count: 1, expiration: 0 },
       resources: { vcpus: 1 },
       tags: { app: "hive", room: room.roomId, runtime: "codex" },
     });
+    const sandbox = createVercelSandbox({ sandbox: persistentSandbox });
     const agent = new HarnessAgent({
       id: "hive-coding-agent",
       harness: createCodex({
@@ -248,6 +255,9 @@ export async function runHiveCodingTask(
       );
       const nextResumeFrom = await session.stop();
       sessionEnded = true;
+      await persistentSandbox.stop().catch((error) => {
+        console.error("Hive sandbox snapshot failed", error);
+      });
 
       return {
         sandboxName: `ai-sdk-harness-session-${sessionId}`,
@@ -264,7 +274,10 @@ export async function runHiveCodingTask(
         ...artifacts,
       };
     } finally {
-      if (!sessionEnded) await session.destroy().catch(() => undefined);
+      if (!sessionEnded) {
+        await session.destroy().catch(() => undefined);
+        await persistentSandbox?.stop().catch(() => undefined);
+      }
     }
   } catch (error) {
     if (error instanceof HiveAgentError) throw error;

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  applyHiveRunError,
   applyHiveRunResult,
   createInitialRoomState,
   reduceRoom,
@@ -181,4 +182,40 @@ test("a second task sent during a run joins the attributed steering queue", () =
   assert.equal(queued.steeringQueue[0]?.authorId, "maya");
   assert.equal(queued.steeringQueue[0]?.body, "Keep it compact");
   assert.equal(queued.steeringQueue[0]?.source.kind, "message");
+});
+
+test("a failed start preserves the Codex session identity", () => {
+  const connected = connectedRoom();
+  const originalSessionId = connected.workspace.agentSession?.id;
+  const failed = applyHiveRunError(connected, "failed", 50);
+
+  assert.equal(failed.workspace.agentSession?.runtime, "codex");
+  assert.equal(failed.workspace.agentSession?.id, originalSessionId);
+  assert.equal(failed.workspace.agentSession?.resumeFrom, undefined);
+});
+
+test("a transient error preserves a resumable Codex session", () => {
+  const connected = connectedRoom();
+  const resumeFrom = {
+    type: "resume-session" as const,
+    harnessId: "codex",
+    specificationVersion: "harness-v1" as const,
+    data: { threadId: "thread-1" },
+  };
+  const resumable: RoomState = {
+    ...connected,
+    workspace: {
+      ...connected.workspace,
+      agentSession: {
+        id: "hive-existing",
+        runtime: "codex",
+        resumeFrom,
+      },
+    },
+  };
+
+  const failed = applyHiveRunError(resumable, "failed", 70);
+
+  assert.equal(failed.workspace.agentSession?.id, "hive-existing");
+  assert.deepEqual(failed.workspace.agentSession?.resumeFrom, resumeFrom);
 });
