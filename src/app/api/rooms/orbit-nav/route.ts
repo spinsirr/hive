@@ -25,6 +25,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const vercelOidcToken =
+    request.headers.get("x-vercel-oidc-token")?.trim() || undefined;
   const payload: unknown = await request.json().catch(() => null);
   if (!payload || typeof payload !== "object" || !("type" in payload)) {
     return NextResponse.json({ error: "Invalid room action" }, { status: 400 });
@@ -200,7 +202,9 @@ export async function POST(request: Request) {
       action.type === "apply-next-steer" && activeSteer
         ? activeSteer.authorId
         : action.actor;
-    const runResult = await runHiveCodingTask(snapshot.room, runActor, steer);
+    const runResult = await runHiveCodingTask(snapshot.room, runActor, steer, {
+      vercelOidcToken,
+    });
     return NextResponse.json(
       await appendHiveReply(runResult.summary, {
         forMessageId: sourceMessageId,

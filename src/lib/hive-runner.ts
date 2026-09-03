@@ -197,6 +197,7 @@ export async function runHiveCodingTask(
   room: RoomState,
   actor: MemberId,
   steer?: string,
+  auth?: { vercelOidcToken?: string },
 ) {
   if (!room.repository) {
     throw new HiveAgentError(
@@ -224,6 +225,12 @@ export async function runHiveCodingTask(
     | undefined;
   const repositoryCwd = repositoryDirectory(room.repository.url);
   const sandboxName = resolvePersistentSandboxName(room, sessionId);
+  const gatewayApiKey = process.env.AI_GATEWAY_API_KEY?.trim();
+  const codexAuth: "ai-gateway" | Readonly<Record<string, string>> = gatewayApiKey
+    ? { AI_GATEWAY_API_KEY: gatewayApiKey }
+    : auth?.vercelOidcToken
+      ? { VERCEL_OIDC_TOKEN: auth.vercelOidcToken }
+      : "ai-gateway";
   let sandboxSession: Experimental_SandboxSession | undefined;
   let persistentSandbox: Sandbox | undefined;
   let sessionEnded = false;
@@ -251,7 +258,7 @@ export async function runHiveCodingTask(
     const agent = new HarnessAgent({
       id: "hive-coding-agent",
       harness: createCodex({
-        auth: "ai-gateway",
+        auth: codexAuth,
         reasoningEffort: "medium",
         webSearch: false,
         codexConfig: { model_verbosity: "low" },
