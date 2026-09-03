@@ -231,6 +231,8 @@ export async function POST(request: Request) {
         forSteerAt: sourceSteerAt,
         status: "error",
         runError: message,
+        runCheckpoint:
+          error instanceof HiveAgentError ? error.checkpoint : undefined,
       }),
     );
   }

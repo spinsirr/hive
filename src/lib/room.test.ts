@@ -219,3 +219,24 @@ test("a transient error preserves a resumable Codex session", () => {
   assert.equal(failed.workspace.agentSession?.id, "hive-existing");
   assert.deepEqual(failed.workspace.agentSession?.resumeFrom, resumeFrom);
 });
+
+test("a failed turn persists the latest Codex checkpoint", () => {
+  const connected = connectedRoom();
+  const resumeFrom = {
+    type: "resume-session" as const,
+    harnessId: "codex",
+    specificationVersion: "harness-v1" as const,
+    data: { threadId: "thread-after-rate-limit" },
+  };
+  const failed = applyHiveRunError(connected, "rate limited", 80, {
+    sandboxName: "hive-room-durable",
+    agentSession: {
+      id: connected.workspace.agentSession!.id,
+      runtime: "codex",
+      resumeFrom,
+    },
+  });
+
+  assert.equal(failed.workspace.sandboxName, "hive-room-durable");
+  assert.deepEqual(failed.workspace.agentSession?.resumeFrom, resumeFrom);
+});

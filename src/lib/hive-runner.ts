@@ -376,9 +376,39 @@ export async function runHiveCodingTask(
             : "I inspected the repository and did not make a code change."),
         ...artifacts,
       };
+    } catch (error) {
+      let checkpoint: {
+        sandboxName: string;
+        agentSession: {
+          id: string;
+          runtime: "codex";
+          resumeFrom: HarnessAgentResumeSessionState;
+        };
+      } | undefined;
+      try {
+        const nextResumeFrom = await session.stop();
+        sessionEnded = true;
+        checkpoint = {
+          sandboxName,
+          agentSession: {
+            id: sessionId,
+            runtime: "codex",
+            resumeFrom: nextResumeFrom,
+          },
+        };
+      } catch (stopError) {
+        console.error("Hive could not checkpoint the Codex session", stopError);
+      }
+      await persistentSandbox.stop().catch((stopError) => {
+        console.error("Hive sandbox snapshot failed", stopError);
+      });
+      throw new HiveAgentError(
+        hiveAgentFailureMessage(error),
+        error,
+        checkpoint,
+      );
     } finally {
       if (!sessionEnded) {
-        await session.destroy().catch(() => undefined);
         await persistentSandbox?.stop().catch(() => undefined);
       }
     }

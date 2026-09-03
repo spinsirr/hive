@@ -8,6 +8,7 @@ import {
   appendHiveReply as appendHiveReplyToRoom,
   createInitialRoomState,
   type HiveRunResult,
+  type HiveSessionCheckpoint,
   isMemberId,
   type MemberId,
   reduceRoom,
@@ -135,6 +136,7 @@ export async function appendHiveReply(
     status?: "error";
     runResult?: HiveRunResult;
     runError?: string;
+    runCheckpoint?: HiveSessionCheckpoint;
   } = {},
   now = Date.now(),
 ) {
@@ -180,7 +182,12 @@ export async function appendHiveReply(
     const repliedRoom = options.runResult
       ? applyHiveRunResult(currentRoom, options.runResult, now)
       : options.runError
-        ? applyHiveRunError(currentRoom, options.runError, now)
+        ? applyHiveRunError(
+            currentRoom,
+            options.runError,
+            now,
+            options.runCheckpoint,
+          )
         : appendHiveReplyToRoom(currentRoom, body, now, options.status);
     const nextRoom =
       options.forActiveSteerAt && !options.runResult && !options.runError

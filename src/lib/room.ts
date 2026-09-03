@@ -121,6 +121,11 @@ export type HiveRunResult = {
   changedFiles: string[];
 };
 
+export type HiveSessionCheckpoint = Pick<
+  HiveRunResult,
+  "sandboxName" | "agentSession"
+>;
+
 export type Annotation = {
   status: "open" | "queued" | "steered";
   text: string;
@@ -723,6 +728,7 @@ export function applyHiveRunError(
   state: RoomState,
   message: string,
   now = Date.now(),
+  checkpoint?: HiveSessionCheckpoint,
 ): RoomState {
   return {
     ...state,
@@ -731,6 +737,8 @@ export function applyHiveRunError(
     activeSteer: undefined,
     workspace: {
       ...state.workspace,
+      sandboxName: checkpoint?.sandboxName ?? state.workspace.sandboxName,
+      agentSession: checkpoint?.agentSession ?? state.workspace.agentSession,
       status: "error",
       error: message,
       completedAt: now,

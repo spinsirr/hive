@@ -1,5 +1,7 @@
 import { APICallError } from "ai";
 
+import type { HiveSessionCheckpoint } from "@/lib/room";
+
 function errorStatusCode(error: unknown): number | undefined {
   if (APICallError.isInstance(error)) return error.statusCode;
   if (!error || typeof error !== "object") return undefined;
@@ -72,13 +74,16 @@ export function hiveAgentFailureMessage(error: unknown) {
 
 export class HiveAgentError extends Error {
   readonly cause: unknown;
+  readonly checkpoint?: HiveSessionCheckpoint;
 
   constructor(
     message: string,
     cause: unknown,
+    checkpoint?: HiveSessionCheckpoint,
   ) {
     super(message);
     this.name = "HiveAgentError";
     this.cause = cause;
+    this.checkpoint = checkpoint;
   }
 }
