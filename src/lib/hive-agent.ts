@@ -1,5 +1,6 @@
 import { APICallError } from "ai";
 
+import { hiveErrorCopy } from "./hive-error-copy.ts";
 import type { HiveSessionCheckpoint } from "@/lib/room";
 
 function errorStatusCode(error: unknown): number | undefined {
@@ -45,16 +46,16 @@ export function hiveAgentFailureMessage(error: unknown) {
     details.includes("customer_verification_required") ||
     details.includes("valid credit card on file")
   ) {
-    return "I saved the team’s input and reached AI Gateway, but this Vercel account needs billing verification before I can respond.";
+    return hiveErrorCopy.billing;
   }
   if (
     details.includes("restrictedmodelserror") ||
     details.includes("free tier users do not have access to this model")
   ) {
-    return "I saved the team’s input and reached AI Gateway, but the selected model is not available on this account tier.";
+    return hiveErrorCopy.model;
   }
   if (statusCode === 402) {
-    return "I saved the team’s input, but the AI Gateway account needs available credit before I can respond.";
+    return hiveErrorCopy.credit;
   }
   if (
     statusCode === 401 ||
@@ -63,13 +64,13 @@ export function hiveAgentFailureMessage(error: unknown) {
     details.includes("no authentication provided") ||
     details.includes("unauthenticated request to ai gateway")
   ) {
-    return "I saved the team’s input, but AI Gateway is not connected to this environment yet.";
+    return hiveErrorCopy.disconnected;
   }
   if (statusCode === 429 || details.includes("429 too many requests")) {
-    return "I saved the team’s input, but AI Gateway is rate-limited right now. Try again in a moment.";
+    return hiveErrorCopy.rateLimit;
   }
 
-  return "I saved the team’s input, but I couldn’t reach AI Gateway. The shared session is still live.";
+  return hiveErrorCopy.generic;
 }
 
 export class HiveAgentError extends Error {

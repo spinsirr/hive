@@ -270,6 +270,7 @@ export async function runHiveCodingTask(
       ? { VERCEL_OIDC_TOKEN: auth.vercelOidcToken }
       : "ai-gateway";
   let sandboxSession: Experimental_SandboxSession | undefined;
+  let sandboxWorkDir: string | undefined;
   let persistentSandbox: Sandbox | undefined;
   let sessionEnded = false;
 
@@ -318,6 +319,7 @@ export async function runHiveCodingTask(
         workDir: repositoryCwd,
         onSession: async ({ session, sessionWorkDir, abortSignal }) => {
           sandboxSession = session;
+          sandboxWorkDir = sessionWorkDir;
           await ensureCodexBridgeDependencies(
             session,
             sessionWorkDir,
@@ -347,14 +349,14 @@ export async function runHiveCodingTask(
         session,
         prompt: buildCodexPrompt(room, actor, steer),
       });
-      if (!sandboxSession) {
+      if (!sandboxSession || !sandboxWorkDir) {
         throw new Error("Vercel Sandbox session was not made available to Hive.");
       }
       const commands = collectCodexCommands(result);
       const artifacts = await collectArtifacts(
         sandboxSession,
         commands,
-        repositoryCwd,
+        sandboxWorkDir,
       );
       const nextResumeFrom = await session.stop();
       sessionEnded = true;

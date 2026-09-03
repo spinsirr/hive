@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { HiveAgentError } from "@/lib/hive-agent";
+import { hiveErrorCopy } from "@/lib/hive-error-copy";
 import { runHiveCodingTask } from "@/lib/hive-runner";
 import {
   isDirectedAtTeammate,
@@ -222,7 +223,7 @@ export async function POST(request: Request) {
     const message =
       error instanceof HiveAgentError
         ? error.message
-        : "I saved the team’s input, but I couldn’t reach AI Gateway. The shared session is still live.";
+        : hiveErrorCopy.generic;
     return NextResponse.json(
       await appendHiveReply(message, {
         forMessageId: sourceMessageId,

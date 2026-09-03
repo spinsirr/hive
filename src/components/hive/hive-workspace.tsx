@@ -31,6 +31,7 @@ import { Terminal } from "@/components/ai-elements/terminal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useSharedRoom } from "@/hooks/use-shared-room";
+import { displayHiveErrorMessage } from "@/lib/hive-error-copy";
 import {
   type ActiveSteer,
   type ChatMessage,
@@ -368,6 +369,21 @@ function SharedSession({ activeMembers, activeSteer, queued, queuedBy, queuePosi
           {messages.map((message) => {
             const isCurrentMember = message.memberId === currentMember;
             const messageAnnotations = message.annotations ?? [];
+            if (message.status === "error") {
+              return (
+                <div
+                  className="flex items-center gap-2 px-1 text-[11px] text-[#8a8a8a]"
+                  key={message.id}
+                  role="status"
+                >
+                  <WifiOff className="size-3 shrink-0" />
+                  <span>{displayHiveErrorMessage(message.body)}</span>
+                  <span className="font-mono text-[9px] text-[#b0b0b0]">
+                    {message.time}
+                  </span>
+                </div>
+              );
+            }
             return (
               <Message className="max-w-full gap-2" from={message.role === "agent" || !isCurrentMember ? "assistant" : "user"} key={message.id}>
                 <div className={cn("flex items-center gap-2", isCurrentMember && "justify-end")}>
@@ -385,7 +401,7 @@ function SharedSession({ activeMembers, activeSteer, queued, queuedBy, queuePosi
                     </button>
                   ) : null}
                 </div>
-                <MessageContent className={cn("w-fit max-w-[94%] rounded-lg border border-[#e8e8e8] px-3 py-2.5 text-[13px] leading-5 shadow-none", message.role === "agent" ? "bg-[#fafafa] text-[#4d4d4d]" : isCurrentMember ? "ml-auto bg-white" : "bg-white", message.status === "error" && "border-dashed text-[#737373]")}>
+                <MessageContent className={cn("w-fit max-w-[94%] rounded-lg border border-[#e8e8e8] px-3 py-2.5 text-[13px] leading-5 shadow-none", message.role === "agent" ? "bg-[#fafafa] text-[#4d4d4d]" : isCurrentMember ? "ml-auto bg-white" : "bg-white")}>
                   {message.body}
                 </MessageContent>
 
@@ -562,7 +578,10 @@ function WorkspaceOverview({ repository, workspace }: {
                 </div>
               </div>
             ) : workspace.error ? (
-              <p className="text-sm leading-6 text-[#666]">{workspace.error}</p>
+              <div className="flex items-center gap-2 text-xs text-[#777]">
+                <WifiOff className="size-3.5" />
+                <span>{displayHiveErrorMessage(workspace.error)}</span>
+              </div>
             ) : workspace.summary ? (
               <div>
                 <p className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#999]">
@@ -786,7 +805,6 @@ export function HiveWorkspace({ initialMember }: { initialMember?: string }) {
     if (repository && !body.trim().match(/^@(maya|spencer)\b/i)) setTab("terminal");
     void dispatch({ type: "send-message", body }).then((nextSnapshot) => {
       if (nextSnapshot?.room.stage === "review") setTab("diff");
-      if (nextSnapshot?.room.workspace.status === "error") setTab("workspace");
     });
   }, [dispatch, repository]);
   const advance = useCallback(() => {
