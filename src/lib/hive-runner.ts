@@ -12,7 +12,10 @@ import type { Experimental_SandboxSession } from "ai";
 import { hiveAgentFailureMessage, HiveAgentError } from "@/lib/hive-agent";
 import { getRepositoryCloneCredentials } from "@/lib/github-app";
 import { buildCodexPrompt } from "@/lib/hive-prompt";
-import { resolvePersistentSandboxName } from "@/lib/hive-session";
+import {
+  isRepositoryWorkingCopy,
+  resolvePersistentSandboxName,
+} from "@/lib/hive-session";
 import {
   createAgentSessionId,
   type MemberId,
@@ -118,7 +121,12 @@ async function ensureRepositoryWorkingCopy(
     workingDirectory: sessionWorkDir,
     abortSignal,
   });
-  if (existingRepository.exitCode === 0) return;
+  if (
+    existingRepository.exitCode === 0 &&
+    isRepositoryWorkingCopy(sessionWorkDir, existingRepository.stdout)
+  ) {
+    return;
+  }
 
   const sandboxRoot = path.posix.dirname(sessionWorkDir);
   const sourceRepository = await sandbox.run({

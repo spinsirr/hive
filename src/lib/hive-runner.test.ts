@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { resolvePersistentSandboxName } from "./hive-session.ts";
+import {
+  isRepositoryWorkingCopy,
+  resolvePersistentSandboxName,
+} from "./hive-session.ts";
 
 function roomWithSandboxName(sandboxName?: string) {
   return {
@@ -50,5 +53,19 @@ test("unrelated legacy workspace names are not treated as Codex history", () => 
       "session-1",
     ),
     "hive-room-session-1",
+  );
+});
+
+test("a parent git repository does not satisfy the session workdir guard", () => {
+  assert.equal(
+    isRepositoryWorkingCopy("/vercel/sandbox/hive", "/vercel/sandbox\n"),
+    false,
+  );
+  assert.equal(
+    isRepositoryWorkingCopy(
+      "/vercel/sandbox/hive",
+      "/vercel/sandbox/hive\n",
+    ),
+    true,
   );
 });
