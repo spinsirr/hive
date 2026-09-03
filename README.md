@@ -41,8 +41,8 @@ between both clients.
 ```text
 GitHub user OAuth → repository-scoped GitHub App installation
 short-lived installation token → private repo in persistent Vercel Sandbox
-team prompt → AI SDK tool loop → read/write/command → real git diff → shared room
-annotation → explicit steer → resume the same coding workspace
+team prompt → Codex Harness turn → read/write/command → real git diff → shared room
+annotation → explicit steer → resume the same Codex thread and workspace
 ```
 
 ## Current implementation boundary
@@ -58,11 +58,14 @@ annotation → explicit steer → resume the same coding workspace
 - Steers created while Hive is already running enter an attributed shared queue
   instead of interrupting the current step. Teammates can reorder or remove
   them, and the next item is consumed only at an explicit safe boundary.
-- `poolside/laguna-s-2.1-free` is the zero-cost debugging default and can be
-  replaced with `HIVE_MODEL` for presentation-quality runs.
-- Hive uses AI SDK's `ToolLoopAgent` with four Vercel Sandbox tools: list files,
-  read file, write file, and run command. The resulting changed files, command
-  output, and `git diff` are persisted into the same shared room.
+- Hive uses AI SDK Harness's Codex adapter with `openai/gpt-5-mini` as the
+  low-cost debugging default; `HIVE_CODEX_MODEL` can override it.
+- Each room maps to one persistent named Vercel Sandbox and one Codex session.
+  Hive checkpoints failed as well as successful turns, while Neon remains the
+  canonical team transcript if compute disappears.
+- Codex can inspect, edit, and execute commands against the repository. The
+  resulting changed files, command output, and `git diff` are persisted into the
+  same shared room.
 - Repository connection uses a GitHub App installed on exactly one selected
   repository. GitHub user OAuth verifies who is allowed to bind that
   installation to Hive; the one-time user token is discarded immediately.
@@ -73,8 +76,8 @@ annotation → explicit steer → resume the same coding workspace
   live. The current take-home database is temporary and must be replaced with a
   durable Vercel Marketplace Postgres integration before final submission.
 - Production OIDC authentication to AI Gateway is verified after transferring
-  Hive to the credited Vercel scope. A live production request completed through
-  `poolside/laguna-s-2.1-free` without adding a personal provider key.
+  Hive to the credited Vercel scope. A resumed live Codex thread executed a real
+  repository command without adding a personal provider key.
 - The previous Orbit preview, hardcoded diff, hardcoded test output, and fake PR
   number have been removed. The workspace only renders artifacts returned by a
   real sandbox run.

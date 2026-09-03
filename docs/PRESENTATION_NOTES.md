@@ -120,6 +120,13 @@ The black-and-white Vercel-style system keeps the shared transcript and work
 prominent. Presence is visible but quiet; authorship, queued steering, and agent
 state carry more weight than decorative collaboration chrome.
 
+### Errors are system state, not agent theater
+
+A failed run appears as one quiet, actionable status line rather than a second
+Hive speech bubble explaining or defending itself. The human message remains in
+the canonical transcript, while the Codex checkpoint is persisted invisibly.
+Reliability belongs in the system design, not in apologetic interface copy.
+
 ### We refuse to overclaim the prototype
 
 The multiplayer protocol, persistence, concurrency behavior, sandbox workspace,
@@ -154,7 +161,8 @@ the product ends is part of the credibility of the submission.
 | Keep agent conversation primary | Every message defaults to Hive; teammate mentions and annotations are inline exceptions. | A separate human Team Room beside an agent workspace. |
 | Separate annotate from steer | People need to discuss work without every comment redirecting the run. | Treating all messages as prompts or requiring a formal decision card for every change. |
 | Queue and attribute concurrent steering | Multiplayer input must stay visible and deterministic while the agent is busy. | Last-write-wins prompts or silently merging instructions. |
-| Use AI SDK + Vercel Sandbox as the harness | The take-home should validate multiplayer control, not recreate agent loops or container infrastructure. | Building a new harness and VM platform within the six-hour exercise. |
+| Use AI SDK Harness + Codex + Vercel Sandbox | The take-home should validate multiplayer control, not recreate Codex session management or container infrastructure. | Building a new coding harness and VM platform within the six-hour exercise. |
+| Keep Neon as canonical history | A Codex thread ID is only resumable while its session files and workspace still exist. The room transcript must survive compute failure. | Treating `~/.codex/sessions` inside one sandbox as the product database. |
 | Separate GitHub user identity from repository execution | OAuth proves which human may bind the App installation; a fresh installation token performs the clone with one-repository, read-only scope. | A personal access token, or trusting the spoofable `installation_id` query parameter by itself. |
 | Use an ordinary frontend change | Makes the intention problem understandable in seconds. | A deployment workflow that distracts from the core interaction. |
 | Use Vercel Marketplace Postgres | Vercel no longer operates a separate Vercel Postgres product; Marketplace provides the managed database and environment integration. | Presenting direct Neon and “Vercel database” as competing architectures. |
@@ -173,17 +181,20 @@ the product ends is part of the credibility of the submission.
   Each Sandbox clone gets a newly minted installation token limited to the
   selected repository and `contents:read`; neither credential is persisted in
   room state or exposed to the agent tool loop.
-- AI SDK's `ToolLoopAgent` can list files, read files, write files, and execute
-  commands inside that sandbox; no production database or application secrets
-  are passed into the workspace.
+- AI SDK Harness runs the Codex adapter inside a named persistent Vercel
+  Sandbox. Codex can inspect, edit, and execute commands against the real
+  repository; no production database credential is passed into the workspace.
 - Changed file contents, command exit codes/output, and the real git diff are
   persisted and rendered identically for both teammates. There are no hardcoded
   preview, test, diff, or PR artifacts left in the interface.
 - Messages addressed to Hive route through Vercel AI Gateway, and successful
-  model responses persist back into the shared transcript. Production OIDC is
-  verified end to end after Hive was transferred to the credited team. A live
-  request completed through `poolside/laguna-s-2.1-free` and persisted the
-  response into the shared room without a personal provider key.
+  Codex responses persist back into the shared transcript. Production OIDC is
+  verified end to end after Hive was transferred to the credited team. The
+  debug path uses `openai/gpt-5-mini` without a personal provider key.
+- Neon is the canonical collaborative history. Each Hive room also persists a
+  stable Codex session ID, opaque resume checkpoint, and named Vercel Sandbox.
+  A resumed production thread executed `pwd` and read the real `package.json`
+  from `/vercel/sandbox/hive` after a prior failed turn.
 - Messages explicitly addressed to a teammate stay human-to-human; promoting an
   annotation with **Steer Hive** explicitly wakes the agent.
 - Teammates can add attributed annotations directly to human messages. They sync
@@ -210,8 +221,12 @@ the product ends is part of the credibility of the submission.
   durable Vercel Marketplace database attached to the deployed project.
 - AI Gateway uses Vercel OIDC rather than a personal provider key. Local model
   calls require the project to be linked and its environment pulled first.
-- A completed tool loop is the current safe boundary. If teammates queued a
-  steer while it ran, the next item resumes the same named sandbox workspace.
+- A completed Codex turn is the current safe boundary. If teammates queued a
+  steer while it ran, the next item resumes the same Codex thread and named
+  sandbox workspace.
+- If the named sandbox itself becomes unavailable, rebuilding a fresh Codex
+  thread from the canonical Neon transcript is the next reliability layer; it
+  is not implemented in this take-home slice.
 
 These are deliberate scope boundaries, not hidden claims. The presentation
 should distinguish the validated product interaction from the replaceable
@@ -223,8 +238,9 @@ execution infrastructure.
   participant messages and agent lifecycle events.
 - `src/lib/room-store.ts`: transactional persistence and concurrent-write
   serialization.
-- `src/lib/hive-runner.ts`: AI SDK tool loop, Vercel Sandbox lifecycle, guarded
-  repository paths, command capture, changed files, and git diff collection.
+- `src/lib/hive-runner.ts`: Codex Harness session lifecycle, persistent Vercel
+  Sandbox, guarded repository paths, checkpointing, command capture, changed
+  files, and git diff collection.
 - `src/lib/github-oauth.ts`: signed OAuth state, one-time user authorization,
   and user-to-installation verification.
 - `src/lib/github-app.ts`: App authentication and repository-scoped,
@@ -253,6 +269,9 @@ execution infrastructure.
 - Chose a normal second-level menu task and the name Hive.
 - Chose to reuse a coding harness rather than make harness construction the
   product.
+- Corrected the first Codex persistence proposal: a session ID alone is not
+  durable because native Codex history lives inside the sandbox filesystem.
+- Rejected verbose agent apologies in favor of quiet, actionable run status.
 
 ### AI-assisted work
 
@@ -288,6 +307,14 @@ corrected the concept by pointing back to Conductor's concrete multiplayer
 example: several people share one agent transcript, direct messages to teammates,
 annotate work, and steer the same running agent. Intent checkpoints remain a
 supporting conflict mechanism rather than the product identity.
+
+The first native Codex integration also called `session.destroy()` after a
+transient failure. The human challenged the assumption that Codex session
+management was durable by itself. That changed the architecture: Neon owns the
+canonical team history; a room maps to one persistent named sandbox; failed
+turns call `stop()` and save the latest resume checkpoint. This is a strong
+example of AI producing a plausible integration while human review protects the
+product's continuity guarantee.
 
 ## Suggested 20-minute demo pacing
 
@@ -399,3 +426,23 @@ supporting conflict mechanism rather than the product identity.
 - Refined the UI around one primary multiplayer conversation: one global header,
   one status per surface, a compact composer, and a chat/workspace switch below
   960px instead of stacking two full products in a narrow viewport.
+
+### 2026-09-03
+
+- Replaced the generic tool loop with AI SDK Harness's native Codex adapter and
+  a low-cost `openai/gpt-5-mini` debugging model through Vercel AI Gateway.
+- Mapped each Hive room to a persistent named Vercel Sandbox and persisted the
+  Codex resume checkpoint alongside the stable room session ID.
+- Removed `session.destroy()` from transient failures. Hive now checkpoints the
+  Codex thread and snapshots the sandbox before returning a concise error.
+- Reduced failed runs to quiet system status such as `Rate limit reached. Try
+  again shortly.`; errors no longer speak as Hive or force the workspace tab.
+- Diagnosed the full production chain layer by layer: bridge packaging,
+  dependencies, OIDC, repository workdir, Gateway throttling, and artifact
+  collection. Every layer was fixed and redeployed independently.
+- Verified the live resumed thread kept ID
+  `01a0654d-791a-7a70-8ef2-443b210a55da`, executed a real shell command in
+  `/vercel/sandbox/hive`, read the repository's `package.json`, returned package
+  name `hive`, and reported the exact test script.
+- Automated coverage reached 20 passing focused tests; lint, TypeScript, and the
+  production webpack build also pass.
