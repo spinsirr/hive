@@ -14,6 +14,9 @@
     "prototype:state": "node scripts/prototype-room-state.ts"
   },
   "dependencies": {
+    "@ai-sdk/harness": "^1.0.98",
+    "@ai-sdk/harness-codex": "^1.0.100",
+    "@ai-sdk/sandbox-vercel": "^1.0.98",
     "@base-ui/react": "^1.7.0",
     "@octokit/auth-app": "^8.3.0",
     "@streamdown/cjk": "^1.0.3",

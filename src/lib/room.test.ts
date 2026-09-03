@@ -119,6 +119,7 @@ test("a completed run stays running when another steer is queued", () => {
     running,
     {
       sandboxName: "hive-test",
+      agentSession: running.workspace.agentSession!,
       summary: "Updated the navigation.",
       diff: "+ compact",
       files: [],
@@ -134,10 +135,12 @@ test("a completed run stays running when another steer is queued", () => {
 });
 
 test("reset preserves the repository but clears run artifacts", () => {
+  const connected = connectedRoom();
   const room = {
-    ...connectedRoom(),
+    ...connected,
     stage: "review" as const,
     workspace: {
+      ...connected.workspace,
       status: "review" as const,
       diff: "+ change",
       files: [{ path: "nav.tsx", content: "change" }],
@@ -152,4 +155,30 @@ test("reset preserves the repository but clears run artifacts", () => {
   assert.equal(reset.workspace.status, "ready");
   assert.deepEqual(reset.workspace.changedFiles, []);
   assert.equal(reset.messages.length, 1);
+  assert.notEqual(
+    reset.workspace.agentSession?.id,
+    room.workspace.agentSession?.id,
+  );
+});
+
+test("a second task sent during a run joins the attributed steering queue", () => {
+  const running = reduceRoom(
+    connectedRoom(),
+    { type: "send-message", actor: "spencer", body: "Update the menu" },
+    20,
+  );
+  const sessionId = running.workspace.agentSession?.id;
+  const queued = reduceRoom(
+    running,
+    { type: "send-message", actor: "maya", body: "Keep it compact" },
+    30,
+  );
+
+  assert.equal(queued.stage, "running");
+  assert.equal(queued.workspace.startedAt, 20);
+  assert.equal(queued.workspace.agentSession?.id, sessionId);
+  assert.equal(queued.steeringQueue.length, 1);
+  assert.equal(queued.steeringQueue[0]?.authorId, "maya");
+  assert.equal(queued.steeringQueue[0]?.body, "Keep it compact");
+  assert.equal(queued.steeringQueue[0]?.source.kind, "message");
 });

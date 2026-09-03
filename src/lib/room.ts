@@ -3,6 +3,8 @@
  * agent, sees the same run, and can turn an inline annotation into a steer.
  */
 
+import type { HarnessAgentResumeSessionState } from "@ai-sdk/harness/agent";
+
 export const memberDirectory = {
   maya: {
     id: "maya",
@@ -25,6 +27,7 @@ export type RunStage = "waiting" | "running" | "review" | "approved";
 
 export type SteeringSource =
   | { kind: "workspace-annotation" }
+  | { kind: "message"; messageId: string }
   | { kind: "message-annotation"; messageId: string; annotationId: string };
 
 export type SteeringQueueItem = {
@@ -93,6 +96,11 @@ export type WorkspaceCommand = {
 export type WorkspaceState = {
   status: "disconnected" | "ready" | "running" | "review" | "error";
   sandboxName?: string;
+  agentSession?: {
+    id: string;
+    runtime: "codex";
+    resumeFrom?: HarnessAgentResumeSessionState;
+  };
   summary?: string;
   diff: string;
   files: WorkspaceFile[];
@@ -105,6 +113,7 @@ export type WorkspaceState = {
 
 export type HiveRunResult = {
   sandboxName: string;
+  agentSession: NonNullable<WorkspaceState["agentSession"]>;
   summary: string;
   diff: string;
   files: WorkspaceFile[];
@@ -122,7 +131,7 @@ export type Annotation = {
 };
 
 export type RoomState = {
-  roomId: "orbit-nav";
+  roomId: string;
   version: number;
   revision: 1 | 2;
   stage: RunStage;
@@ -173,9 +182,20 @@ export type RoomAction =
   | { type: "advance-run"; actor: MemberId }
   | { type: "reset"; actor: MemberId };
 
-export function createInitialRoomState(now = Date.now()): RoomState {
+export function createAgentSessionId(roomId: string, now = Date.now()) {
+  const safeRoomId = roomId
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, "-")
+    .slice(0, 24);
+  return `hive-${safeRoomId || "room"}-${now.toString(36)}`;
+}
+
+export function createInitialRoomState(
+  now = Date.now(),
+  roomId = "orbit-nav",
+): RoomState {
   return {
-    roomId: "orbit-nav",
+    roomId,
     version: 1,
     revision: 1,
     stage: "waiting",
@@ -253,13 +273,17 @@ export function appendHiveReply(
 
 export function reduceRoom(state: RoomState, action: RoomAction, now = Date.now()): RoomState {
   if (action.type === "reset") {
-    const initialRoom = createInitialRoomState(now);
+    const initialRoom = createInitialRoomState(now, state.roomId);
     if (!state.repository) return initialRoom;
     return {
       ...initialRoom,
       repository: state.repository,
       workspace: {
         status: "ready",
+        agentSession: {
+          id: createAgentSessionId(state.roomId, now),
+          runtime: "codex",
+        },
         diff: "",
         files: [],
         commands: [],
@@ -302,6 +326,10 @@ export function reduceRoom(state: RoomState, action: RoomAction, now = Date.now(
       repository,
       workspace: {
         status: "ready",
+        agentSession: {
+          id: createAgentSessionId(state.roomId, now),
+          runtime: "codex",
+        },
         diff: "",
         files: [],
         commands: [],
@@ -320,8 +348,12 @@ export function reduceRoom(state: RoomState, action: RoomAction, now = Date.now(
     const body = action.body.trim();
     if (!body) return state;
     const member = memberDirectory[action.actor];
-    const startsRun =
+    const messageId = `human-${now}-${state.version + 1}`;
+    const addressesHive =
       Boolean(state.repository) && !isDirectedAtTeammate(body, action.actor);
+    const startsRun =
+      addressesHive && state.stage !== "running";
+    const queuesRun = addressesHive && state.stage === "running";
     return {
       ...state,
       version: state.version + 1,
@@ -330,6 +362,10 @@ export function reduceRoom(state: RoomState, action: RoomAction, now = Date.now(
         ? {
             ...state.workspace,
             status: "running",
+            agentSession: state.workspace.agentSession ?? {
+              id: createAgentSessionId(state.roomId, now),
+              runtime: "codex",
+            },
             summary: undefined,
             error: undefined,
             startedAt: now,
@@ -337,10 +373,23 @@ export function reduceRoom(state: RoomState, action: RoomAction, now = Date.now(
             commands: [],
           }
         : state.workspace,
+      steeringQueue: queuesRun
+        ? [
+            ...state.steeringQueue,
+            {
+              id: `steer-${now}-${state.version + 1}`,
+              body,
+              authorId: action.actor,
+              queuedAt: now,
+              source: { kind: "message", messageId },
+              sourceLabel: `${member.shortName}'s message`,
+            },
+          ]
+        : state.steeringQueue,
       messages: [
         ...state.messages,
         {
-          id: `human-${now}-${state.version + 1}`,
+          id: messageId,
           name: member.name,
           initials: member.initials,
           body,
@@ -656,6 +705,7 @@ export function applyHiveRunResult(
     workspace: {
       status: hasQueuedSteer ? "running" : "review",
       sandboxName: result.sandboxName,
+      agentSession: result.agentSession,
       summary: result.summary,
       diff: result.diff,
       files: result.files,

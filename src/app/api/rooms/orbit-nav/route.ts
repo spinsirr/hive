@@ -100,7 +100,8 @@ export async function POST(request: Request) {
 
   const shouldGenerateForMessage =
     action.type === "send-message" &&
-    !isDirectedAtTeammate(action.body, action.actor);
+    !isDirectedAtTeammate(action.body, action.actor) &&
+    snapshot.room.workspace.startedAt === actionAt;
   const shouldGenerateForSteer =
     action.type === "steer-agent" &&
     snapshot.room.annotation.steeredAt === actionAt;
@@ -195,11 +196,11 @@ export async function POST(request: Request) {
                 .filter(Boolean)
                 .join("\n")
             : undefined;
-    const runResult = await runHiveCodingTask(
-      snapshot.room,
-      action.actor,
-      steer,
-    );
+    const runActor =
+      action.type === "apply-next-steer" && activeSteer
+        ? activeSteer.authorId
+        : action.actor;
+    const runResult = await runHiveCodingTask(snapshot.room, runActor, steer);
     return NextResponse.json(
       await appendHiveReply(runResult.summary, {
         forMessageId: sourceMessageId,
@@ -210,7 +211,10 @@ export async function POST(request: Request) {
       }),
     );
   } catch (error) {
-    console.error("Hive agent generation failed", error);
+    console.error(
+      "Hive agent generation failed",
+      error instanceof HiveAgentError ? error.cause : error,
+    );
     const message =
       error instanceof HiveAgentError
         ? error.message

@@ -1,17 +1,4 @@
-import { APICallError, generateText } from "ai";
-
-import {
-  memberDirectory,
-  type MemberId,
-  type RoomState,
-} from "@/lib/room";
-
-const DEFAULT_MODEL = "poolside/laguna-s-2.1-free";
-const MAX_CONTEXT_MESSAGES = 18;
-
-type HiveTrigger =
-  | { type: "message" }
-  | { type: "steer"; annotation: string; source?: string };
+import { APICallError } from "ai";
 
 function errorStatusCode(error: unknown): number | undefined {
   if (APICallError.isInstance(error)) return error.statusCode;
@@ -90,63 +77,5 @@ export class HiveAgentError extends Error {
   ) {
     super(message);
     this.name = "HiveAgentError";
-  }
-}
-
-export async function generateHiveReply(
-  room: RoomState,
-  actor: MemberId,
-  trigger: HiveTrigger,
-) {
-  const actorName = memberDirectory[actor].name;
-  const messages = room.messages
-    .filter((message) => message.status !== "error")
-    .slice(-MAX_CONTEXT_MESSAGES)
-    .map((message) => ({
-      role: message.role === "agent" ? ("assistant" as const) : ("user" as const),
-      content:
-        message.role === "agent"
-          ? message.body
-          : `[${message.name}]: ${message.body}`,
-    }));
-
-  if (trigger.type === "steer") {
-    messages.push({
-      role: "user",
-      content: [
-        `[${actorName} promoted an annotation to a steer]: ${trigger.annotation}`,
-        trigger.source ? `[Attached to teammate message]: ${trigger.source}` : null,
-      ]
-        .filter(Boolean)
-        .join("\n"),
-    });
-  }
-
-  try {
-    const result = await generateText({
-      model: process.env.HIVE_MODEL?.trim() || DEFAULT_MODEL,
-      system: [
-        "You are Hive, one coding agent shared live by a small software team.",
-        "Maya Chen and Spencer Zhao inhabit the same transcript, so preserve authorship and respond to the group rather than pretending there is one user.",
-        "Be concise, concrete, and collaborative. Call out ambiguity and ask for a steer when product intent is unclear.",
-        "You currently have conversation access only: do not claim to have edited files, run tests, inspected a repository, opened a PR, or used tools.",
-        "If a teammate describes a desired code change, explain the next action you would take once the coding workspace is connected.",
-      ].join(" "),
-      messages,
-      maxOutputTokens: 320,
-      temperature: 0.3,
-      providerOptions: {
-        gateway: {
-          tags: ["app:hive", "feature:shared-session"],
-          user: actor,
-        },
-      },
-    });
-
-    const text = result.text.trim();
-    if (!text) throw new Error("AI Gateway returned an empty response.");
-    return text;
-  } catch (error) {
-    throw new HiveAgentError(hiveAgentFailureMessage(error), error);
   }
 }
