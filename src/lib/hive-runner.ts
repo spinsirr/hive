@@ -82,7 +82,7 @@ async function ensureCodexBridgeDependencies(
 
   const install = await sandbox.run({
     command:
-      "pnpm install --frozen-lockfile --store-dir .pnpm-store --force",
+      "npm install --no-package-lock --no-audit --no-fund --ignore-scripts=false ws@8.21.0 @openai/codex-sdk@0.149.1",
     workingDirectory: bootstrapDirectory,
     abortSignal,
   });
