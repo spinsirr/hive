@@ -439,7 +439,6 @@ export function reduceRoom(state: RoomState, action: RoomAction, now = Date.now(
   }
 
   if (action.type === "steer-message-annotation") {
-    if (state.stage !== "waiting" && state.stage !== "running") return state;
     const targetAnnotation = state.messages
       .find((message) => message.id === action.messageId)
       ?.annotations?.find(
@@ -493,6 +492,15 @@ export function reduceRoom(state: RoomState, action: RoomAction, now = Date.now(
       version: state.version + 1,
       revision: 2,
       stage: "running",
+      workspace: {
+        ...state.workspace,
+        status: "running",
+        summary: undefined,
+        error: undefined,
+        startedAt: now,
+        completedAt: undefined,
+        commands: [],
+      },
       messages: state.messages.map((message) =>
         message.id === action.messageId
           ? {
@@ -516,7 +524,6 @@ export function reduceRoom(state: RoomState, action: RoomAction, now = Date.now(
 
   if (action.type === "steer-agent") {
     if (
-      (state.stage !== "waiting" && state.stage !== "running") ||
       state.annotation.status !== "open" ||
       !state.annotation.text.trim()
     ) return state;
@@ -551,6 +558,15 @@ export function reduceRoom(state: RoomState, action: RoomAction, now = Date.now(
       version: state.version + 1,
       revision: 2,
       stage: "running",
+      workspace: {
+        ...state.workspace,
+        status: "running",
+        summary: undefined,
+        error: undefined,
+        startedAt: now,
+        completedAt: undefined,
+        commands: [],
+      },
       annotation: {
         ...state.annotation,
         status: "steered",

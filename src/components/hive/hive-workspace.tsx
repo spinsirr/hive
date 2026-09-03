@@ -200,7 +200,6 @@ function ProductHeader({
 }
 
 function AnnotationCard({ queued, queuedBy, queuePosition, steered, steeredBy, onSteer, stage }: { queued: boolean; queuedBy?: MemberId; queuePosition?: number; steered: boolean; steeredBy?: MemberId; onSteer: () => void; stage: RunStage }) {
-  const canSteer = stage === "waiting" || stage === "running";
   return (
     <div className="mx-4 mb-3 overflow-hidden rounded-lg border border-[#d5d5d5] bg-white shadow-[0_8px_24px_rgba(0,0,0,0.05)]">
       <div className="flex items-center justify-between border-b border-[#eeeeee] px-3 py-2">
@@ -219,11 +218,9 @@ function AnnotationCard({ queued, queuedBy, queuePosition, steered, steeredBy, o
           <span className="flex items-center gap-1.5 px-1 text-[11px] font-medium"><Check className="size-3.5" /> Steered by {steeredBy ? memberDirectory[steeredBy].shortName : "team"} · added to run</span>
         ) : queued ? (
           <span className="flex items-center gap-1.5 px-1 text-[11px] font-medium"><span className="grid size-4 place-items-center rounded bg-[#171717] font-mono text-[8px] text-white">{queuePosition ?? "·"}</span> Queued by {queuedBy ? memberDirectory[queuedBy].shortName : "team"}</span>
-        ) : !canSteer ? (
-          <span className="flex items-center gap-1.5 px-1 text-[11px] text-[#737373]"><Check className="size-3.5" /> This run no longer accepts steering</span>
         ) : (
           <>
-            <span className="px-1 font-mono text-[9px] text-[#8f8f8f]">{stage === "waiting" ? "Hive is paused" : "Hive is working"}</span>
+            <span className="px-1 font-mono text-[9px] text-[#8f8f8f]">{stage === "running" ? "Hive is working" : "Start a follow-up turn"}</span>
             <div className="flex items-center gap-1.5">
               <Button className="h-7 rounded-md text-xs" size="sm" variant="ghost">Reply</Button>
               <Button className="h-7 rounded-md bg-[#171717] px-2.5 text-xs text-white" onClick={onSteer} size="sm">{stage === "waiting" ? "Steer Hive" : "Queue steer"}</Button>
@@ -427,10 +424,9 @@ function SharedSession({ activeMembers, activeSteer, queued, queuedBy, queuePosi
                                 <span className="font-mono text-[8px] uppercase tracking-[0.08em] text-[#a1a1a1]">Discussion only</span>
                                 <Button
                                   className="h-6 rounded px-2 text-[10px]"
-                                  disabled={stage !== "waiting" && stage !== "running"}
                                   onClick={() => onSteerMessageAnnotation(message.id, annotation.id)}
                                   size="sm"
-                                  title={stage === "waiting" ? "Promote this annotation into the agent run" : stage === "running" ? "Queue this steer for Hive's next safe boundary" : "This run no longer accepts steering"}
+                                  title={stage === "running" ? "Queue this steer for Hive's next safe boundary" : "Promote this annotation into a follow-up turn"}
                                   variant="ghost"
                                 >
                                   {stage === "running" ? "Queue steer" : "Steer Hive"}

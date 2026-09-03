@@ -101,6 +101,64 @@ test("an annotation created during a run waits for an explicit safe boundary", (
   );
 });
 
+test("a review annotation can start the next turn in the same Codex session", () => {
+  const running = reduceRoom(
+    connectedRoom(),
+    { type: "send-message", actor: "spencer", body: "Update the menu" },
+    20,
+  );
+  const sourceMessage = running.messages.at(-1);
+  assert.ok(sourceMessage);
+  const review = applyHiveRunResult(
+    running,
+    {
+      sandboxName: "hive-room-test",
+      agentSession: running.workspace.agentSession!,
+      summary: "Updated the menu.",
+      diff: "+ update",
+      files: [],
+      commands: [],
+      changedFiles: ["nav.tsx"],
+    },
+    30,
+  );
+  const annotated = reduceRoom(
+    review,
+    {
+      type: "annotate-message",
+      actor: "maya",
+      messageId: sourceMessage.id,
+      body: "Keep the parent item expanded",
+    },
+    40,
+  );
+  const annotation = annotated.messages
+    .find((message) => message.id === sourceMessage.id)
+    ?.annotations?.[0];
+  assert.ok(annotation);
+
+  const steered = reduceRoom(
+    annotated,
+    {
+      type: "steer-message-annotation",
+      actor: "maya",
+      messageId: sourceMessage.id,
+      annotationId: annotation.id,
+    },
+    50,
+  );
+
+  assert.equal(steered.stage, "running");
+  assert.equal(steered.workspace.status, "running");
+  assert.equal(steered.workspace.agentSession?.id, review.workspace.agentSession?.id);
+  assert.equal(
+    steered.messages
+      .find((message) => message.id === sourceMessage.id)
+      ?.annotations?.[0]?.status,
+    "steered",
+  );
+});
+
 test("a completed run stays running when another steer is queued", () => {
   const running = {
     ...connectedRoom(),
