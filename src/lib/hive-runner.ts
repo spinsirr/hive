@@ -21,7 +21,7 @@ import {
   type WorkspaceFile,
 } from "@/lib/room";
 
-const DEFAULT_MODEL = "openai/gpt-5.1-codex-mini";
+const DEFAULT_MODEL = "openai/gpt-5-mini";
 const CODEX_BRIDGE_PORT = 4319;
 const MAX_OUTPUT_CHARS = 20_000;
 const MAX_DIFF_CHARS = 60_000;
@@ -297,7 +297,7 @@ export async function runHiveCodingTask(
       id: "hive-coding-agent",
       harness: createCodex({
         auth: codexAuth,
-        reasoningEffort: "medium",
+        reasoningEffort: "low",
         webSearch: false,
         codexConfig: { model_verbosity: "low" },
       }),

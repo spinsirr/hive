@@ -63,7 +63,7 @@ export function hiveAgentFailureMessage(error: unknown) {
   ) {
     return "I saved the team’s input, but AI Gateway is not connected to this environment yet.";
   }
-  if (statusCode === 429) {
+  if (statusCode === 429 || details.includes("429 too many requests")) {
     return "I saved the team’s input, but AI Gateway is rate-limited right now. Try again in a moment.";
   }
 
@@ -71,11 +71,14 @@ export function hiveAgentFailureMessage(error: unknown) {
 }
 
 export class HiveAgentError extends Error {
+  readonly cause: unknown;
+
   constructor(
     message: string,
-    readonly cause: unknown,
+    cause: unknown,
   ) {
     super(message);
     this.name = "HiveAgentError";
+    this.cause = cause;
   }
 }
