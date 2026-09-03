@@ -243,7 +243,7 @@ export async function runHiveCodingTask(
   room: RoomState,
   actor: MemberId,
   steer?: string,
-  auth?: { vercelOidcToken?: string },
+  auth?: { actorName?: string; vercelOidcToken?: string },
 ) {
   if (!room.repository) {
     throw new HiveAgentError(
@@ -355,7 +355,7 @@ export async function runHiveCodingTask(
     try {
       const result = await agent.generate({
         session,
-        prompt: buildCodexPrompt(room, actor, steer),
+        prompt: buildCodexPrompt(room, actor, steer, auth?.actorName),
       });
       if (!sandboxSession || !sandboxWorkDir) {
         throw new Error("Vercel Sandbox session was not made available to Hive.");

@@ -17,7 +17,7 @@ The presentation is 90 minutes. The product demo should take about 20 minutes
 and follow this order: problem, solution, code, AI journey.
 
 Current production URL:
-[hive-roan-mu.vercel.app](https://hive-roan-mu.vercel.app/?as=spencer).
+[hive-roan-mu.vercel.app](https://hive-roan-mu.vercel.app/rooms/orbit-nav).
 
 ## One-sentence product definition
 
@@ -164,6 +164,8 @@ the product ends is part of the credibility of the submission.
 | Use AI SDK Harness + Codex + Vercel Sandbox | The take-home should validate multiplayer control, not recreate Codex session management or container infrastructure. | Building a new coding harness and VM platform within the six-hour exercise. |
 | Keep Neon as canonical history | A Codex thread ID is only resumable while its session files and workspace still exist. The room transcript must survive compute failure. | Treating `~/.codex/sessions` inside one sandbox as the product database. |
 | Separate GitHub user identity from repository execution | OAuth proves which human may bind the App installation; a fresh installation token performs the clone with one-repository, read-only scope. | A personal access token, or trusting the spoofable `installation_id` query parameter by itself. |
+| Make identity server-authoritative | A room URL identifies shared work, never a person. GitHub OAuth creates a revocable Postgres session; every API mutation overwrites any client-supplied actor with that session's user. | `?as=spencer`, browser-selected personas, or trusting an `actor` JSON field. |
+| Keep Codex resume state private | The browser needs the visible session ID, not Harness credentials or the opaque checkpoint used to resume the sandbox. API snapshots strip `resumeFrom`. | Returning the persisted database row directly to clients. |
 | Use an ordinary frontend change | Makes the intention problem understandable in seconds. | A deployment workflow that distracts from the core interaction. |
 | Use Vercel Marketplace Postgres | Vercel no longer operates a separate Vercel Postgres product; Marketplace provides the managed database and environment integration. | Presenting direct Neon and “Vercel database” as competing architectures. |
 | Do not reuse personal Claude/Codex subscription tokens | Product authentication and spend should be auditable and scoped to the app. | Shipping personal setup tokens in a deployed demo. |
@@ -245,8 +247,9 @@ execution infrastructure.
   and user-to-installation verification.
 - `src/lib/github-app.ts`: App authentication and repository-scoped,
   `contents:read` installation tokens for Sandbox cloning.
-- `src/app/api/rooms/orbit-nav/route.ts`: the small HTTP boundary for presence
-  and room actions.
+- `src/app/api/rooms/[roomId]/route.ts`: the authenticated HTTP boundary for
+  presence and room actions. It derives authorship from the server session and
+  strips private Codex resume state from responses.
 - `src/hooks/use-shared-room.ts`: browser synchronization, presence heartbeat,
   local-tab broadcast, and connection failure handling.
 - `src/components/hive/hive-workspace.tsx`: the shared session, agent workspace,
@@ -446,3 +449,15 @@ product's continuity guarantee.
   name `hive`, and reported the exact test script.
 - Automated coverage reached 20 passing focused tests; lint, TypeScript, and the
   production webpack build also pass.
+- Removed the `?as=spencer` / `?as=maya` persona switch. GitHub OAuth now creates
+  a random database-backed session whose token is hashed at rest and carried in
+  an HTTP-only cookie; sign-out revokes it.
+- Replaced the hardcoded `orbit-nav` API and browser channel with dynamic
+  `/rooms/[roomId]` and `/api/rooms/[roomId]` routes. Invite links now preserve
+  room identity while each browser contributes its independently authenticated
+  human identity.
+- Made API authorship server-authoritative and stopped returning opaque Codex
+  Harness `resumeFrom` state to the browser.
+- Added and applied the additive users/sessions Drizzle migration. Verification
+  reached 22 focused tests plus lint, TypeScript, and the production webpack
+  build; unauthenticated dynamic-room API access returns 401.

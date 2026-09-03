@@ -4,16 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   createInitialRoomState,
-  type MemberId,
   type RoomAction,
 } from "@/lib/room";
 import type { RoomSnapshot } from "@/lib/room-store";
-
-const fallbackSnapshot: RoomSnapshot = {
-  room: createInitialRoomState(0),
-  activeMembers: [],
-  typingMembers: [],
-};
 
 type ClientRoomAction = Exclude<RoomAction, { type: "connect-repository" }>;
 
@@ -23,8 +16,13 @@ type RoomDispatchAction = ClientRoomAction extends infer Action
     : never
   : never;
 
-export function useSharedRoom(memberId: MemberId) {
-  const [snapshot, setSnapshot] = useState<RoomSnapshot>(fallbackSnapshot);
+export function useSharedRoom(roomId: string) {
+  const [snapshot, setSnapshot] = useState<RoomSnapshot>(() => ({
+    room: createInitialRoomState(0, roomId),
+    activeMembers: [],
+    members: [],
+    typingMembers: [],
+  }));
   const [syncing, setSyncing] = useState(true);
   const [syncError, setSyncError] = useState(false);
   const typingRef = useRef(false);
@@ -39,11 +37,12 @@ export function useSharedRoom(memberId: MemberId) {
 
   const post = useCallback(async (payload: object) => {
     try {
-      const response = await fetch("/api/rooms/orbit-nav", {
+      const response = await fetch(`/api/rooms/${encodeURIComponent(roomId)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+      if (response.status === 401) window.location.reload();
       if (!response.ok) throw new Error("Room action failed");
       const nextSnapshot = (await response.json()) as RoomSnapshot;
       publish(nextSnapshot);
@@ -53,11 +52,14 @@ export function useSharedRoom(memberId: MemberId) {
       setSyncError(true);
       return null;
     }
-  }, [publish]);
+  }, [publish, roomId]);
 
   const refresh = useCallback(async () => {
     try {
-      const response = await fetch("/api/rooms/orbit-nav", { cache: "no-store" });
+      const response = await fetch(`/api/rooms/${encodeURIComponent(roomId)}`, {
+        cache: "no-store",
+      });
+      if (response.status === 401) window.location.reload();
       if (!response.ok) throw new Error("Room refresh failed");
       const nextSnapshot = (await response.json()) as RoomSnapshot;
       setSnapshot(nextSnapshot);
@@ -67,11 +69,11 @@ export function useSharedRoom(memberId: MemberId) {
       setSyncing(true);
       setSyncError(true);
     }
-  }, []);
+  }, [roomId]);
 
   useEffect(() => {
     if (typeof BroadcastChannel !== "undefined") {
-      const channel = new BroadcastChannel("hive-room-orbit-nav");
+      const channel = new BroadcastChannel(`hive-room-${roomId}`);
       channel.onmessage = (event: MessageEvent<RoomSnapshot>) => {
         setSnapshot(event.data);
         setSyncing(false);
@@ -79,10 +81,10 @@ export function useSharedRoom(memberId: MemberId) {
       channelRef.current = channel;
     }
 
-    void post({ type: "heartbeat", memberId, typing: typingRef.current });
+    void post({ type: "heartbeat", typing: typingRef.current });
     const pollTimer = window.setInterval(() => void refresh(), 1_200);
     const heartbeatTimer = window.setInterval(
-      () => void post({ type: "heartbeat", memberId, typing: typingRef.current }),
+      () => void post({ type: "heartbeat", typing: typingRef.current }),
       5_000,
     );
 
@@ -92,17 +94,18 @@ export function useSharedRoom(memberId: MemberId) {
       channelRef.current?.close();
       channelRef.current = null;
     };
-  }, [memberId, post, refresh]);
+  }, [post, refresh, roomId]);
 
-  const dispatch = useCallback((action: RoomDispatchAction) => {
-    return post({ ...action, actor: memberId });
-  }, [memberId, post]);
+  const dispatch = useCallback(
+    (action: RoomDispatchAction) => post(action),
+    [post],
+  );
 
   const setTyping = useCallback((typing: boolean) => {
     if (typingRef.current === typing) return;
     typingRef.current = typing;
-    void post({ type: "heartbeat", memberId, typing });
-  }, [memberId, post]);
+    void post({ type: "heartbeat", typing });
+  }, [post]);
 
   return { snapshot, syncing, syncError, dispatch, setTyping };
 }

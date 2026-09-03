@@ -74,9 +74,13 @@ async function tokenForInstallation(
   return authentication.token;
 }
 
-export function githubAppInstallUrl() {
+export function githubAppInstallUrl(state?: string) {
   const slug = process.env.GITHUB_APP_SLUG?.trim() || DEFAULT_APP_SLUG;
-  return `https://github.com/apps/${encodeURIComponent(slug)}/installations/new`;
+  const url = new URL(
+    `https://github.com/apps/${encodeURIComponent(slug)}/installations/new`,
+  );
+  if (state) url.searchParams.set("state", state);
+  return url;
 }
 
 export async function getInstallationRepositories(

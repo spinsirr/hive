@@ -1,31 +1,76 @@
-import { NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
+import { getSessionMember, HIVE_SESSION_COOKIE } from "@/lib/auth-session";
 import { HiveAgentError } from "@/lib/hive-agent";
 import { hiveErrorCopy } from "@/lib/hive-error-copy";
 import { runHiveCodingTask } from "@/lib/hive-runner";
 import {
   isDirectedAtTeammate,
-  isMemberId,
+  resolveMember,
   type RoomAction,
 } from "@/lib/room";
+import { isRoomId } from "@/lib/room-id";
 import {
   appendHiveReply,
   applyRoomAction,
   getRoomSnapshot,
   heartbeat,
 } from "@/lib/room-store";
+import type { RoomSnapshot } from "@/lib/room-store";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-export async function GET() {
-  return NextResponse.json(await getRoomSnapshot(), {
+type RoomRouteContext = {
+  params: Promise<{ roomId: string }>;
+};
+
+function publicSnapshot(snapshot: RoomSnapshot): RoomSnapshot {
+  const session = snapshot.room.workspace.agentSession;
+  return {
+    ...snapshot,
+    room: {
+      ...snapshot.room,
+      workspace: {
+        ...snapshot.room.workspace,
+        agentSession: session
+          ? { id: session.id, runtime: session.runtime }
+          : undefined,
+      },
+    },
+  };
+}
+
+function roomResponse(snapshot: RoomSnapshot) {
+  return NextResponse.json(publicSnapshot(snapshot), {
     headers: { "Cache-Control": "no-store" },
   });
 }
 
-export async function POST(request: Request) {
+async function authenticatedRoom(request: NextRequest, context: RoomRouteContext) {
+  const { roomId } = await context.params;
+  if (!isRoomId(roomId)) return null;
+  const member = await getSessionMember(
+    request.cookies.get(HIVE_SESSION_COOKIE)?.value,
+  );
+  return member ? { member, roomId } : null;
+}
+
+export async function GET(request: NextRequest, context: RoomRouteContext) {
+  const auth = await authenticatedRoom(request, context);
+  if (!auth) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  return roomResponse(await getRoomSnapshot(auth.roomId));
+}
+
+export async function POST(request: NextRequest, context: RoomRouteContext) {
+  const auth = await authenticatedRoom(request, context);
+  if (!auth) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const { member, roomId } = auth;
   const vercelOidcToken =
     request.headers.get("x-vercel-oidc-token")?.trim() || undefined;
   const payload: unknown = await request.json().catch(() => null);
@@ -34,15 +79,8 @@ export async function POST(request: Request) {
   }
 
   if (payload.type === "heartbeat") {
-    if (!("memberId" in payload) || !isMemberId(payload.memberId)) {
-      return NextResponse.json({ error: "Invalid member" }, { status: 400 });
-    }
     const typing = "typing" in payload && payload.typing === true;
-    return NextResponse.json(await heartbeat(payload.memberId, typing));
-  }
-
-  if (!("actor" in payload) || !isMemberId(payload.actor)) {
-    return NextResponse.json({ error: "Invalid actor" }, { status: 400 });
+    return roomResponse(await heartbeat(roomId, member.id, typing));
   }
 
   if (
@@ -97,13 +135,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid queue direction" }, { status: 400 });
   }
 
-  const action = payload as RoomAction;
+  const action = { ...payload, actor: member.id } as RoomAction;
   const actionAt = Date.now();
-  const snapshot = await applyRoomAction(action, actionAt);
+  const snapshot = await applyRoomAction(roomId, action, member, actionAt);
 
   const shouldGenerateForMessage =
     action.type === "send-message" &&
-    !isDirectedAtTeammate(action.body, action.actor) &&
+    !isDirectedAtTeammate(action.body, action.actor, snapshot.members) &&
     snapshot.room.workspace.startedAt === actionAt;
   const shouldGenerateForSteer =
     action.type === "steer-agent" &&
@@ -129,7 +167,7 @@ export async function POST(request: Request) {
     !shouldGenerateForMessageAnnotation &&
     !shouldGenerateForQueuedSteer
   ) {
-    return NextResponse.json(snapshot);
+    return roomResponse(snapshot);
   }
 
   const sourceMessageId =
@@ -162,8 +200,9 @@ export async function POST(request: Request) {
       : undefined;
 
   if (!snapshot.room.repository) {
-    return NextResponse.json(
+    return roomResponse(
       await appendHiveReply(
+        roomId,
         "Connect a repository through the Hive GitHub App before asking Hive to inspect or change code.",
         {
           forMessageId: sourceMessageId,
@@ -204,10 +243,11 @@ export async function POST(request: Request) {
         ? activeSteer.authorId
         : action.actor;
     const runResult = await runHiveCodingTask(snapshot.room, runActor, steer, {
+      actorName: resolveMember(runActor, snapshot.members).name,
       vercelOidcToken,
     });
-    return NextResponse.json(
-      await appendHiveReply(runResult.summary, {
+    return roomResponse(
+      await appendHiveReply(roomId, runResult.summary, {
         forMessageId: sourceMessageId,
         forMessageAnnotation: sourceMessageAnnotation,
         forActiveSteerAt: activeSteer?.appliedAt,
@@ -224,8 +264,8 @@ export async function POST(request: Request) {
       error instanceof HiveAgentError
         ? error.message
         : hiveErrorCopy.generic;
-    return NextResponse.json(
-      await appendHiveReply(message, {
+    return roomResponse(
+      await appendHiveReply(roomId, message, {
         forMessageId: sourceMessageId,
         forMessageAnnotation: sourceMessageAnnotation,
         forActiveSteerAt: activeSteer?.appliedAt,

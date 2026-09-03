@@ -1,5 +1,5 @@
 import {
-  memberDirectory,
+  resolveMember,
   type MemberId,
   type RoomState,
 } from "./room.ts";
@@ -18,7 +18,14 @@ export function buildCodexPrompt(
   room: RoomState,
   actor: MemberId,
   steer?: string,
+  actorName?: string,
 ) {
+  const currentTeammate =
+    actorName ??
+    room.messages.findLast(
+      (message) => message.role === "human" && message.memberId === actor,
+    )?.name ??
+    resolveMember(actor).name;
   const teamContext = room.messages
     .filter((message) => message.status !== "error")
     .slice(-12)
@@ -26,10 +33,10 @@ export function buildCodexPrompt(
     .join("\n");
 
   return [
-    `Current teammate: ${memberDirectory[actor].name}`,
+    `Current teammate: ${currentTeammate}`,
     "Shared team context (for attribution, not a second agent history):",
     teamContext,
     "Task to execute now:",
-    `[${memberDirectory[actor].name}]: ${latestTask(room, actor, steer)}`,
+    `[${currentTeammate}]: ${latestTask(room, actor, steer)}`,
   ].join("\n\n");
 }

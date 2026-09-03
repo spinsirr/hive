@@ -5,7 +5,7 @@ same live conversation, workspace, and run state. Each person can prompt Hive,
 annotate its work, talk directly to a teammate, and explicitly promote an
 annotation into a steer for the shared agent.
 
-**Live demo:** [hive-roan-mu.vercel.app](https://hive-roan-mu.vercel.app/?as=spencer)
+**Live app:** [hive-roan-mu.vercel.app](https://hive-roan-mu.vercel.app/rooms/orbit-nav)
 
 ## Local development
 
@@ -28,18 +28,18 @@ pnpm exec vercel link
 pnpm exec vercel env pull .env.local
 ```
 
-Open the same room as two demo participants:
-
-- [Spencer](http://127.0.0.1:3000/?as=spencer)
-- [Maya](http://127.0.0.1:3000/?as=maya)
-
-Messages, presence, annotations, steering, and Hive's run state synchronize
-between both clients.
+Open [the local room](http://127.0.0.1:3000/rooms/orbit-nav), sign in with
+GitHub, and copy its **Invite** URL to a teammate. The URL selects the shared
+room; the signed server session determines who each person is. Messages,
+presence, annotations, steering, and Hive's run state synchronize between both
+clients.
 
 ## Current vertical slice
 
 ```text
-GitHub user OAuth → repository-scoped GitHub App installation
+GitHub user OAuth → revocable database session → attributed room member
+room URL → one durable transcript and Codex workspace shared by its members
+GitHub App installation → repository-scoped execution credential
 short-lived installation token → private repo in persistent Vercel Sandbox
 team prompt → Codex Harness turn → read/write/command → real git diff → shared room
 annotation → explicit steer → resume the same Codex thread and workspace
@@ -47,8 +47,11 @@ annotation → explicit steer → resume the same Codex thread and workspace
 
 ## Current implementation boundary
 
-- One team, one repository, one shared mutating run.
-- Two demo members and one shared Hive identity.
+- One team, one repository per room, and one shared mutating run.
+- Any GitHub-authenticated teammate can join the shared room URL. Browser input
+  never chooses or overrides message authorship.
+- Human sessions are stored in Postgres behind random, hashed tokens and an
+  HTTP-only, secure, SameSite cookie. Signing out revokes the database session.
 - Room state and presence are persisted in Neon Postgres, with state transitions
   serialized in a transaction so simultaneous teammates cannot overwrite each
   other's input.
@@ -72,6 +75,8 @@ annotation → explicit steer → resume the same Codex thread and workspace
 - Vercel Sandbox receives a fresh installation token limited to that repository
   and `contents:read`. Hive never stores a personal access token, and the
   installation token expires within one hour.
+- Codex Harness resume checkpoints stay server-side. Room API responses include
+  the public session ID and runtime but strip the opaque resume state.
 - The deployed app is connected to Postgres and the shared multiplayer room is
   live. The current take-home database is temporary and must be replaced with a
   durable Vercel Marketplace Postgres integration before final submission.

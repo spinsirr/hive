@@ -5,7 +5,19 @@
 
 import type { HarnessAgentResumeSessionState } from "@ai-sdk/harness/agent";
 
-export const memberDirectory = {
+export type MemberId = string;
+
+export type TeamMember = {
+  id: MemberId;
+  name: string;
+  shortName: string;
+  initials: string;
+  role?: string;
+  githubLogin?: string;
+  avatarUrl?: string;
+};
+
+export const memberDirectory: Record<string, TeamMember> = {
   maya: {
     id: "maya",
     name: "Maya Chen",
@@ -20,9 +32,22 @@ export const memberDirectory = {
     initials: "SZ",
     role: "Engineering",
   },
-} as const;
+};
 
-export type MemberId = keyof typeof memberDirectory;
+export function resolveMember(
+  memberId: MemberId,
+  members: TeamMember[] = [],
+): TeamMember {
+  return (
+    members.find((member) => member.id === memberId) ??
+    memberDirectory[memberId] ?? {
+      id: memberId,
+      name: "Teammate",
+      shortName: "Teammate",
+      initials: "TM",
+    }
+  );
+}
 export type RunStage = "waiting" | "running" | "review" | "approved";
 
 export type SteeringSource =
@@ -276,7 +301,13 @@ export function appendHiveReply(
   };
 }
 
-export function reduceRoom(state: RoomState, action: RoomAction, now = Date.now()): RoomState {
+export function reduceRoom(
+  state: RoomState,
+  action: RoomAction,
+  now = Date.now(),
+  members: TeamMember[] = [],
+): RoomState {
+  const actor = resolveMember(action.actor, members);
   if (action.type === "reset") {
     const initialRoom = createInitialRoomState(now, state.roomId);
     if (!state.repository) return initialRoom;
@@ -342,7 +373,7 @@ export function reduceRoom(state: RoomState, action: RoomAction, now = Date.now(
       },
       messages: appendAgentMessage(
         state,
-        `${memberDirectory[action.actor].shortName} connected ${repository.name} as @${repository.authorizedByGitHub.login}. Hive can now inspect and execute against the private repository.`,
+        `${actor.shortName} connected ${repository.name} as @${repository.authorizedByGitHub.login}. Hive can now inspect and execute against the private repository.`,
         now,
       ),
       updatedAt: now,
@@ -352,10 +383,11 @@ export function reduceRoom(state: RoomState, action: RoomAction, now = Date.now(
   if (action.type === "send-message") {
     const body = action.body.trim();
     if (!body) return state;
-    const member = memberDirectory[action.actor];
+    const member = actor;
     const messageId = `human-${now}-${state.version + 1}`;
     const addressesHive =
-      Boolean(state.repository) && !isDirectedAtTeammate(body, action.actor);
+      Boolean(state.repository) &&
+      !isDirectedAtTeammate(body, action.actor, members);
     const startsRun =
       addressesHive && state.stage !== "running";
     const queuesRun = addressesHive && state.stage === "running";
@@ -457,10 +489,10 @@ export function reduceRoom(state: RoomState, action: RoomAction, now = Date.now(
           messageId: action.messageId,
           annotationId: action.annotationId,
         },
-        sourceLabel: `${memberDirectory[
+        sourceLabel: `${
           state.messages.find((message) => message.id === action.messageId)
-            ?.memberId ?? action.actor
-        ].shortName}'s message`,
+            ?.name ?? actor.shortName
+        }'s message`,
       };
       return {
         ...state,
@@ -693,7 +725,7 @@ export function reduceRoom(state: RoomState, action: RoomAction, now = Date.now(
 
   if (action.type === "advance-run") {
     if (state.stage === "review") {
-      const member = memberDirectory[action.actor];
+      const member = actor;
       return {
         ...state,
         version: state.version + 1,
@@ -776,10 +808,28 @@ export function applyHiveRunError(
 }
 
 export function isMemberId(value: unknown): value is MemberId {
-  return value === "maya" || value === "spencer";
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= 80 &&
+    /^[a-z0-9][a-z0-9_-]*$/i.test(value)
+  );
 }
 
-export function isDirectedAtTeammate(body: string, actor: MemberId) {
-  const mention = body.trim().match(/^@(maya|spencer)\b/i)?.[1]?.toLowerCase();
-  return isMemberId(mention) && mention !== actor;
+export function isDirectedAtTeammate(
+  body: string,
+  actor: MemberId,
+  members: TeamMember[] = Object.values(memberDirectory),
+) {
+  const mention = body.trim().match(/^@([a-z0-9_-]+)\b/i)?.[1]?.toLowerCase();
+  if (!mention) return false;
+
+  const knownMembers =
+    members.length > 0 ? members : Object.values(memberDirectory);
+  return knownMembers.some((member) => {
+    if (member.id === actor) return false;
+    return [member.id, member.githubLogin, member.shortName]
+      .filter(Boolean)
+      .some((candidate) => candidate?.toLowerCase() === mention);
+  });
 }

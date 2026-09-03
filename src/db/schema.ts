@@ -1,4 +1,5 @@
 import {
+  bigint,
   boolean,
   integer,
   jsonb,
@@ -18,6 +19,26 @@ import type {
   SteeringQueueItem,
   WorkspaceState,
 } from "@/lib/room";
+
+export const users = pgTable("users", {
+  id: text("id").primaryKey(),
+  githubUserId: bigint("github_user_id", { mode: "number" }).notNull().unique(),
+  githubLogin: text("github_login").notNull(),
+  name: text("name").notNull(),
+  shortName: text("short_name").notNull(),
+  initials: text("initials").notNull(),
+  avatarUrl: text("avatar_url"),
+  updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true }).notNull(),
+});
+
+export const sessions = pgTable("sessions", {
+  tokenHash: text("token_hash").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at", { mode: "date", withTimezone: true }).notNull(),
+  expiresAt: timestamp("expires_at", { mode: "date", withTimezone: true }).notNull(),
+});
 
 export const rooms = pgTable("rooms", {
   id: text("id").primaryKey(),

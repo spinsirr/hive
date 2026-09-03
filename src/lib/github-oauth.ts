@@ -10,8 +10,14 @@ const STATE_TTL_MS = 10 * 60 * 1000;
 export const GITHUB_OAUTH_COOKIE = "hive_github_oauth";
 
 type OAuthStatePayload = {
-  installationId: number;
+  installationId?: number;
   nonce: string;
+  expiresAt: number;
+  returnTo: string;
+};
+
+type InstallStatePayload = {
+  roomId: string;
   expiresAt: number;
 };
 
@@ -20,9 +26,11 @@ type OAuthTokenPayload = {
   error?: string;
 };
 
-type GitHubUserPayload = {
+export type GitHubUserPayload = {
   id: number;
   login: string;
+  name: string | null;
+  avatar_url: string | null;
 };
 
 type InstallationRepositoriesPayload = {
@@ -63,12 +71,48 @@ function signaturesMatch(expected: string, received: string) {
   );
 }
 
-export function createGitHubOAuthState(installationId: number) {
+export function createGitHubInstallState(roomId: string) {
+  const encoded = Buffer.from(
+    JSON.stringify({
+      roomId,
+      expiresAt: Date.now() + STATE_TTL_MS,
+    } satisfies InstallStatePayload),
+  ).toString("base64url");
+  return `${encoded}.${sign(encoded)}`;
+}
+
+export function verifyGitHubInstallState(state?: string | null) {
+  const [encoded, signature, extra] = state?.split(".") ?? [];
+  if (!encoded || !signature || extra) return null;
+  if (!signaturesMatch(sign(encoded), signature)) return null;
+
+  try {
+    const payload = JSON.parse(
+      Buffer.from(encoded, "base64url").toString("utf8"),
+    ) as InstallStatePayload;
+    return payload.expiresAt >= Date.now() ? payload.roomId : null;
+  } catch {
+    return null;
+  }
+}
+
+export function safeReturnTo(value?: string | null) {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) {
+    return "/rooms/orbit-nav";
+  }
+  return value;
+}
+
+export function createGitHubOAuthState(options: {
+  installationId?: number;
+  returnTo?: string;
+}) {
   const nonce = randomBytes(24).toString("base64url");
   const payload: OAuthStatePayload = {
-    installationId,
+    installationId: options.installationId,
     nonce,
     expiresAt: Date.now() + STATE_TTL_MS,
+    returnTo: safeReturnTo(options.returnTo),
   };
   const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
 
@@ -91,12 +135,16 @@ export function verifyGitHubOAuthState(state: string, cookieNonce?: string) {
     if (
       payload.nonce !== cookieNonce ||
       payload.expiresAt < Date.now() ||
-      !Number.isSafeInteger(payload.installationId) ||
-      payload.installationId <= 0
+      (payload.installationId !== undefined &&
+        (!Number.isSafeInteger(payload.installationId) ||
+          payload.installationId <= 0))
     ) {
       return null;
     }
-    return payload.installationId;
+    return {
+      installationId: payload.installationId,
+      returnTo: safeReturnTo(payload.returnTo),
+    };
   } catch {
     return null;
   }
@@ -149,6 +197,10 @@ async function githubUserRequest<T>(accessToken: string, path: string) {
   return (await response.json()) as T;
 }
 
+export function getGitHubUser(accessToken: string) {
+  return githubUserRequest<GitHubUserPayload>(accessToken, "/user");
+}
+
 export async function authorizeGitHubInstallation(
   accessToken: string,
   installationId: number,
@@ -157,7 +209,7 @@ export async function authorizeGitHubInstallation(
   repositories: GitHubInstallationRepository[];
 }> {
   const [user, payload] = await Promise.all([
-    githubUserRequest<GitHubUserPayload>(accessToken, "/user"),
+    getGitHubUser(accessToken),
     githubUserRequest<InstallationRepositoriesPayload>(
       accessToken,
       `/user/installations/${installationId}/repositories?per_page=100`,

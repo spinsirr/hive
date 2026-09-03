@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { getInstallationRepositories } from "@/lib/github-app";
+import { verifyGitHubInstallState } from "@/lib/github-oauth";
+import { isRoomId } from "@/lib/room-id";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -16,7 +18,9 @@ function installationIdFrom(request: Request) {
 
 export async function GET(request: Request) {
   const installationId = installationIdFrom(request);
-  if (!installationId) {
+  const state = new URL(request.url).searchParams.get("state");
+  const roomId = verifyGitHubInstallState(state);
+  if (!installationId || !isRoomId(roomId)) {
     return NextResponse.json(
       { error: "GitHub did not provide a valid installation ID." },
       { status: 400 },
@@ -37,7 +41,7 @@ export async function GET(request: Request) {
 
     return NextResponse.redirect(
       new URL(
-        `/api/github/login?installation_id=${installationId}`,
+        `/api/github/login?installation_id=${installationId}&return_to=${encodeURIComponent(`/rooms/${roomId}`)}`,
         request.url,
       ),
     );

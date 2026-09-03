@@ -1,7 +1,7 @@
 import { and, eq, gte } from "drizzle-orm";
 
 import { db } from "@/db";
-import { roomPresence, rooms } from "@/db/schema";
+import { roomPresence, rooms, users } from "@/db/schema";
 import {
   applyHiveRunError,
   applyHiveRunResult,
@@ -12,20 +12,21 @@ import {
   isMemberId,
   type MemberId,
   reduceRoom,
+  resolveMember,
   type RoomAction,
   type RoomState,
+  type TeamMember,
 } from "@/lib/room";
 
 export type RoomSnapshot = {
   room: RoomState;
   activeMembers: MemberId[];
+  members: TeamMember[];
   typingMembers: MemberId[];
 };
 
-const ROOM_ID = "orbit-nav" as const;
 const ACTIVE_WINDOW_MS = 12_000;
-const memberOrder: MemberId[] = ["maya", "spencer"];
-let roomReady = false;
+const readyRooms = new Set<string>();
 
 function roomValues(room: RoomState) {
   return {
@@ -45,7 +46,7 @@ function roomValues(room: RoomState) {
 
 function roomState(row: typeof rooms.$inferSelect): RoomState {
   return {
-    roomId: ROOM_ID,
+    roomId: row.id,
     version: row.version,
     revision: row.revision === 2 ? 2 : 1,
     stage: row.stage,
@@ -59,55 +60,94 @@ function roomState(row: typeof rooms.$inferSelect): RoomState {
   };
 }
 
-async function ensureRoom(now: number) {
-  if (roomReady) return;
-  const initialRoom = createInitialRoomState(now);
+async function ensureRoom(roomId: string, now: number) {
+  if (readyRooms.has(roomId)) return;
+  const initialRoom = createInitialRoomState(now, roomId);
   await db.insert(rooms).values(roomValues(initialRoom)).onConflictDoNothing();
-  roomReady = true;
+  readyRooms.add(roomId);
+}
+
+async function getRoomMembers(roomId: string): Promise<TeamMember[]> {
+  const rows = await db
+    .select({
+      memberId: roomPresence.memberId,
+      avatarUrl: users.avatarUrl,
+      githubLogin: users.githubLogin,
+      initials: users.initials,
+      name: users.name,
+      shortName: users.shortName,
+    })
+    .from(roomPresence)
+    .leftJoin(users, eq(roomPresence.memberId, users.id))
+    .where(eq(roomPresence.roomId, roomId));
+
+  return rows.map((row) =>
+    row.name && row.shortName && row.initials
+      ? {
+          id: row.memberId,
+          name: row.name,
+          shortName: row.shortName,
+          initials: row.initials,
+          githubLogin: row.githubLogin ?? undefined,
+          avatarUrl: row.avatarUrl ?? undefined,
+        }
+      : resolveMember(row.memberId),
+  );
 }
 
 export async function heartbeat(
+  roomId: string,
   memberId: MemberId,
   typing = false,
   now = Date.now(),
 ) {
-  await ensureRoom(now);
+  await ensureRoom(roomId, now);
   await db
     .insert(roomPresence)
-    .values({ roomId: ROOM_ID, memberId, lastSeen: new Date(now), typing })
+    .values({ roomId, memberId, lastSeen: new Date(now), typing })
     .onConflictDoUpdate({
       target: [roomPresence.roomId, roomPresence.memberId],
       set: { lastSeen: new Date(now), typing },
     });
 
-  return getRoomSnapshot(now);
+  return getRoomSnapshot(roomId, now);
 }
 
-export async function applyRoomAction(action: RoomAction, now = Date.now()) {
+export async function applyRoomAction(
+  roomId: string,
+  action: RoomAction,
+  actor?: TeamMember,
+  now = Date.now(),
+) {
+  const storedMembers = await getRoomMembers(roomId);
+  const members = actor
+    ? [actor, ...storedMembers.filter((member) => member.id !== actor.id)]
+    : storedMembers;
+
   await db.transaction(async (transaction) => {
-    const initialRoom = createInitialRoomState(now);
+    const initialRoom = createInitialRoomState(now, roomId);
     await transaction.insert(rooms).values(roomValues(initialRoom)).onConflictDoNothing();
 
     const [storedRoom] = await transaction
       .select()
       .from(rooms)
-      .where(eq(rooms.id, ROOM_ID))
+      .where(eq(rooms.id, roomId))
       .for("update");
 
     if (!storedRoom) {
-      throw new Error(`Room ${ROOM_ID} could not be created.`);
+      throw new Error(`Room ${roomId} could not be created.`);
     }
 
-    const nextRoom = reduceRoom(roomState(storedRoom), action, now);
+    const nextRoom = reduceRoom(roomState(storedRoom), action, now, members);
     await transaction
       .update(rooms)
       .set(roomValues(nextRoom))
-      .where(eq(rooms.id, ROOM_ID));
+      .where(eq(rooms.id, roomId));
 
     await transaction
       .insert(roomPresence)
       .values({
-        roomId: ROOM_ID,
+        roomId,
         memberId: action.actor,
         lastSeen: new Date(now),
         typing: false,
@@ -117,12 +157,13 @@ export async function applyRoomAction(action: RoomAction, now = Date.now()) {
         set: { lastSeen: new Date(now) },
       });
   });
-  roomReady = true;
+  readyRooms.add(roomId);
 
-  return getRoomSnapshot(now);
+  return getRoomSnapshot(roomId, now);
 }
 
 export async function appendHiveReply(
+  roomId: string,
   body: string,
   options: {
     forMessageId?: string;
@@ -144,11 +185,11 @@ export async function appendHiveReply(
     const [storedRoom] = await transaction
       .select()
       .from(rooms)
-      .where(eq(rooms.id, ROOM_ID))
+      .where(eq(rooms.id, roomId))
       .for("update");
 
     if (!storedRoom) {
-      throw new Error(`Room ${ROOM_ID} could not be loaded.`);
+      throw new Error(`Room ${roomId} could not be loaded.`);
     }
 
     const currentRoom = roomState(storedRoom);
@@ -196,26 +237,29 @@ export async function appendHiveReply(
     await transaction
       .update(rooms)
       .set(roomValues(nextRoom))
-      .where(eq(rooms.id, ROOM_ID));
+      .where(eq(rooms.id, roomId));
   });
-  roomReady = true;
+  readyRooms.add(roomId);
 
-  return getRoomSnapshot(now);
+  return getRoomSnapshot(roomId, now);
 }
 
-export async function getRoomSnapshot(now = Date.now()): Promise<RoomSnapshot> {
-  let storedRoom = await db.query.rooms.findFirst({ where: eq(rooms.id, ROOM_ID) });
+export async function getRoomSnapshot(
+  roomId: string,
+  now = Date.now(),
+): Promise<RoomSnapshot> {
+  let storedRoom = await db.query.rooms.findFirst({ where: eq(rooms.id, roomId) });
 
   if (!storedRoom) {
-    roomReady = false;
-    await ensureRoom(now);
-    storedRoom = await db.query.rooms.findFirst({ where: eq(rooms.id, ROOM_ID) });
+    readyRooms.delete(roomId);
+    await ensureRoom(roomId, now);
+    storedRoom = await db.query.rooms.findFirst({ where: eq(rooms.id, roomId) });
   } else {
-    roomReady = true;
+    readyRooms.add(roomId);
   }
 
   if (!storedRoom) {
-    throw new Error(`Room ${ROOM_ID} could not be loaded.`);
+    throw new Error(`Room ${roomId} could not be loaded.`);
   }
 
   const activePresence = await db
@@ -223,24 +267,28 @@ export async function getRoomSnapshot(now = Date.now()): Promise<RoomSnapshot> {
     .from(roomPresence)
     .where(
       and(
-        eq(roomPresence.roomId, ROOM_ID),
+        eq(roomPresence.roomId, roomId),
         gte(roomPresence.lastSeen, new Date(now - ACTIVE_WINDOW_MS)),
       ),
     );
 
+  const members = await getRoomMembers(roomId);
+  const memberName = (memberId: MemberId) =>
+    resolveMember(memberId, members).name;
   const activeMembers = activePresence
     .map(({ memberId }) => memberId)
     .filter(isMemberId)
-    .sort((left, right) => memberOrder.indexOf(left) - memberOrder.indexOf(right));
+    .sort((left, right) => memberName(left).localeCompare(memberName(right)));
   const typingMembers = activePresence
     .filter(({ typing }) => typing)
     .map(({ memberId }) => memberId)
     .filter(isMemberId)
-    .sort((left, right) => memberOrder.indexOf(left) - memberOrder.indexOf(right));
+    .sort((left, right) => memberName(left).localeCompare(memberName(right)));
 
   return {
     room: roomState(storedRoom),
     activeMembers,
+    members,
     typingMembers,
   };
 }

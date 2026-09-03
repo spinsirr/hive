@@ -21,16 +21,15 @@ function installationIdFrom(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   const installationId = installationIdFrom(request);
-  if (!installationId) {
-    return NextResponse.json(
-      { error: "A valid GitHub App installation ID is required." },
-      { status: 400 },
-    );
-  }
 
   try {
-    await getInstallationRepositories(installationId);
-    const { maxAge, nonce, state } = createGitHubOAuthState(installationId);
+    if (installationId) {
+      await getInstallationRepositories(installationId);
+    }
+    const { maxAge, nonce, state } = createGitHubOAuthState({
+      installationId: installationId ?? undefined,
+      returnTo: request.nextUrl.searchParams.get("return_to") ?? undefined,
+    });
     const response = NextResponse.redirect(githubOAuthAuthorizeUrl(state));
     response.cookies.set(GITHUB_OAUTH_COOKIE, nonce, {
       httpOnly: true,

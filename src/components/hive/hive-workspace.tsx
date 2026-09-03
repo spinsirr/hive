@@ -34,11 +34,13 @@ import { displayHiveErrorMessage } from "@/lib/hive-error-copy";
 import {
   type ActiveSteer,
   type ChatMessage,
+  isDirectedAtTeammate,
   type MemberId,
-  memberDirectory,
   type RepositoryState,
+  resolveMember,
   type RunStage,
   type SteeringQueueItem,
+  type TeamMember,
   type WorkspaceState,
 } from "@/lib/room";
 import { shouldSubmitMessage } from "@/lib/message-keyboard";
@@ -78,12 +80,17 @@ function HiveMark({ className, light = false }: { className?: string; light?: bo
   );
 }
 
-function MemberStack({ activeMembers }: { activeMembers: MemberId[] }) {
+function MemberStack({
+  activeMembers,
+  members,
+}: {
+  activeMembers: MemberId[];
+  members: TeamMember[];
+}) {
   return (
     <div className="flex items-center">
-      {(["maya", "spencer"] as const).map((memberId, index) => {
-        const member = memberDirectory[memberId];
-        const active = activeMembers.includes(memberId);
+      {members.map((member, index) => {
+        const active = activeMembers.includes(member.id);
         return (
           <span
             className={cn(
@@ -91,7 +98,7 @@ function MemberStack({ activeMembers }: { activeMembers: MemberId[] }) {
               index > 0 && "-ml-1.5",
               index === 0 && "bg-[#171717] text-white",
             )}
-            key={memberId}
+            key={member.id}
             title={`${member.name}${active ? " · online" : " · away"}`}
           >
             {member.initials}
@@ -111,24 +118,25 @@ function ProductHeader({
   activeMembers,
   copied,
   currentMember,
+  members,
   repository,
   syncing,
   syncError,
   onCopyInvite,
-  onMemberChange,
+  onSignOut,
   onReset,
 }: {
   activeMembers: MemberId[];
   copied: boolean;
-  currentMember: MemberId;
+  currentMember: TeamMember;
+  members: TeamMember[];
   repository?: RepositoryState;
   syncing: boolean;
   syncError: boolean;
   onCopyInvite: () => void;
-  onMemberChange: (memberId: MemberId) => void;
+  onSignOut: () => void;
   onReset: () => void;
 }) {
-  const person = memberDirectory[currentMember];
   return (
     <header className="flex h-13 shrink-0 items-center justify-between border-b border-[#e8e8e8] bg-white px-3 sm:px-4">
       <div className="flex min-w-0 items-center gap-2.5">
@@ -168,20 +176,18 @@ function ProductHeader({
         </Button>
         <Button
           className="h-8 rounded-md bg-white px-2 text-xs text-[#333]"
-          onClick={() =>
-            onMemberChange(currentMember === "spencer" ? "maya" : "spencer")
-          }
+          onClick={onSignOut}
           size="sm"
-          title="Switch demo participant"
+          title={`Sign out @${currentMember.githubLogin ?? currentMember.shortName}`}
           variant="outline"
         >
           <span className="grid size-4 place-items-center rounded-full bg-[#171717] text-[7px] font-semibold text-white">
-            {person.initials}
+            {currentMember.initials}
           </span>
-          <span className="hidden sm:inline">{person.shortName}</span>
+          <span className="hidden sm:inline">{currentMember.shortName}</span>
         </Button>
         <div className="hidden sm:block">
-          <MemberStack activeMembers={activeMembers} />
+          <MemberStack activeMembers={activeMembers} members={members} />
         </div>
         <Button
           aria-label="Reset session"
@@ -198,7 +204,7 @@ function ProductHeader({
   );
 }
 
-function AnnotationCard({ queued, queuedBy, queuePosition, steered, steeredBy, onSteer, stage }: { queued: boolean; queuedBy?: MemberId; queuePosition?: number; steered: boolean; steeredBy?: MemberId; onSteer: () => void; stage: RunStage }) {
+function AnnotationCard({ members, queued, queuedBy, queuePosition, steered, steeredBy, onSteer, stage }: { members: TeamMember[]; queued: boolean; queuedBy?: MemberId; queuePosition?: number; steered: boolean; steeredBy?: MemberId; onSteer: () => void; stage: RunStage }) {
   return (
     <div className="mx-4 mb-3 overflow-hidden rounded-lg border border-[#d5d5d5] bg-white shadow-[0_8px_24px_rgba(0,0,0,0.05)]">
       <div className="flex items-center justify-between border-b border-[#eeeeee] px-3 py-2">
@@ -213,9 +219,9 @@ function AnnotationCard({ queued, queuedBy, queuePosition, steered, steeredBy, o
       </div>
       <div className="flex items-center justify-between gap-1.5 border-t border-[#eeeeee] bg-[#fafafa] px-2.5 py-2">
         {steered ? (
-          <span className="flex items-center gap-1.5 px-1 text-[11px] font-medium"><Check className="size-3.5" /> Steered by {steeredBy ? memberDirectory[steeredBy].shortName : "team"} · added to run</span>
+          <span className="flex items-center gap-1.5 px-1 text-[11px] font-medium"><Check className="size-3.5" /> Steered by {steeredBy ? resolveMember(steeredBy, members).shortName : "team"} · added to run</span>
         ) : queued ? (
-          <span className="flex items-center gap-1.5 px-1 text-[11px] font-medium"><span className="grid size-4 place-items-center rounded bg-[#171717] text-[9px] text-white">{queuePosition ?? "·"}</span> Queued by {queuedBy ? memberDirectory[queuedBy].shortName : "team"}</span>
+          <span className="flex items-center gap-1.5 px-1 text-[11px] font-medium"><span className="grid size-4 place-items-center rounded bg-[#171717] text-[9px] text-white">{queuePosition ?? "·"}</span> Queued by {queuedBy ? resolveMember(queuedBy, members).shortName : "team"}</span>
         ) : (
           <>
             <span className="px-1 text-[11px] text-[#777]">{stage === "running" ? "Hive is working" : "Start a follow-up turn"}</span>
@@ -230,9 +236,10 @@ function AnnotationCard({ queued, queuedBy, queuePosition, steered, steeredBy, o
   );
 }
 
-function SteeringQueue({ activeSteer, items, onMove, onRemove }: {
+function SteeringQueue({ activeSteer, items, members, onMove, onRemove }: {
   activeSteer?: ActiveSteer;
   items: SteeringQueueItem[];
+  members: TeamMember[];
   onMove: (steerId: string, direction: "up" | "down") => void;
   onRemove: (steerId: string) => void;
 }) {
@@ -249,12 +256,12 @@ function SteeringQueue({ activeSteer, items, onMove, onRemove }: {
       {activeSteer ? (
         <div className="mb-1.5 flex items-center gap-2 border border-[#171717] bg-[#171717] px-2 py-1.5 text-white">
           <span className="size-1.5 animate-pulse rounded-full bg-white" />
-          <span className="min-w-0 flex-1 truncate text-[11px]">Applying {memberDirectory[activeSteer.authorId].shortName}’s steer</span>
+          <span className="min-w-0 flex-1 truncate text-[11px]">Applying {resolveMember(activeSteer.authorId, members).shortName}’s steer</span>
         </div>
       ) : null}
       <div className="max-h-28 space-y-1 overflow-y-auto">
         {items.map((item, index) => {
-          const member = memberDirectory[item.authorId];
+          const member = resolveMember(item.authorId, members);
           return (
             <div className="group/queue flex items-center gap-2 border border-[#e3e3e3] bg-white px-2 py-1.5" key={item.id}>
               <span className="grid size-5 shrink-0 place-items-center rounded-sm bg-[#171717] text-[9px] text-white">{index + 1}</span>
@@ -283,7 +290,7 @@ function annotationTime(createdAt: number) {
   }).format(createdAt);
 }
 
-function SharedSession({ activeMembers, activeSteer, queued, queuedBy, queuePosition, steered, steeredBy, steeringQueue, currentMember, messages, onAnnotate, onMoveSteer, onRemoveSteer, onSteer, onSteerMessageAnnotation, onSend, onTyping, stage, typingMembers, workspaceAnnotation, compact = false }: {
+function SharedSession({ activeMembers, activeSteer, queued, queuedBy, queuePosition, steered, steeredBy, steeringQueue, currentMember, members, messages, onAnnotate, onMoveSteer, onRemoveSteer, onSteer, onSteerMessageAnnotation, onSend, onTyping, stage, typingMembers, workspaceAnnotation, compact = false }: {
   activeMembers: MemberId[];
   activeSteer?: ActiveSteer;
   queued: boolean;
@@ -293,6 +300,7 @@ function SharedSession({ activeMembers, activeSteer, queued, queuedBy, queuePosi
   steeredBy?: MemberId;
   steeringQueue: SteeringQueueItem[];
   currentMember: MemberId;
+  members: TeamMember[];
   messages: ChatMessage[];
   onAnnotate: (messageId: string, body: string) => void;
   onMoveSteer: (steerId: string, direction: "up" | "down") => void;
@@ -345,7 +353,7 @@ function SharedSession({ activeMembers, activeSteer, queued, queuedBy, queuePosi
           <span className="text-[11px] text-[#8a8a8a]">{activeMembers.length} online</span>
         </div>
       </div>
-      <SteeringQueue activeSteer={activeSteer} items={steeringQueue} onMove={onMoveSteer} onRemove={onRemoveSteer} />
+      <SteeringQueue activeSteer={activeSteer} items={steeringQueue} members={members} onMove={onMoveSteer} onRemove={onRemoveSteer} />
       <Conversation className="min-h-0 flex-1">
         <ConversationContent className={cn("gap-5 px-5 py-6", compact && "gap-4")}>
           {messages.map((message) => {
@@ -390,7 +398,7 @@ function SharedSession({ activeMembers, activeSteer, queued, queuedBy, queuePosi
                 {messageAnnotations.length > 0 ? (
                   <div className={cn("w-[88%] space-y-2 border-l border-[#cfcfcf] pl-3", isCurrentMember ? "ml-auto border-l-0 border-r pr-3 text-right" : "ml-7")}>
                     {messageAnnotations.map((annotation) => {
-                      const author = memberDirectory[annotation.authorId];
+                      const author = resolveMember(annotation.authorId, members);
                       return (
                         <div className="bg-[#fafafa] px-2.5 py-2 text-left" key={annotation.id}>
                           <div className="flex items-center gap-1.5">
@@ -401,9 +409,9 @@ function SharedSession({ activeMembers, activeSteer, queued, queuedBy, queuePosi
                           <p className="mt-1.5 text-[12px] leading-4 text-[#4d4d4d]">{annotation.body}</p>
                           <div className="mt-2 flex items-center justify-between gap-2 border-t border-[#ebebeb] pt-1.5">
                             {annotation.status === "steered" ? (
-                              <span className="flex items-center gap-1 text-[11px] text-[#666]"><Check className="size-3" /> Steered by {annotation.steeredBy ? memberDirectory[annotation.steeredBy].shortName : "team"}</span>
+                              <span className="flex items-center gap-1 text-[11px] text-[#666]"><Check className="size-3" /> Steered by {annotation.steeredBy ? resolveMember(annotation.steeredBy, members).shortName : "team"}</span>
                             ) : annotation.status === "queued" ? (
-                              <span className="flex items-center gap-1 text-[11px] text-[#666]"><span className="grid size-4 place-items-center rounded-sm bg-[#171717] text-[9px] text-white">{steeringQueue.findIndex((item) => item.source.kind === "message-annotation" && item.source.annotationId === annotation.id) + 1}</span> Queued by {annotation.queuedBy ? memberDirectory[annotation.queuedBy].shortName : "team"}</span>
+                              <span className="flex items-center gap-1 text-[11px] text-[#666]"><span className="grid size-4 place-items-center rounded-sm bg-[#171717] text-[9px] text-white">{steeringQueue.findIndex((item) => item.source.kind === "message-annotation" && item.source.annotationId === annotation.id) + 1}</span> Queued by {annotation.queuedBy ? resolveMember(annotation.queuedBy, members).shortName : "team"}</span>
                             ) : (
                               <div className="ml-auto">
                                 <Button
@@ -454,11 +462,11 @@ function SharedSession({ activeMembers, activeSteer, queued, queuedBy, queuePosi
               </Message>
             );
           })}
-          {otherTyping.length > 0 ? <p className="px-1 text-[11px] text-[#8f8f8f]">{otherTyping.map((memberId) => memberDirectory[memberId].shortName).join(", ")} {otherTyping.length === 1 ? "is" : "are"} typing…</p> : null}
+          {otherTyping.length > 0 ? <p className="px-1 text-[11px] text-[#8f8f8f]">{otherTyping.map((memberId) => resolveMember(memberId, members).shortName).join(", ")} {otherTyping.length === 1 ? "is" : "are"} typing…</p> : null}
         </ConversationContent>
         <ConversationScrollButton />
       </Conversation>
-      {workspaceAnnotation ? <AnnotationCard onSteer={onSteer} queuePosition={queuePosition} queued={queued} queuedBy={queuedBy} stage={stage} steered={steered} steeredBy={steeredBy} /> : null}
+      {workspaceAnnotation ? <AnnotationCard members={members} onSteer={onSteer} queuePosition={queuePosition} queued={queued} queuedBy={queuedBy} stage={stage} steered={steered} steeredBy={steeredBy} /> : null}
       <div className="border-t border-[#ebebeb] bg-[#fafafa] p-3">
         <div className="rounded-xl border border-[#d9d9d9] bg-white p-2 shadow-[0_1px_2px_rgba(0,0,0,0.03)] focus-within:border-[#999]">
           <div className="flex items-end gap-2">
@@ -495,8 +503,9 @@ function SharedSession({ activeMembers, activeSteer, queued, queuedBy, queuePosi
   );
 }
 
-function WorkspaceOverview({ repository, workspace }: {
+function WorkspaceOverview({ repository, roomId, workspace }: {
   repository?: RepositoryState;
+  roomId: string;
   workspace: WorkspaceState;
 }) {
   if (!repository) {
@@ -506,7 +515,7 @@ function WorkspaceOverview({ repository, workspace }: {
           <FolderGit2 className="size-7" />
           <h3 className="mt-5 text-lg font-semibold tracking-[-0.03em]">Connect the repository Hive will operate</h3>
           <p className="mt-2 text-sm leading-6 text-[#737373]">Install the repository-scoped GitHub App. Hive will mint a short-lived read token only when Vercel Sandbox needs to clone the selected repository.</p>
-          <a className="mt-5 inline-flex h-10 items-center gap-2 rounded-md bg-[#171717] px-4 text-sm font-medium text-white transition hover:bg-black" href="/api/github/install"><FolderGit2 className="size-4" /> Connect GitHub</a>
+          <a className="mt-5 inline-flex h-10 items-center gap-2 rounded-md bg-[#171717] px-4 text-sm font-medium text-white transition hover:bg-black" href={`/api/github/install?room_id=${encodeURIComponent(roomId)}`}><FolderGit2 className="size-4" /> Connect GitHub</a>
           <p className="mt-3 font-mono text-[9px] text-[#a1a1a1]">One selected repository · no PAT · token expires within one hour</p>
         </div>
       </div>
@@ -629,7 +638,7 @@ function TerminalPane({ commands }: { commands: WorkspaceState["commands"] }) {
   );
 }
 
-function Workspace({ repository, tab, workspace, onTabChange }: { repository?: RepositoryState; tab: WorkspaceTab; workspace: WorkspaceState; onTabChange: (tab: WorkspaceTab) => void }) {
+function Workspace({ repository, roomId, tab, workspace, onTabChange }: { repository?: RepositoryState; roomId: string; tab: WorkspaceTab; workspace: WorkspaceState; onTabChange: (tab: WorkspaceTab) => void }) {
   return (
     <section className="flex h-full min-h-0 flex-col bg-white">
       <div className="flex h-11 shrink-0 items-center border-b border-[#ebebeb] bg-white px-2 sm:px-3">
@@ -653,7 +662,7 @@ function Workspace({ repository, tab, workspace, onTabChange }: { repository?: R
           })}
         </div>
       </div>
-      <div className="min-h-0 flex-1">{tab === "workspace" ? <WorkspaceOverview repository={repository} workspace={workspace} /> : null}{tab === "diff" ? <DiffPane diff={workspace.diff} /> : null}{tab === "files" ? <FilesPane files={workspace.files} /> : null}{tab === "terminal" ? <TerminalPane commands={workspace.commands} /> : null}</div>
+      <div className="min-h-0 flex-1">{tab === "workspace" ? <WorkspaceOverview repository={repository} roomId={roomId} workspace={workspace} /> : null}{tab === "diff" ? <DiffPane diff={workspace.diff} /> : null}{tab === "files" ? <FilesPane files={workspace.files} /> : null}{tab === "terminal" ? <TerminalPane commands={workspace.commands} /> : null}</div>
     </section>
   );
 }
@@ -690,6 +699,7 @@ type SharedProps = {
   steered: boolean;
   steeredBy?: MemberId;
   currentMember: MemberId;
+  members: TeamMember[];
   messages: ChatMessage[];
   stage: RunStage;
   tab: WorkspaceTab;
@@ -707,17 +717,22 @@ type SharedProps = {
   onTabChange: (tab: WorkspaceTab) => void;
 };
 
-function normalizeMember(value?: string): MemberId {
-  return value === "maya" ? "maya" : "spencer";
-}
-
-export function HiveWorkspace({ initialMember }: { initialMember?: string }) {
-  const [currentMember, setCurrentMember] = useState<MemberId>(() => normalizeMember(initialMember));
+export function HiveWorkspace({
+  currentMember,
+  roomId,
+}: {
+  currentMember: TeamMember;
+  roomId: string;
+}) {
   const [pane, setPane] = useState<"chat" | "workspace">("chat");
   const [tab, setTab] = useState<WorkspaceTab>("workspace");
   const [copied, setCopied] = useState(false);
-  const { dispatch, setTyping, snapshot, syncing, syncError } = useSharedRoom(currentMember);
-  const { room, activeMembers, typingMembers } = snapshot;
+  const { dispatch, setTyping, snapshot, syncing, syncError } = useSharedRoom(roomId);
+  const { room, activeMembers, members, typingMembers } = snapshot;
+  const teamMembers = useMemo(
+    () => [currentMember, ...members.filter((member) => member.id !== currentMember.id)],
+    [currentMember, members],
+  );
   const { activeSteer, annotation, messages, repository, stage, steeringQueue, workspace } = room;
   const steered = annotation.status === "steered";
   const queued = annotation.status === "queued";
@@ -725,22 +740,20 @@ export function HiveWorkspace({ initialMember }: { initialMember?: string }) {
     (item) => item.source.kind === "workspace-annotation",
   ) + 1;
 
-  const changeMember = useCallback((nextMember: MemberId) => {
-    setTyping(false);
-    setCurrentMember(nextMember);
-    const url = new URL(window.location.href);
-    url.searchParams.set("as", nextMember);
-    window.history.replaceState(null, "", url);
-  }, [setTyping]);
   const copyInvite = useCallback(() => {
-    const invitee = currentMember === "spencer" ? "maya" : "spencer";
     const url = new URL(window.location.href);
-    url.searchParams.set("as", invitee);
+    url.search = "";
+    url.hash = "";
     void navigator.clipboard.writeText(url.toString()).then(() => {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1_500);
     });
-  }, [currentMember]);
+  }, []);
+  const signOut = useCallback(() => {
+    void fetch("/api/auth/logout", { method: "POST" }).then(() => {
+      window.location.reload();
+    });
+  }, []);
   const annotate = useCallback((messageId: string, body: string) => {
     void dispatch({ type: "annotate-message", messageId, body });
   }, [dispatch]);
@@ -755,11 +768,16 @@ export function HiveWorkspace({ initialMember }: { initialMember?: string }) {
     void dispatch({ type: "remove-queued-steer", steerId });
   }, [dispatch]);
   const send = useCallback((body: string) => {
-    if (repository && !body.trim().match(/^@(maya|spencer)\b/i)) setTab("terminal");
+    if (
+      repository &&
+      !isDirectedAtTeammate(body, currentMember.id, teamMembers)
+    ) {
+      setTab("terminal");
+    }
     void dispatch({ type: "send-message", body }).then((nextSnapshot) => {
       if (nextSnapshot?.room.stage === "review") setTab("diff");
     });
-  }, [dispatch, repository]);
+  }, [currentMember.id, dispatch, repository, teamMembers]);
   const advance = useCallback(() => {
     const action = stage === "running" && steeringQueue.length > 0
       ? ({ type: "apply-next-steer" } as const)
@@ -782,7 +800,8 @@ export function HiveWorkspace({ initialMember }: { initialMember?: string }) {
     queuePosition: queuePosition || undefined,
     steered,
     steeredBy: annotation.steeredBy,
-    currentMember,
+    currentMember: currentMember.id,
+    members: teamMembers,
     messages,
     stage,
     tab,
@@ -798,11 +817,11 @@ export function HiveWorkspace({ initialMember }: { initialMember?: string }) {
     onTyping: setTyping,
     onAdvance: advance,
     onTabChange: setTab,
-  }), [activeMembers, activeSteer, advance, annotate, annotation.queuedBy, annotation.steeredBy, annotation.text, currentMember, messages, moveSteer, queuePosition, queued, removeSteer, send, setTyping, stage, steer, steerMessageAnnotation, steered, steeringQueue, tab, typingMembers]);
+  }), [activeMembers, activeSteer, advance, annotate, annotation.queuedBy, annotation.steeredBy, annotation.text, currentMember.id, messages, moveSteer, queuePosition, queued, removeSteer, send, setTyping, stage, steer, steerMessageAnnotation, steered, steeringQueue, tab, teamMembers, typingMembers]);
 
   return (
     <main className="flex h-dvh min-h-[560px] flex-col overflow-hidden bg-[#fafafa] text-[#171717]">
-      <ProductHeader activeMembers={activeMembers} copied={copied} currentMember={currentMember} onCopyInvite={copyInvite} onMemberChange={changeMember} onReset={reset} repository={repository} syncing={syncing} syncError={syncError} />
+      <ProductHeader activeMembers={activeMembers} copied={copied} currentMember={currentMember} members={teamMembers} onCopyInvite={copyInvite} onSignOut={signOut} onReset={reset} repository={repository} syncing={syncing} syncError={syncError} />
       <div className="flex h-10 shrink-0 items-center gap-1 border-b border-[#e8e8e8] bg-[#fafafa] p-1 min-[960px]:hidden">
         <button
           aria-pressed={pane === "chat"}
@@ -848,7 +867,7 @@ export function HiveWorkspace({ initialMember }: { initialMember?: string }) {
           )}
         >
           <div className="min-h-0 flex-1">
-            <Workspace repository={repository} tab={shared.tab} workspace={workspace} onTabChange={shared.onTabChange} />
+            <Workspace repository={repository} roomId={roomId} tab={shared.tab} workspace={workspace} onTabChange={shared.onTabChange} />
           </div>
           <RunBar activeSteer={activeSteer} queueCount={steeringQueue.length} repository={repository} stage={shared.stage} onAdvance={shared.onAdvance} />
         </div>

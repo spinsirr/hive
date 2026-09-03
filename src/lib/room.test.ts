@@ -48,6 +48,52 @@ test("team messages stay in discussion while Hive tasks start one shared run", (
   assert.equal(task.messages.at(-1)?.memberId, "maya");
 });
 
+test("authenticated GitHub members keep real attribution and mentions human-only", () => {
+  const members = [
+    {
+      id: "github-101",
+      name: "Ada Lovelace",
+      shortName: "Ada",
+      initials: "AL",
+      githubLogin: "ada",
+    },
+    {
+      id: "github-202",
+      name: "Grace Hopper",
+      shortName: "Grace",
+      initials: "GH",
+      githubLogin: "ghopper",
+    },
+  ];
+  const connected = reduceRoom(
+    createInitialRoomState(1),
+    {
+      type: "connect-repository",
+      actor: members[0].id,
+      repositoryUrl: "https://github.com/team/project.git",
+      repositoryName: "team/project",
+      repositoryId: 1,
+      repositoryBranch: "main",
+      installationId: 2,
+      visibility: "private",
+      githubUserId: 101,
+      githubLogin: "ada",
+    },
+    10,
+    members,
+  );
+  const discussion = reduceRoom(
+    connected,
+    { type: "send-message", actor: members[0].id, body: "@ghopper thoughts?" },
+    20,
+    members,
+  );
+
+  assert.equal(discussion.stage, "waiting");
+  assert.equal(discussion.messages.at(-1)?.name, "Ada Lovelace");
+  assert.equal(discussion.messages.at(-1)?.memberId, "github-101");
+});
+
 test("an annotation created during a run waits for an explicit safe boundary", () => {
   const running = reduceRoom(
     connectedRoom(),
