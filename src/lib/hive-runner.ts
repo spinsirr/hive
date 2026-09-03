@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import path from "node:path";
 
 import {
@@ -30,14 +29,6 @@ function truncate(value: string, max = MAX_OUTPUT_CHARS) {
   return value.length <= max
     ? value
     : `${value.slice(0, max)}\n\n[output truncated by Hive]`;
-}
-
-function sandboxTemplateName(repositoryUrl: string) {
-  const digest = createHash("sha256")
-    .update(repositoryUrl)
-    .digest("hex")
-    .slice(0, 12);
-  return `hive-codex-${digest}`;
 }
 
 function repositoryDirectory(repositoryUrl: string) {
@@ -190,7 +181,6 @@ export async function runHiveCodingTask(
   try {
     const cloneCredentials = await getRepositoryCloneCredentials(room.repository);
     const sandbox = createVercelSandbox({
-      name: sandboxTemplateName(room.repository.url),
       runtime: "node24",
       ports: [CODEX_BRIDGE_PORT],
       source: {
