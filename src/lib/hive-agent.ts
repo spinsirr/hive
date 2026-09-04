@@ -1,7 +1,7 @@
 import { APICallError } from "ai";
 
 import { hiveErrorCopy } from "./hive-error-copy.ts";
-import type { HiveSessionCheckpoint } from "@/lib/room";
+import type { HiveSessionCheckpoint } from "@/lib/task-session";
 
 function errorStatusCode(error: unknown): number | undefined {
   if (APICallError.isInstance(error)) return error.statusCode;

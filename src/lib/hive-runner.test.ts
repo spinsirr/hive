@@ -4,9 +4,9 @@ import test from "node:test";
 import {
   isRepositoryWorkingCopy,
   resolvePersistentSandboxName,
-} from "./hive-session.ts";
+} from "./hive-sandbox.ts";
 
-function roomWithSandboxName(sandboxName?: string) {
+function sessionWithSandboxName(sandboxName?: string) {
   return {
     workspace: {
       status: "ready" as const,
@@ -19,27 +19,27 @@ function roomWithSandboxName(sandboxName?: string) {
   };
 }
 
-test("new Codex sessions receive a dedicated persistent room sandbox", () => {
+test("new Codex sessions receive a dedicated persistent session sandbox", () => {
   assert.equal(
-    resolvePersistentSandboxName(roomWithSandboxName(), "session-1"),
-    "hive-room-session-1",
+    resolvePersistentSandboxName(sessionWithSandboxName(), "session-1"),
+    "hive-session-session-1",
   );
 });
 
-test("a saved room sandbox identity is reused across turns", () => {
+test("a saved session sandbox identity is reused across turns", () => {
   assert.equal(
     resolvePersistentSandboxName(
-      roomWithSandboxName("hive-room-session-1"),
+      sessionWithSandboxName("hive-session-session-1"),
       "session-1",
     ),
-    "hive-room-session-1",
+    "hive-session-session-1",
   );
 });
 
 test("a previously successful Harness sandbox remains resumable", () => {
   assert.equal(
     resolvePersistentSandboxName(
-      roomWithSandboxName("ai-sdk-harness-session-session-1"),
+      sessionWithSandboxName("ai-sdk-harness-session-session-1"),
       "session-1",
     ),
     "ai-sdk-harness-session-session-1",
@@ -49,10 +49,10 @@ test("a previously successful Harness sandbox remains resumable", () => {
 test("unrelated legacy workspace names are not treated as Codex history", () => {
   assert.equal(
     resolvePersistentSandboxName(
-      roomWithSandboxName("hive-orbit-nav-legacy"),
+      sessionWithSandboxName("hive-orbit-nav-legacy"),
       "session-1",
     ),
-    "hive-room-session-1",
+    "hive-session-session-1",
   );
 });
 

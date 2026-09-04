@@ -4,14 +4,15 @@ import test from "node:test";
 import {
   applyHiveRunError,
   applyHiveRunResult,
-  createInitialRoomState,
-  reduceRoom,
-  type RoomState,
-} from "./room.ts";
+  appendHiveReply,
+  createInitialTaskSessionState,
+  reduceTaskSession,
+  type TaskSessionState,
+} from "./task-session.ts";
 
-function connectedRoom(): RoomState {
-  return reduceRoom(
-    createInitialRoomState(1),
+function connectedSession(): TaskSessionState {
+  return reduceTaskSession(
+    createInitialTaskSessionState(1),
     {
       type: "connect-repository",
       actor: "spencer",
@@ -29,13 +30,13 @@ function connectedRoom(): RoomState {
 }
 
 test("team messages stay in discussion while Hive tasks start one shared run", () => {
-  const connected = connectedRoom();
-  const discussion = reduceRoom(
+  const connected = connectedSession();
+  const discussion = reduceTaskSession(
     connected,
     { type: "send-message", actor: "spencer", body: "@maya thoughts?" },
     20,
   );
-  const task = reduceRoom(
+  const task = reduceTaskSession(
     discussion,
     { type: "send-message", actor: "maya", body: "Inspect the navigation" },
     30,
@@ -46,6 +47,112 @@ test("team messages stay in discussion while Hive tasks start one shared run", (
   assert.equal(task.stage, "running");
   assert.equal(task.workspace.status, "running");
   assert.equal(task.messages.at(-1)?.memberId, "maya");
+});
+
+test("a task can begin with Hive before a repository is attached", () => {
+  const initial = createInitialTaskSessionState(1, "clarify-task", {
+    title: "Clarify navigation behavior",
+    createdBy: "spencer",
+  });
+  const running = reduceTaskSession(
+    initial,
+    { type: "send-message", actor: "spencer", body: "Help us define the acceptance criteria." },
+    2,
+  );
+
+  assert.equal(running.stage, "running");
+  assert.equal(running.repository, undefined);
+  assert.equal(running.workspace.status, "disconnected");
+  assert.equal(running.workspace.agentSession, undefined);
+  assert.equal(running.workspace.startedAt, 2);
+
+  const replied = appendHiveReply(running, "Let’s first define the active route behavior.", 3);
+  assert.equal(replied.stage, "waiting");
+  assert.equal(replied.workspace.startedAt, undefined);
+  assert.equal(replied.workspace.completedAt, 3);
+});
+
+test("attaching a repository preserves the task transcript and existing Codex identity", () => {
+  const initial = createInitialTaskSessionState(1, "late-repo", {
+    title: "Fix the secondary navigation",
+    createdBy: "spencer",
+  });
+  const withRuntime = {
+    ...initial,
+    workspace: {
+      ...initial.workspace,
+      agentSession: { id: "codex-existing", runtime: "codex" as const },
+      sandboxName: "hive-session-codex-existing",
+    },
+  };
+  const connected = reduceTaskSession(
+    withRuntime,
+    {
+      type: "connect-repository",
+      actor: "spencer",
+      repositoryUrl: "https://github.com/team/project.git",
+      repositoryName: "team/project",
+      repositoryId: 42,
+      repositoryBranch: "main",
+      installationId: 7,
+      visibility: "private",
+      githubUserId: 10,
+      githubLogin: "spencer",
+    },
+    4,
+  );
+
+  assert.equal(connected.title, initial.title);
+  assert.equal(connected.messages.length, initial.messages.length + 1);
+  assert.equal(connected.workspace.agentSession?.id, "codex-existing");
+  assert.equal(connected.workspace.sandboxName, "hive-session-codex-existing");
+
+  const ignoredReplacement = reduceTaskSession(
+    connected,
+    {
+      type: "connect-repository",
+      actor: "spencer",
+      repositoryUrl: "https://github.com/team/other.git",
+      repositoryName: "team/other",
+      repositoryId: 43,
+      repositoryBranch: "main",
+      installationId: 7,
+      visibility: "private",
+      githubUserId: 10,
+      githubLogin: "spencer",
+    },
+    5,
+  );
+  assert.equal(ignoredReplacement.repository?.name, "team/project");
+});
+
+test("a completed task is immutable until a teammate reopens it", () => {
+  const initial = createInitialTaskSessionState(1, "completed-task", {
+    title: "Finish navigation polish",
+    createdBy: "spencer",
+  });
+  const completed = reduceTaskSession(
+    initial,
+    { type: "complete-session", actor: "spencer" },
+    2,
+  );
+  assert.equal(completed.lifecycle, "completed");
+  assert.equal(completed.completedAt, 2);
+
+  const ignored = reduceTaskSession(
+    completed,
+    { type: "send-message", actor: "spencer", body: "One more thing" },
+    3,
+  );
+  assert.equal(ignored.messages.length, completed.messages.length);
+
+  const reopened = reduceTaskSession(
+    completed,
+    { type: "reopen-session", actor: "spencer" },
+    4,
+  );
+  assert.equal(reopened.lifecycle, "active");
+  assert.equal(reopened.completedAt, undefined);
 });
 
 test("authenticated GitHub members keep real attribution and mentions human-only", () => {
@@ -65,8 +172,8 @@ test("authenticated GitHub members keep real attribution and mentions human-only
       githubLogin: "ghopper",
     },
   ];
-  const connected = reduceRoom(
-    createInitialRoomState(1),
+  const connected = reduceTaskSession(
+    createInitialTaskSessionState(1),
     {
       type: "connect-repository",
       actor: members[0].id,
@@ -82,7 +189,7 @@ test("authenticated GitHub members keep real attribution and mentions human-only
     10,
     members,
   );
-  const discussion = reduceRoom(
+  const discussion = reduceTaskSession(
     connected,
     { type: "send-message", actor: members[0].id, body: "@ghopper thoughts?" },
     20,
@@ -95,15 +202,15 @@ test("authenticated GitHub members keep real attribution and mentions human-only
 });
 
 test("an annotation created during a run waits for an explicit safe boundary", () => {
-  const running = reduceRoom(
-    connectedRoom(),
+  const running = reduceTaskSession(
+    connectedSession(),
     { type: "send-message", actor: "spencer", body: "Update the menu" },
     20,
   );
   const sourceMessage = running.messages.at(-1);
   assert.ok(sourceMessage);
 
-  const annotated = reduceRoom(
+  const annotated = reduceTaskSession(
     running,
     {
       type: "annotate-message",
@@ -116,7 +223,7 @@ test("an annotation created during a run waits for an explicit safe boundary", (
   const annotation = annotated.messages.at(-1)?.annotations?.[0];
   assert.ok(annotation);
 
-  const queued = reduceRoom(
+  const queued = reduceTaskSession(
     annotated,
     {
       type: "steer-message-annotation",
@@ -134,7 +241,7 @@ test("an annotation created during a run waits for an explicit safe boundary", (
     "queued",
   );
 
-  const applied = reduceRoom(
+  const applied = reduceTaskSession(
     queued,
     { type: "apply-next-steer", actor: "spencer" },
     50,
@@ -148,8 +255,8 @@ test("an annotation created during a run waits for an explicit safe boundary", (
 });
 
 test("a review annotation can start the next turn in the same Codex session", () => {
-  const running = reduceRoom(
-    connectedRoom(),
+  const running = reduceTaskSession(
+    connectedSession(),
     { type: "send-message", actor: "spencer", body: "Update the menu" },
     20,
   );
@@ -158,7 +265,7 @@ test("a review annotation can start the next turn in the same Codex session", ()
   const review = applyHiveRunResult(
     running,
     {
-      sandboxName: "hive-room-test",
+      sandboxName: "hive-session-test",
       agentSession: running.workspace.agentSession!,
       summary: "Updated the menu.",
       diff: "+ update",
@@ -168,7 +275,7 @@ test("a review annotation can start the next turn in the same Codex session", ()
     },
     30,
   );
-  const annotated = reduceRoom(
+  const annotated = reduceTaskSession(
     review,
     {
       type: "annotate-message",
@@ -183,7 +290,7 @@ test("a review annotation can start the next turn in the same Codex session", ()
     ?.annotations?.[0];
   assert.ok(annotation);
 
-  const steered = reduceRoom(
+  const steered = reduceTaskSession(
     annotated,
     {
       type: "steer-message-annotation",
@@ -207,7 +314,7 @@ test("a review annotation can start the next turn in the same Codex session", ()
 
 test("a completed run stays running when another steer is queued", () => {
   const running = {
-    ...connectedRoom(),
+    ...connectedSession(),
     stage: "running" as const,
     steeringQueue: [
       {
@@ -240,8 +347,8 @@ test("a completed run stays running when another steer is queued", () => {
 });
 
 test("reset preserves the repository but clears run artifacts", () => {
-  const connected = connectedRoom();
-  const room = {
+  const connected = connectedSession();
+  const session = {
     ...connected,
     stage: "review" as const,
     workspace: {
@@ -253,7 +360,7 @@ test("reset preserves the repository but clears run artifacts", () => {
       changedFiles: ["nav.tsx"],
     },
   };
-  const reset = reduceRoom(room, { type: "reset", actor: "maya" }, 40);
+  const reset = reduceTaskSession(session, { type: "reset", actor: "maya" }, 40);
 
   assert.equal(reset.repository?.name, "spinsirr/hive");
   assert.equal(reset.stage, "waiting");
@@ -262,18 +369,18 @@ test("reset preserves the repository but clears run artifacts", () => {
   assert.equal(reset.messages.length, 1);
   assert.notEqual(
     reset.workspace.agentSession?.id,
-    room.workspace.agentSession?.id,
+    session.workspace.agentSession?.id,
   );
 });
 
 test("a second task sent during a run joins the attributed steering queue", () => {
-  const running = reduceRoom(
-    connectedRoom(),
+  const running = reduceTaskSession(
+    connectedSession(),
     { type: "send-message", actor: "spencer", body: "Update the menu" },
     20,
   );
   const sessionId = running.workspace.agentSession?.id;
-  const queued = reduceRoom(
+  const queued = reduceTaskSession(
     running,
     { type: "send-message", actor: "maya", body: "Keep it compact" },
     30,
@@ -289,7 +396,7 @@ test("a second task sent during a run joins the attributed steering queue", () =
 });
 
 test("a failed start preserves the Codex session identity", () => {
-  const connected = connectedRoom();
+  const connected = connectedSession();
   const originalSessionId = connected.workspace.agentSession?.id;
   const failed = applyHiveRunError(connected, "failed", 50);
 
@@ -299,14 +406,14 @@ test("a failed start preserves the Codex session identity", () => {
 });
 
 test("a transient error preserves a resumable Codex session", () => {
-  const connected = connectedRoom();
+  const connected = connectedSession();
   const resumeFrom = {
     type: "resume-session" as const,
     harnessId: "codex",
     specificationVersion: "harness-v1" as const,
     data: { threadId: "thread-1" },
   };
-  const resumable: RoomState = {
+  const resumable: TaskSessionState = {
     ...connected,
     workspace: {
       ...connected.workspace,
@@ -325,7 +432,7 @@ test("a transient error preserves a resumable Codex session", () => {
 });
 
 test("a failed turn persists the latest Codex checkpoint", () => {
-  const connected = connectedRoom();
+  const connected = connectedSession();
   const resumeFrom = {
     type: "resume-session" as const,
     harnessId: "codex",
@@ -333,7 +440,7 @@ test("a failed turn persists the latest Codex checkpoint", () => {
     data: { threadId: "thread-after-rate-limit" },
   };
   const failed = applyHiveRunError(connected, "rate limited", 80, {
-    sandboxName: "hive-room-durable",
+    sandboxName: "hive-session-durable",
     agentSession: {
       id: connected.workspace.agentSession!.id,
       runtime: "codex",
@@ -341,6 +448,6 @@ test("a failed turn persists the latest Codex checkpoint", () => {
     },
   });
 
-  assert.equal(failed.workspace.sandboxName, "hive-room-durable");
+  assert.equal(failed.workspace.sandboxName, "hive-session-durable");
   assert.deepEqual(failed.workspace.agentSession?.resumeFrom, resumeFrom);
 });

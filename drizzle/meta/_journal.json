@@ -29,6 +29,34 @@
       "when": 1788411396707,
       "tag": "0003_overrated_kat_farrell",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788487488700,
+      "tag": "0004_chubby_power_pack",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788487709118,
+      "tag": "0005_backfill_github_installations",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788487755347,
+      "tag": "0006_backfill_legacy_github_installations",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1788488545930,
+      "tag": "0007_dazzling_centennial",
+      "breakpoints": true
     }
   ]
 }

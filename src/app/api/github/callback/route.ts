@@ -12,8 +12,7 @@ import {
   HIVE_SESSION_COOKIE,
   sessionCookieOptions,
 } from "@/lib/auth-session";
-import { isRoomId } from "@/lib/room-id";
-import { applyRoomAction } from "@/lib/room-store";
+import { saveGitHubInstallation } from "@/lib/github-connection-store";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -26,12 +25,6 @@ function clearOAuthCookie(response: NextResponse) {
     sameSite: "lax",
   });
   return response;
-}
-
-function roomIdFromReturnTo(returnTo: string) {
-  const match = returnTo.match(/^\/rooms\/([^/?#]+)/);
-  const roomId = match?.[1];
-  return isRoomId(roomId) ? roomId : "orbit-nav";
 }
 
 export async function GET(request: NextRequest) {
@@ -64,46 +57,18 @@ export async function GET(request: NextRequest) {
           repositories: [],
           user: await getGitHubUser(accessToken),
         };
-    if (oauthState.installationId && authorization.repositories.length !== 1) {
-      return clearOAuthCookie(
-        NextResponse.json(
-          {
-            error:
-              "Hive's single-team demo expects exactly one selected repository. Update the GitHub App installation and try again.",
-          },
-          { status: 409 },
-        ),
-      );
-    }
-
     const { expiresAt, member, token } = await createUserSession(
       authorization.user,
     );
 
     if (oauthState.installationId) {
-      const [repository] = authorization.repositories;
-      await applyRoomAction(
-        roomIdFromReturnTo(oauthState.returnTo),
-        {
-          type: "connect-repository",
-          actor: member.id,
-          repositoryUrl: repository.cloneUrl,
-          repositoryName: repository.name,
-          repositoryId: repository.id,
-          repositoryBranch: repository.defaultBranch,
-          installationId: oauthState.installationId,
-          visibility: repository.visibility,
-          githubUserId: authorization.user.id,
-          githubLogin: authorization.user.login,
-        },
-        member,
+      await saveGitHubInstallation(
+        oauthState.installationId,
+        member.id,
       );
     }
 
     const redirectUrl = new URL(oauthState.returnTo, request.url);
-    if (oauthState.installationId) {
-      redirectUrl.searchParams.set("github", "connected");
-    }
     const response = NextResponse.redirect(redirectUrl);
     response.cookies.set(HIVE_SESSION_COOKIE, token, {
       ...sessionCookieOptions(request.nextUrl.protocol === "https:"),

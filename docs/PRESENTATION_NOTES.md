@@ -1,463 +1,177 @@
 # Hive — Presentation Notes
 
-This is a living record for the take-home presentation. Update it when a product
-decision changes, a meaningful alternative is rejected, or an implementation
-claim gains evidence.
+This is the source of truth for the take-home story. Update it when a product decision changes or a claim gains evidence.
 
-## Submission requirements
+## Submission checklist
 
-Submit all four items at least 24 hours before the presentation:
+Send all four at least 24 hours before the presentation:
 
 - Public GitHub repository with readable commit history.
 - Live deployed URL.
-- Written overview covering the problem, key decisions, and AI collaboration.
-- A one-to-two paragraph summary blurb.
+- README covering the problem, decisions, and AI collaboration.
+- One-to-two paragraph summary blurb.
 
-The presentation is 90 minutes. The product demo should take about 20 minutes
-and follow this order: problem, solution, code, AI journey.
+The presentation is 90 minutes; the product demo is about 20 minutes in this order: problem, solution, code, AI journey.
 
-Current production URL:
-[hive-roan-mu.vercel.app](https://hive-roan-mu.vercel.app/rooms/orbit-nav).
+Current app: [hive-roan-mu.vercel.app](https://hive-roan-mu.vercel.app/)
 
-## One-sentence product definition
+## Summary blurb
 
-Hive is a multiplayer coding agent session where teammates prompt, annotate, and
-steer the same live agent while sharing its transcript, workspace, and execution
-state in real time.
+Hive is a multiplayer coding agent for small software teams. Instead of one person privately prompting an agent and handing the result to teammates later, everyone shares the same task-scoped conversation and execution workspace. Teammates can talk directly to one another, annotate a specific message, or deliberately promote an annotation into a steer for Hive.
 
-The demo is deliberately a Next.js full-stack product, not a static UI concept:
-the transcript, presence, annotation, and run lifecycle flow through Next.js
-route handlers and persist in Postgres.
+I built the smallest full-stack version that proves that interaction. GitHub OAuth provides real authorship, signed invites control session membership, Postgres persists and serializes shared state, a GitHub App supplies team repository access, and AI SDK Harness runs Codex inside a persistent Vercel Sandbox. The product exposes real files, commands, and diffs, while intentionally stopping before branch push and pull-request creation.
 
-## The problem
+## Problem
 
-Coding agents are still primarily single-player: one person owns the prompt,
-queue, transcript, and workspace, while teammates enter only after a pull request
-exists. Teams copy context between private sessions, send screenshots and links,
-and review decisions after the agent has already acted.
+Coding agents are still primarily single-player. One person owns the prompt, transcript, and workspace; teammates enter after the agent has already acted. The team copies context across private agent sessions, chat tools, screenshots, and pull requests, losing both intent and clear authorship.
 
-The missing primitive is not another team chat. It is a live agent session that
-several people can inhabit together: everyone can see what the agent is doing,
-comment on its work, steer its next move, and understand who changed its direction.
+The missing primitive is not another team chat. It is a shared agent session where several humans can see the same work, discuss it in context, and control one agent without racing to overwrite one another.
 
-## The narrow MVP
+## Solution
 
-- One team with two or more people.
-- One connected GitHub repository.
-- One shared, mutating coding-agent run.
-- One live transcript where every human prompt is attributed.
-- Shared presence, workspace, files, diff, and run state.
-- Comments that can remain annotations or be promoted into agent instructions.
-- A visible steering queue while the agent is busy; messages never silently
-  overwrite one another.
+Hive makes the agent conversation the primary product surface:
 
-The demo task is deliberately ordinary: improve a second-level navigation menu
-in a connected GitHub repository. The point is to show that even a small
-frontend task gives two people many obvious moments to review and redirect the
-same agent without requiring domain setup.
+- Every normal message addresses Hive; an explicit `@teammate` mention remains human discussion.
+- Every human message has server-authoritative authorship.
+- A teammate can annotate a particular message without waking Hive.
+- Promoting an annotation to **Steer Hive** makes the transition from discussion to execution visible.
+- Steers created during a run enter an attributed, ordered queue and wait for a safe boundary.
+- Everyone sees the same transcript, presence, repository, run state, files, command output, and diff.
 
-## Taste and scope signals
+## Domain model
 
-These are the decisions worth emphasizing in the presentation. They demonstrate
-judgment more strongly than a long feature list.
+- **Team:** long-lived people and shared GitHub repository access.
+- **Task Session:** one intended outcome, one shared transcript, and at most one repository.
+- **Repository Access:** the team-authorized GitHub pool.
+- **Attached Repository:** selected at any time after a task begins and immutable within that session.
+- **Annotation:** discussion attached to a teammate message.
+- **Steer:** discussion explicitly promoted into agent direction.
+- **Run:** one execution turn against the attached repository.
+- **Workspace:** evidence of what the agent actually did.
 
-### The agent conversation is the primary surface
+This correction matters: the team is the durable collaboration space; a session is not a channel or project. Its lifecycle is exactly one task.
 
-Hive is not a team room with a bot attached. Every participant is inside the same
-agent conversation by default. Human-to-human discussion happens inline through
-mentions and annotations without creating a second conversational universe.
+## Taste and scope decisions
 
-### We chose a deliberately ordinary task
-
-A second-level menu is understandable without domain setup, yet it still exposes
-a real ambiguity between technically correct output and intended behavior. This
-lets the audience understand the problem before spending time learning the demo.
-
-### We distinguish annotate from steer
-
-A teammate can comment on a message, file, preview, or diff without accidentally
-redirecting the agent. Promoting that comment to a steer is an explicit action.
-This gives multiplayer collaboration a precise interaction model without making
-every human message a race to control the run.
-
-### Team speech is addressable, not a flat log
-
-Human messages can carry attributed inline annotations. This lets the team ask a
-question about a specific statement without copying it into another chat message
-or waking the agent. The transcript becomes shared working context rather than a
-chronological pile of prompts.
-
-### The agent knows when humans are talking to each other
-
-Messages default to Hive. A direct teammate mention changes the audience, and the
-agent visibly yields instead of answering a question intended for a person. This
-small behavior makes the transcript feel genuinely multiplayer rather than like
-several people competing for one chatbot input.
-
-### Steering is queued, attributed, and observable
-
-If Hive is already working, new steering instructions join a visible queue with
-their author. Teammates can see, edit, or reorder pending direction. Concurrent
-input is a product state, not a last-write-wins database accident.
-
-### We implemented the differentiator before the commodity infrastructure
-
-Real cross-client synchronization, concurrent-write safety, and shared run state
-were built before repository execution. The next layer reused AI SDK's agent
-loop and Vercel Sandbox instead of building a custom container platform. The
-multiplayer control layer remains the product-specific part.
-
-### We scoped the system to one team, repository, and mutating run
-
-Multi-tenancy, permissions matrices, repository browsers, and parallel run
-orchestration are credible next layers, but none are required to test whether two
-people can safely steer one agent. Leaving them out protects both build quality
-and the clarity of the demo.
-
-### We used restraint in the interface
-
-The black-and-white Vercel-style system keeps the shared transcript and work
-prominent. Presence is visible but quiet; authorship, queued steering, and agent
-state carry more weight than decorative collaboration chrome.
-
-### Errors are system state, not agent theater
-
-A failed run appears as one quiet, actionable status line rather than a second
-Hive speech bubble explaining or defending itself. The human message remains in
-the canonical transcript, while the Codex checkpoint is persisted invisibly.
-Reliability belongs in the system design, not in apologetic interface copy.
-
-### We refuse to overclaim the prototype
-
-The multiplayer protocol, persistence, concurrency behavior, sandbox workspace,
-file changes, commands, and git diff are real. GitHub write-back is not: Hive
-does not claim to push a branch or create a pull request. Saying exactly where
-the product ends is part of the credibility of the submission.
-
-## Core demo sequence
-
-1. Spencer connects the demo repository and asks Hive to improve its second-level navigation.
-2. Hive clones it into a persistent Vercel Sandbox and begins a real tool loop.
-3. Maya joins the same session and immediately sees its live transcript, status,
-   and workspace—there is no handoff summary.
-4. Maya annotates Spencer's task statement. The annotation does not interrupt Hive.
-5. Maya asks `@Spencer` which state should remain highlighted. Hive recognizes a
-   human mention and leaves the question to Spencer.
-6. Spencer replies. Maya promotes the resolved comment to **Steer Hive** with the
-   constraint to keep the parent expanded and highlight only the active child.
-7. Because Hive is working, the steer appears in a visible attributed queue and
-   then becomes the next instruction.
-8. Hive exposes the actual changed files, terminal output, and git diff to both participants.
-9. Both teammates review and approve the same sandbox result. Opening a pull
-   request remains outside the current read-only GitHub connection.
-
-## Product decisions and rejected alternatives
-
-| Decision | Why | Rejected alternative |
+| Decision | Why it matters | Rejected alternative |
 | --- | --- | --- |
-| Call the product and agent **Hive** | One identity represents the shared team agent. | Relay and Orbit were ambiguous product names. |
-| Start with one team and one repository | Demonstrates the product thesis without spending the build on tenant administration. | Multi-tenant organizations, roles, billing, and broad repository management. |
-| Make multiplayer the product | The missing interaction is several humans inhabiting and steering one live agent session. | Treating collaboration as a secondary intent-approval workflow. |
-| Keep agent conversation primary | Every message defaults to Hive; teammate mentions and annotations are inline exceptions. | A separate human Team Room beside an agent workspace. |
-| Separate annotate from steer | People need to discuss work without every comment redirecting the run. | Treating all messages as prompts or requiring a formal decision card for every change. |
-| Queue and attribute concurrent steering | Multiplayer input must stay visible and deterministic while the agent is busy. | Last-write-wins prompts or silently merging instructions. |
-| Use AI SDK Harness + Codex + Vercel Sandbox | The take-home should validate multiplayer control, not recreate Codex session management or container infrastructure. | Building a new coding harness and VM platform within the six-hour exercise. |
-| Keep Neon as canonical history | A Codex thread ID is only resumable while its session files and workspace still exist. The room transcript must survive compute failure. | Treating `~/.codex/sessions` inside one sandbox as the product database. |
-| Separate GitHub user identity from repository execution | OAuth proves which human may bind the App installation; a fresh installation token performs the clone with one-repository, read-only scope. | A personal access token, or trusting the spoofable `installation_id` query parameter by itself. |
-| Make identity server-authoritative | A room URL identifies shared work, never a person. GitHub OAuth creates a revocable Postgres session; every API mutation overwrites any client-supplied actor with that session's user. | `?as=spencer`, browser-selected personas, or trusting an `actor` JSON field. |
-| Keep Codex resume state private | The browser needs the visible session ID, not Harness credentials or the opaque checkpoint used to resume the sandbox. API snapshots strip `resumeFrom`. | Returning the persisted database row directly to clients. |
-| Use an ordinary frontend change | Makes the intention problem understandable in seconds. | A deployment workflow that distracts from the core interaction. |
-| Use Vercel Marketplace Postgres | Vercel no longer operates a separate Vercel Postgres product; Marketplace provides the managed database and environment integration. | Presenting direct Neon and “Vercel database” as competing architectures. |
-| Do not reuse personal Claude/Codex subscription tokens | Product authentication and spend should be auditable and scoped to the app. | Shipping personal setup tokens in a deployed demo. |
+| Make the agent conversation primary | Collaboration happens before and during execution, not beside it. | A team chat with a tagged bot. |
+| One task per session | Gives the transcript, repository, and run state a clear lifecycle. | A long-lived room that accumulates unrelated work. |
+| Allow conversation before repository attachment | Intent can be clarified before code access is needed. | Requiring a repo during session provisioning. |
+| Separate annotate from steer | Humans can discuss without accidentally redirecting the agent. | Treating every comment as a prompt. |
+| Queue concurrent steering | Multiplayer input stays visible, attributed, and deterministic. | Last-write-wins prompts or silent instruction merging. |
+| One repository per task | Keeps credentials, filesystem scope, and review evidence legible. | Ambient access to every team repository. |
+| GitHub App for team access, OAuth for identity | Repository authority and human identity have different lifecycles. | Personal access tokens or browser-supplied identity. |
+| Reuse AI SDK Harness + Codex + Sandbox | The differentiator is multiplayer control, not rebuilding an agent runtime. | A custom harness and container platform. |
+| Neon is canonical history | Native Codex history can disappear with compute; team intent cannot. | Treating sandbox files as the product database. |
+| Quiet error state | A failure should not become a theatrical agent apology. | Large error bubbles that repeat internal details. |
+| Ordinary frontend demo task | A second-level menu exposes intent ambiguity without domain setup. | A deployment workflow that distracts from collaboration. |
+| Remove Vercel Connect experiment | The available install flow is developer-dashboard oriented; direct GitHub App onboarding fits users today. | Shipping a connector path users cannot complete. |
+
+## Demo sequence (20 minutes)
+
+### 0–3 min — Problem
+
+Explain how a coding task currently begins in one person’s private agent context and becomes collaborative only after work is produced. Emphasize lost intent, delayed review, and unclear authorship.
+
+### 3–10 min — Product
+
+1. Create “Polish the mobile navigation” from the task list.
+2. Start talking to Hive before attaching a repository; agree on expected behavior.
+3. Attach `spinsirr/hive` from the team’s authorized repository pool.
+4. Open the signed invite in a second authenticated browser.
+5. Send `@Spencer should the parent remain expanded?`; point out that Hive does not answer.
+6. Add “Keep the parent expanded, highlight only the active child” as an annotation.
+7. Promote it to **Steer Hive** while a run is active; show author and queue position.
+8. Review the same real commands, changed files, and git diff from both browsers.
+9. Complete the task and show that the transcript becomes read-only.
+
+### 10–15 min — Code
+
+- [`src/lib/task-session.ts`](../src/lib/task-session.ts): pure multiplayer state machine and wake-up boundaries.
+- [`src/lib/task-session-store.ts`](../src/lib/task-session-store.ts): Postgres membership, row locking, and durable snapshots.
+- [`src/app/api/sessions/[sessionId]/route.ts`](../src/app/api/sessions/[sessionId]/route.ts): authenticated mutation boundary and planning-vs-coding routing.
+- [`src/lib/hive-runner.ts`](../src/lib/hive-runner.ts): Harness/Codex lifecycle, persistent Sandbox, checkpointing, and artifact collection.
+- [`src/app/api/github/repositories/route.ts`](../src/app/api/github/repositories/route.ts): server-validated repository attachment.
+- [`src/hooks/use-shared-session.ts`](../src/hooks/use-shared-session.ts): polling, presence heartbeat, local-tab broadcast, and offline state.
+
+### 15–18 min — AI journey
+
+Show the brainstorm as evidence of collaboration rather than a perfect linear plan:
+
+- AI helped compare the idea against v0, Claude tagging, and Conductor; the human kept pushing until the product had a real multiplayer interaction.
+- AI initially over-indexed on intent governance; the human corrected the product back to a shared agent conversation.
+- AI proposed repository-at-provisioning and long-lived rooms; the human clarified late attachment and one-task session lifecycle.
+- AI produced a plausible Codex session plan; the human caught that history would disappear with the sandbox, leading to canonical Postgres history plus resumable checkpoints.
+- AI accelerated UI, code, migrations, and diagnosis; the human owned scope, trust boundaries, product language, and what not to claim.
+
+### 18–20 min — Boundaries
+
+Be explicit: GitHub write-back is not built; organization administration is not built; sandbox disaster recovery from the canonical transcript is a next layer. The validated product claim is two people collaborating with and steering one real coding agent.
 
 ## What is real today
 
-- Both participants share the same room state through an API.
-- Messages, presence, typing, context revision, and run stage synchronize across
-  clients.
-- Room state persists in Postgres across server restarts.
-- A GitHub App is installed on exactly one private repository. GitHub user OAuth
-  verifies that the authorizing human can access the installation before Hive
-  persists repository metadata.
-- The OAuth user token is used only for that binding check and then discarded.
-  Each Sandbox clone gets a newly minted installation token limited to the
-  selected repository and `contents:read`; neither credential is persisted in
-  room state or exposed to the agent tool loop.
-- AI SDK Harness runs the Codex adapter inside a named persistent Vercel
-  Sandbox. Codex can inspect, edit, and execute commands against the real
-  repository; no production database credential is passed into the workspace.
-- Changed file contents, command exit codes/output, and the real git diff are
-  persisted and rendered identically for both teammates. There are no hardcoded
-  preview, test, diff, or PR artifacts left in the interface.
-- Messages addressed to Hive route through Vercel AI Gateway, and successful
-  Codex responses persist back into the shared transcript. Production OIDC is
-  verified end to end after Hive was transferred to the credited team. The
-  debug path uses `openai/gpt-5-mini` without a personal provider key.
-- Neon is the canonical collaborative history. Each Hive room also persists a
-  stable Codex session ID, opaque resume checkpoint, and named Vercel Sandbox.
-  A resumed production thread executed `pwd` and read the real `package.json`
-  from `/vercel/sandbox/hive` after a prior failed turn.
-- Messages explicitly addressed to a teammate stay human-to-human; promoting an
-  annotation with **Steer Hive** explicitly wakes the agent.
-- Teammates can add attributed annotations directly to human messages. They sync
-  across clients as discussion-only context until someone explicitly promotes
-  one into a Hive steer.
-- Steers created during an active run persist in an attributed FIFO queue. Both
-  clients can see and reorder the same queue, and Hive consumes the next item at
-  an explicit safe boundary rather than being interrupted mid-step.
-- Concurrent teammate writes are serialized with a row lock and transaction;
-  both messages survive and the room version increments twice.
-- The UI exposes loading and offline states instead of failing only in the
-  console.
-- The state machine can also be exercised independently from the browser.
+- Dynamic task list and `/sessions/[sessionId]` routes.
+- GitHub-authenticated humans with revocable, hashed database sessions.
+- Seven-day signed invite links and explicit task-session membership.
+- Durable transcript, presence, typing, annotations, steer queue, lifecycle, and workspace state in Postgres.
+- Row-locked mutations so concurrent teammate messages survive.
+- Conversation with Hive before repository attachment.
+- Team-level GitHub App installations and repository picker; one immutable repository per task.
+- Fresh repository-scoped installation tokens for private Sandbox clones.
+- AI SDK Harness with Codex and a persistent named Vercel Sandbox.
+- Successful and failed Codex checkpoints persisted server-side; opaque resume state stripped from clients.
+- Real changed-file contents, terminal output, and git diff; no fake PR, preview, test, or tool-result cards.
+- IME-aware message submission that avoids duplicate CJK sends.
+- Compact error states that preserve the human prompt and session.
 
-## Current implementation boundary
+## Current boundaries before final submission
 
-- Private repository connection is implemented with GitHub App installation
-  tokens plus user OAuth. The GitHub App is deliberately installed on one
-  selected repository for this single-team demo.
-- Sandbox execution is connected, but GitHub write-back is not. Hive does not
-  push branches or create pull requests yet.
-- The deployed app currently uses the temporary Postgres database created during
-  development. It expires on September 4, 2026, so final submission needs a
-  durable Vercel Marketplace database attached to the deployed project.
-- AI Gateway uses Vercel OIDC rather than a personal provider key. Local model
-  calls require the project to be linked and its environment pulled first.
-- A completed Codex turn is the current safe boundary. If teammates queued a
-  steer while it ran, the next item resumes the same Codex thread and named
-  sandbox workspace.
-- If the named sandbox itself becomes unavailable, rebuilding a fresh Codex
-  thread from the canonical Neon transcript is the next reliability layer; it
-  is not implemented in this take-home slice.
-
-These are deliberate scope boundaries, not hidden claims. The presentation
-should distinguish the validated product interaction from the replaceable
-execution infrastructure.
-
-## Code walkthrough anchors
-
-- `src/lib/room.ts`: pure domain state machine and the current boundary between
-  participant messages and agent lifecycle events.
-- `src/lib/room-store.ts`: transactional persistence and concurrent-write
-  serialization.
-- `src/lib/hive-runner.ts`: Codex Harness session lifecycle, persistent Vercel
-  Sandbox, guarded repository paths, checkpointing, command capture, changed
-  files, and git diff collection.
-- `src/lib/github-oauth.ts`: signed OAuth state, one-time user authorization,
-  and user-to-installation verification.
-- `src/lib/github-app.ts`: App authentication and repository-scoped,
-  `contents:read` installation tokens for Sandbox cloning.
-- `src/app/api/rooms/[roomId]/route.ts`: the authenticated HTTP boundary for
-  presence and room actions. It derives authorship from the server session and
-  strips private Codex resume state from responses.
-- `src/hooks/use-shared-room.ts`: browser synchronization, presence heartbeat,
-  local-tab broadcast, and connection failure handling.
-- `src/components/hive/hive-workspace.tsx`: the shared session, agent workspace,
-  and staged review experience.
-- `drizzle/0000_early_captain_stacy.sql`: reproducible database schema.
-- `drizzle/0001_flat_richard_fisk.sql`: persisted steering queue and active
-  steer state.
-
-## AI journey
-
-### Human-driven decisions
-
-- Chose the real pain: team context is fragmented across agents and platforms.
-- Narrowed the first user to a single team with two or more people.
-- Selected coding agents rather than a generic team assistant.
-- Insisted that the product demonstrate real multiplayer behavior.
-- Corrected the product from an intent-governance workflow back to a multiplayer
-  agent where the shared agent conversation is primary.
-- Defined the core human actions as annotate and steer.
-- Chose a normal second-level menu task and the name Hive.
-- Chose to reuse a coding harness rather than make harness construction the
-  product.
-- Corrected the first Codex persistence proposal: a session ID alone is not
-  durable because native Codex history lives inside the sandbox filesystem.
-- Rejected verbose agent apologies in favor of quiet, actionable run status.
-
-### AI-assisted work
-
-- Structured the brainstorm into problem, user, wedge, and demo narrative.
-- Compared the concept against v0, Claude workflows, and Conductor to avoid a
-  weak “shared session” pitch.
-- Produced and evaluated multiple UI directions before promoting the selected
-  layout.
-- Implemented the reducer, two-client synchronization, transactional Postgres
-  layer, connection states, database migration, and verification scripts.
-- Used browser-driven QA to test the experience as both Spencer and Maya.
-
-### Useful surprise / correction
-
-The first database was provisioned directly as a temporary Neon database. During
-review, the distinction was corrected: new Vercel projects use Marketplace
-database providers, and the production choice should be Neon through Vercel
-rather than treating Neon as an alternative to a current first-party Vercel
-Postgres product. This is a useful example of AI accelerating implementation
-while the human still challenges architectural framing.
-
-The first production deploy also produced useful evidence instead of a vague
-"Gateway is broken" conclusion. Vercel OIDC authenticated successfully and the
-request reached AI Gateway; the actual response was a billing-verification 403
-on the personal scope. Moving the project to the credited team changed that
-failure to a model-tier restriction, proving the transfer and OIDC path worked.
-Switching debugging to the free, tool-capable Laguna model then completed the
-same request end to end. This separates application correctness from account
-configuration and preserves the decision not to ship a personal model token.
-
-The AI also over-indexed on “binding team intent” as the product wedge. The human
-corrected the concept by pointing back to Conductor's concrete multiplayer
-example: several people share one agent transcript, direct messages to teammates,
-annotate work, and steer the same running agent. Intent checkpoints remain a
-supporting conflict mechanism rather than the product identity.
-
-The first native Codex integration also called `session.destroy()` after a
-transient failure. The human challenged the assumption that Codex session
-management was durable by itself. That changed the architecture: Neon owns the
-canonical team history; a room maps to one persistent named sandbox; failed
-turns call `stop()` and save the latest resume checkpoint. This is a strong
-example of AI producing a plausible integration while human review protects the
-product's continuity guarantee.
-
-## Suggested 20-minute demo pacing
-
-- **0–3 min — Problem:** coding agents are still single-player while software
-  work is collaborative.
-- **3–9 min — Solution:** open Spencer and Maya views, join the same live agent
-  transcript, annotate work, mention a teammate, and steer Hive together.
-- **9–14 min — Code:** state machine, transaction boundary, synchronization hook,
-  and failure handling.
-- **14–18 min — AI journey:** show the narrowing process, UI alternatives, human
-  overrides, and the Neon/Vercel correction.
-- **18–20 min — Tradeoffs:** why the harness is replaceable, what remains outside
-  scope, and the next production layer.
-
-## Questions to be ready for
-
-- How is Hive different from tagging Claude in a shared channel?
-- How is it different from multiple people opening the same v0 session?
-- When does the agent wake up, and who is allowed to redirect it?
-- What happens when two teammates steer the agent at the same time?
-- Why use an existing coding harness?
-- Why is the demo task intentionally small?
-- What is real versus simulated?
-- What would change for multiple teams, repositories, and simultaneous runs?
-- Where did AI help, and where did the human override it?
+- Claim or replace the temporary database with durable Vercel Marketplace Postgres.
+- Verify the migrated production deployment end to end with two GitHub users.
+- Decide whether to add branch push and PR creation; it is optional for the multiplayer thesis and should only be added if the core demo is already polished.
+- Make the GitHub repository public and submit it with the live URL at least 24 hours before presenting.
 
 ## Evidence log
 
 ### 2026-09-01
 
-- Removed the hardcoded Orbit preview, sample diff, sample test output, and fake
-  PR claim rather than carrying them forward as a fallback.
-- Added public GitHub repository connection and persisted repository/workspace
-  state to the shared Postgres room.
-- Connected an AI SDK `ToolLoopAgent` to a named persistent Vercel Sandbox with
-  list, read, write, and command tools, plus real changed-file and git-diff
-  collection.
-- Connected `vercel/examples` in QA and verified Vercel created the running
-  `hive-orbit-nav-99019a56e6b7` sandbox with Hive's room tags.
-- Verified both Spencer and Maya see the same connected repository and exact
-  execution error. The remaining blocker occurs before the first model-selected
-  tool: AI Gateway returns `customer_verification_required` for the personal
-  Vercel scope.
-- Promoted the selected black-and-white Vercel-style interface.
+- Removed hardcoded preview, diff, command output, and fake PR artifacts.
+- Connected real Postgres state and Vercel Sandbox execution.
+- Verified simultaneous messages persist through serialized state changes.
 
 ### 2026-09-02
 
-- Registered the private `Hive Multiplayer Agent` GitHub App and installed it
-  only on `spinsirr/hive` rather than granting account-wide repository access.
-- Replaced the public repository URL input with a GitHub App installation flow.
-- Added GitHub user OAuth as a trust boundary: the setup URL's
-  `installation_id` is never sufficient on its own; Hive confirms that the
-  authorizing user can access that installation and records the GitHub identity
-  responsible for the connection.
-- Kept user authentication and execution credentials separate. Hive discards
-  the OAuth token after binding and mints a one-repository, `contents:read`
-  installation token only when Vercel Sandbox clones the repository.
-- Verified the production OAuth round trip as `@spinsirr`. The shared room
-  persisted GitHub user ID `73987208`, installation `158515678`, and private
-  repository ID `1354870915` without persisting either OAuth or installation
-  credentials.
-- Verified the live `hive-orbit-nav-76a592497728` Vercel Sandbox cloned the
-  private repository on `main` at commit `4d0c15f`; `README.md` was present and
-  the git worktree was clean.
-- Diagnosed a blocked Vercel deployment from deployment metadata rather than
-  treating it as a build failure: the original commit email was not a member of
-  the Hobby team. A clean commit attributed to the project owner's Vercel
-  identity deployed successfully, and production was re-aliased to the stable
-  demo URL.
-- Transferred the existing Hive project into `spinsirrs-projects`, preserving
-  its stable domain and production environment variables while moving AI
-  Gateway usage onto the credited team scope.
-- Verified the transferred production deployment with a real persisted Hive
-  response. Kept debugging on the free, tool-capable Laguna model so credits
-  remain available for deliberate presentation-quality model runs.
-- Reproduced duplicate CJK sends as two server-persisted messages 113ms apart.
-  Added an IME-aware Enter guard (`isComposing`, plus Safari's `keyCode 229`)
-  and a focused regression test without changing normal Enter or Shift+Enter.
-- Renamed the product and shared agent to Hive.
-- Verified two browser participants synchronize messages and state transitions.
-- Added Postgres persistence and a reproducible Drizzle migration.
-- Verified two simultaneous messages both persist (`version 1 → 3`).
-- Verified state survives a development-server restart.
-- Passed TypeScript, ESLint, and a production webpack build.
-- Implemented the shared transcript's Vercel AI Gateway path with
-  `poolside/laguna-s-2.1-free` as the zero-cost debugging default model.
-- Verified that a missing Gateway credential produces an attributed in-product
-  error without losing the human prompt or taking the shared room offline.
-- Made the wake-up boundary explicit: team prompts wake Hive, teammate mentions
-  do not, and promoted annotations do.
-- Added attributed inline annotations to human messages and verified that an
-  annotation created by Spencer appears in Maya's live view.
-- Verified that promoting the message annotation updates both clients, advances
-  the shared run to v2, and passes the annotation plus its source message to Hive.
-- Added a persisted, attributed steering queue for input that arrives while Hive
-  is running; verified two teammates' items both survive and appear on both
-  clients.
-- Verified shared reordering, removal back to discussion-only, and one-at-a-time
-  consumption at the next safe boundary.
-- Added focused state-machine coverage for the product's multiplayer contract:
-  teammate-directed discussion does not wake Hive, active-run annotations queue,
-  only an explicit safe boundary consumes the next steer, and reset preserves the
-  repository connection while clearing run artifacts. Together with the CJK input
-  regressions, the automated suite now has eight passing tests.
-- Kept the test boundary honest: the shared reducer is covered automatically and
-  the Postgres, GitHub App, Sandbox, and AI Gateway paths were verified end to end
-  against the live system; isolated API/database integration tests remain a next
-  production layer rather than take-home scope.
-- Refined the UI around one primary multiplayer conversation: one global header,
-  one status per surface, a compact composer, and a chat/workspace switch below
-  960px instead of stacking two full products in a narrow viewport.
+- Registered and installed the `Hive Multiplayer Agent` GitHub App.
+- Separated GitHub OAuth identity from repository-scoped installation tokens.
+- Verified a private repository clone in Vercel Sandbox.
+- Transferred the Vercel project to the credited scope and verified Gateway OIDC.
+- Reproduced duplicate CJK sends and added IME regression coverage.
+- Added message annotations, explicit steering, and the shared attributed queue.
+- Replaced verbose failures with compact system status.
 
 ### 2026-09-03
 
-- Replaced the generic tool loop with AI SDK Harness's native Codex adapter and
-  a low-cost `openai/gpt-5-mini` debugging model through Vercel AI Gateway.
-- Mapped each Hive room to a persistent named Vercel Sandbox and persisted the
-  Codex resume checkpoint alongside the stable room session ID.
-- Removed `session.destroy()` from transient failures. Hive now checkpoints the
-  Codex thread and snapshots the sandbox before returning a concise error.
-- Reduced failed runs to quiet system status such as `Rate limit reached. Try
-  again shortly.`; errors no longer speak as Hive or force the workspace tab.
-- Diagnosed the full production chain layer by layer: bridge packaging,
-  dependencies, OIDC, repository workdir, Gateway throttling, and artifact
-  collection. Every layer was fixed and redeployed independently.
-- Verified the live resumed thread kept ID
-  `01a0654d-791a-7a70-8ef2-443b210a55da`, executed a real shell command in
-  `/vercel/sandbox/hive`, read the repository's `package.json`, returned package
-  name `hive`, and reported the exact test script.
-- Automated coverage reached 20 passing focused tests; lint, TypeScript, and the
-  production webpack build also pass.
-- Removed the `?as=spencer` / `?as=maya` persona switch. GitHub OAuth now creates
-  a random database-backed session whose token is hashed at rest and carried in
-  an HTTP-only cookie; sign-out revokes it.
-- Replaced the hardcoded `orbit-nav` API and browser channel with dynamic
-  `/rooms/[roomId]` and `/api/rooms/[roomId]` routes. Invite links now preserve
-  room identity while each browser contributes its independently authenticated
-  human identity.
-- Made API authorship server-authoritative and stopped returning opaque Codex
-  Harness `resumeFrom` state to the browser.
-- Added and applied the additive users/sessions Drizzle migration. Verification
-  reached 22 focused tests plus lint, TypeScript, and the production webpack
-  build; unauthenticated dynamic-room API access returns 401.
+- Replaced the generic tool loop with AI SDK Harness’s Codex adapter.
+- Persisted stable Codex IDs, resume checkpoints, and named Sandbox identity across successful and failed turns.
+- Verified a resumed live Codex thread executed a real repository command and read `package.json` from the expected working directory.
+- Removed browser-selected personas; all authorship now comes from a signed GitHub session.
+- Reframed the domain from a long-lived room to a one-task session.
+- Added the task dashboard, creation flow, lifecycle, signed invitations, explicit membership, and `/sessions/[sessionId]` routes.
+- Added pre-repository planning turns and late, immutable repository attachment from the team pool.
+- Removed the unfinished Vercel Connect path and kept direct GitHub App onboarding.
+- Renamed database tables to distinguish `auth_sessions` from `task_sessions`, backfilled legacy members and GitHub installation access, and applied the migration without losing the existing demo session.
+- Browser-tested task creation, pre-repo agent routing, message annotation, annotation-to-steer promotion, invite copying, completion, and reopening.
+- Verification: 27 focused tests, ESLint, TypeScript, and a production Webpack build pass.
+
+## Questions to prepare for
+
+- How is Hive different from tagging Claude in a shared channel?
+- How is it different from multiple people opening one v0 session?
+- When does Hive wake, and who can redirect it?
+- What happens when two teammates steer at once?
+- Why use an existing coding harness?
+- Why one task and one repository per session?
+- What survives if a Sandbox disappears?
+- What is real versus intentionally out of scope?
+- Where did AI help, and where did human judgment change the plan?

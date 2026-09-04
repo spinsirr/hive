@@ -1,6 +1,7 @@
 import {
   bigint,
   boolean,
+  index,
   integer,
   jsonb,
   pgTable,
@@ -18,7 +19,7 @@ import type {
   RunStage,
   SteeringQueueItem,
   WorkspaceState,
-} from "@/lib/room";
+} from "@/lib/task-session";
 
 export const users = pgTable("users", {
   id: text("id").primaryKey(),
@@ -31,7 +32,7 @@ export const users = pgTable("users", {
   updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true }).notNull(),
 });
 
-export const sessions = pgTable("sessions", {
+export const authSessions = pgTable("auth_sessions", {
   tokenHash: text("token_hash").primaryKey(),
   userId: text("user_id")
     .notNull()
@@ -40,8 +41,21 @@ export const sessions = pgTable("sessions", {
   expiresAt: timestamp("expires_at", { mode: "date", withTimezone: true }).notNull(),
 });
 
-export const rooms = pgTable("rooms", {
+export const taskSessions = pgTable("task_sessions", {
   id: text("id").primaryKey(),
+  title: text("title").notNull().default("Untitled task"),
+  lifecycle: text("lifecycle")
+    .$type<"active" | "completed">()
+    .notNull()
+    .default("active"),
+  createdBy: text("created_by").$type<MemberId>(),
+  createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  completedAt: timestamp("completed_at", {
+    mode: "date",
+    withTimezone: true,
+  }),
   version: integer("version").notNull(),
   revision: integer("revision").notNull(),
   stage: text("stage").$type<RunStage>().notNull(),
@@ -66,15 +80,52 @@ export const rooms = pgTable("rooms", {
   updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true }).notNull(),
 });
 
-export const roomPresence = pgTable(
-  "room_presence",
+export const taskSessionMembers = pgTable(
+  "task_session_members",
   {
-    roomId: text("room_id")
+    sessionId: text("session_id")
       .notNull()
-      .references(() => rooms.id, { onDelete: "cascade" }),
-    memberId: text("member_id").$type<MemberId>().notNull(),
+      .references(() => taskSessions.id, { onDelete: "cascade" }),
+    memberId: text("member_id")
+      .$type<MemberId>()
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    joinedAt: timestamp("joined_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.sessionId, table.memberId] }),
+    index("task_session_members_member_id_idx").on(table.memberId),
+  ],
+);
+
+export const githubInstallations = pgTable("github_installations", {
+  id: bigint("id", { mode: "number" }).primaryKey(),
+  installedBy: text("installed_by")
+    .$type<MemberId>()
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const taskSessionPresence = pgTable(
+  "task_session_presence",
+  {
+    sessionId: text("session_id")
+      .notNull()
+      .references(() => taskSessions.id, { onDelete: "cascade" }),
+    memberId: text("member_id")
+      .$type<MemberId>()
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
     lastSeen: timestamp("last_seen", { mode: "date", withTimezone: true }).notNull(),
     typing: boolean("typing").notNull().default(false),
   },
-  (table) => [primaryKey({ columns: [table.roomId, table.memberId] })],
+  (table) => [primaryKey({ columns: [table.sessionId, table.memberId] })],
 );

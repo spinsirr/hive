@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import type { RoomState } from "./room.ts";
+import type { TaskSessionState } from "./task-session.ts";
 
 export function isRepositoryWorkingCopy(
   sessionWorkDir: string,
@@ -13,12 +13,12 @@ export function isRepositoryWorkingCopy(
 }
 
 export function resolvePersistentSandboxName(
-  room: Pick<RoomState, "workspace">,
+  session: Pick<TaskSessionState, "workspace">,
   sessionId: string,
 ) {
-  const storedName = room.workspace.sandboxName;
+  const storedName = session.workspace.sandboxName;
   const knownNames = [
-    `hive-room-${sessionId}`,
+    `hive-session-${sessionId}`,
     `ai-sdk-harness-session-${sessionId}`,
   ];
   return storedName && knownNames.includes(storedName)

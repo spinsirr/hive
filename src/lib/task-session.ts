@@ -90,10 +90,8 @@ export type ChatMessage = {
   time: string;
 };
 
-export type RepositoryState = {
-  provider: "github-app";
+type RepositoryDetails = {
   id: number;
-  installationId: number;
   url: string;
   name: string;
   branch: string;
@@ -104,6 +102,11 @@ export type RepositoryState = {
   };
   connectedBy: MemberId;
   connectedAt: number;
+};
+
+export type RepositoryState = RepositoryDetails & {
+  provider: "github-app";
+  installationId: number;
 };
 
 export type WorkspaceFile = {
@@ -160,8 +163,13 @@ export type Annotation = {
   steeredAt?: number;
 };
 
-export type RoomState = {
-  roomId: string;
+export type TaskSessionState = {
+  sessionId: string;
+  title: string;
+  lifecycle: "active" | "completed";
+  createdBy: MemberId;
+  createdAt: number;
+  completedAt?: number;
   version: number;
   revision: 1 | 2;
   stage: RunStage;
@@ -174,7 +182,7 @@ export type RoomState = {
   updatedAt: number;
 };
 
-export type RoomAction =
+export type TaskSessionAction =
   | { type: "send-message"; actor: MemberId; body: string }
   | {
       type: "connect-repository";
@@ -210,22 +218,29 @@ export type RoomAction =
     }
   | { type: "steer-agent"; actor: MemberId }
   | { type: "advance-run"; actor: MemberId }
+  | { type: "complete-session"; actor: MemberId }
+  | { type: "reopen-session"; actor: MemberId }
   | { type: "reset"; actor: MemberId };
 
-export function createAgentSessionId(roomId: string, now = Date.now()) {
-  const safeRoomId = roomId
+export function createAgentSessionId(sessionId: string, now = Date.now()) {
+  const safeSessionId = sessionId
     .toLowerCase()
     .replace(/[^a-z0-9-]/g, "-")
     .slice(0, 24);
-  return `hive-${safeRoomId || "room"}-${now.toString(36)}`;
+  return `hive-${safeSessionId || "session"}-${now.toString(36)}`;
 }
 
-export function createInitialRoomState(
+export function createInitialTaskSessionState(
   now = Date.now(),
-  roomId = "orbit-nav",
-): RoomState {
+  sessionId = "task-session",
+  options: { title?: string; createdBy?: MemberId } = {},
+): TaskSessionState {
   return {
-    roomId,
+    sessionId,
+    title: options.title?.trim() || "Untitled task",
+    lifecycle: "active",
+    createdBy: options.createdBy ?? "hive-system",
+    createdAt: now,
     version: 1,
     revision: 1,
     stage: "waiting",
@@ -234,7 +249,7 @@ export function createInitialRoomState(
         id: "initial-1",
         name: "Hive",
         initials: "AI",
-        body: "Connect a GitHub repository, then ask me to inspect it, change files, and run its tests. Everyone in this room will see the same execution artifacts.",
+        body: "What should we accomplish? We can clarify the task first and attach a GitHub repository whenever the team is ready to work on code.",
         role: "agent",
         time: timeLabel(now),
       },
@@ -262,7 +277,7 @@ function timeLabel(now: number) {
   }).format(now);
 }
 
-function appendAgentMessage(state: RoomState, body: string, now: number): ChatMessage[] {
+function appendAgentMessage(state: TaskSessionState, body: string, now: number): ChatMessage[] {
   return [
     ...state.messages,
     {
@@ -277,13 +292,26 @@ function appendAgentMessage(state: RoomState, body: string, now: number): ChatMe
 }
 
 export function appendHiveReply(
-  state: RoomState,
+  state: TaskSessionState,
   body: string,
   now = Date.now(),
   status?: ChatMessage["status"],
-): RoomState {
+): TaskSessionState {
   return {
     ...state,
+    stage:
+      !state.repository && state.stage === "running"
+        ? "waiting"
+        : state.stage,
+    workspace: !state.repository
+      ? {
+          ...state.workspace,
+          status: "disconnected",
+          startedAt: undefined,
+          completedAt: now,
+          error: undefined,
+        }
+      : state.workspace,
     version: state.version + 1,
     messages: [
       ...state.messages,
@@ -301,23 +329,51 @@ export function appendHiveReply(
   };
 }
 
-export function reduceRoom(
-  state: RoomState,
-  action: RoomAction,
+export function reduceTaskSession(
+  state: TaskSessionState,
+  action: TaskSessionAction,
   now = Date.now(),
   members: TeamMember[] = [],
-): RoomState {
+): TaskSessionState {
   const actor = resolveMember(action.actor, members);
-  if (action.type === "reset") {
-    const initialRoom = createInitialRoomState(now, state.roomId);
-    if (!state.repository) return initialRoom;
+  if (action.type === "reopen-session") {
+    if (state.lifecycle === "active") return state;
     return {
-      ...initialRoom,
+      ...state,
+      lifecycle: "active",
+      completedAt: undefined,
+      version: state.version + 1,
+      updatedAt: now,
+    };
+  }
+
+  if (state.lifecycle === "completed") return state;
+
+  if (action.type === "complete-session") {
+    if (state.stage === "running") return state;
+    return {
+      ...state,
+      lifecycle: "completed",
+      completedAt: now,
+      version: state.version + 1,
+      updatedAt: now,
+    };
+  }
+
+  if (action.type === "reset") {
+    const initialSession = createInitialTaskSessionState(now, state.sessionId, {
+      title: state.title,
+      createdBy: state.createdBy,
+    });
+    initialSession.createdAt = state.createdAt;
+    if (!state.repository) return initialSession;
+    return {
+      ...initialSession,
       repository: state.repository,
       workspace: {
         status: "ready",
         agentSession: {
-          id: createAgentSessionId(state.roomId, now),
+          id: createAgentSessionId(state.sessionId, now),
           runtime: "codex",
         },
         diff: "",
@@ -339,10 +395,11 @@ export function reduceRoom(
   }
 
   if (action.type === "connect-repository") {
+    if (state.repository) return state;
     const repository: RepositoryState = {
       provider: "github-app",
-      id: action.repositoryId,
       installationId: action.installationId,
+      id: action.repositoryId,
       url: action.repositoryUrl,
       name: action.repositoryName,
       branch: action.repositoryBranch,
@@ -362,10 +419,12 @@ export function reduceRoom(
       repository,
       workspace: {
         status: "ready",
-        agentSession: {
-          id: createAgentSessionId(state.roomId, now),
-          runtime: "codex",
-        },
+        agentSession:
+          state.workspace.agentSession ?? {
+            id: createAgentSessionId(state.sessionId, now),
+            runtime: "codex",
+          },
+        sandboxName: state.workspace.sandboxName,
         diff: "",
         files: [],
         commands: [],
@@ -373,7 +432,7 @@ export function reduceRoom(
       },
       messages: appendAgentMessage(
         state,
-        `${actor.shortName} connected ${repository.name} as @${repository.authorizedByGitHub.login}. Hive can now inspect and execute against the private repository.`,
+        `${actor.shortName} connected ${repository.name}. Hive can now inspect and execute against the repository.`,
         now,
       ),
       updatedAt: now,
@@ -385,9 +444,11 @@ export function reduceRoom(
     if (!body) return state;
     const member = actor;
     const messageId = `human-${now}-${state.version + 1}`;
-    const addressesHive =
-      Boolean(state.repository) &&
-      !isDirectedAtTeammate(body, action.actor, members);
+    const addressesHive = !isDirectedAtTeammate(
+      body,
+      action.actor,
+      members,
+    );
     const startsRun =
       addressesHive && state.stage !== "running";
     const queuesRun = addressesHive && state.stage === "running";
@@ -396,19 +457,27 @@ export function reduceRoom(
       version: state.version + 1,
       stage: startsRun ? "running" : state.stage,
       workspace: startsRun
-        ? {
-            ...state.workspace,
-            status: "running",
-            agentSession: state.workspace.agentSession ?? {
-              id: createAgentSessionId(state.roomId, now),
-              runtime: "codex",
-            },
-            summary: undefined,
-            error: undefined,
-            startedAt: now,
-            completedAt: undefined,
-            commands: [],
-          }
+        ? state.repository
+          ? {
+              ...state.workspace,
+              status: "running",
+              agentSession: state.workspace.agentSession ?? {
+                id: createAgentSessionId(state.sessionId, now),
+                runtime: "codex",
+              },
+              summary: undefined,
+              error: undefined,
+              startedAt: now,
+              completedAt: undefined,
+              commands: [],
+            }
+          : {
+              ...state.workspace,
+              status: "disconnected",
+              startedAt: now,
+              completedAt: undefined,
+              error: undefined,
+            }
         : state.workspace,
       steeringQueue: queuesRun
         ? [
@@ -524,15 +593,23 @@ export function reduceRoom(
       version: state.version + 1,
       revision: 2,
       stage: "running",
-      workspace: {
-        ...state.workspace,
-        status: "running",
-        summary: undefined,
-        error: undefined,
-        startedAt: now,
-        completedAt: undefined,
-        commands: [],
-      },
+      workspace: state.repository
+        ? {
+            ...state.workspace,
+            status: "running",
+            summary: undefined,
+            error: undefined,
+            startedAt: now,
+            completedAt: undefined,
+            commands: [],
+          }
+        : {
+            ...state.workspace,
+            status: "disconnected",
+            startedAt: now,
+            completedAt: undefined,
+            error: undefined,
+          },
       messages: state.messages.map((message) =>
         message.id === action.messageId
           ? {
@@ -590,15 +667,23 @@ export function reduceRoom(
       version: state.version + 1,
       revision: 2,
       stage: "running",
-      workspace: {
-        ...state.workspace,
-        status: "running",
-        summary: undefined,
-        error: undefined,
-        startedAt: now,
-        completedAt: undefined,
-        commands: [],
-      },
+      workspace: state.repository
+        ? {
+            ...state.workspace,
+            status: "running",
+            summary: undefined,
+            error: undefined,
+            startedAt: now,
+            completedAt: undefined,
+            commands: [],
+          }
+        : {
+            ...state.workspace,
+            status: "disconnected",
+            startedAt: now,
+            completedAt: undefined,
+            error: undefined,
+          },
       annotation: {
         ...state.annotation,
         status: "steered",
@@ -744,10 +829,10 @@ export function reduceRoom(
 }
 
 export function applyHiveRunResult(
-  state: RoomState,
+  state: TaskSessionState,
   result: HiveRunResult,
   now = Date.now(),
-): RoomState {
+): TaskSessionState {
   const hasQueuedSteer = state.steeringQueue.length > 0;
   return {
     ...state,
@@ -773,11 +858,11 @@ export function applyHiveRunResult(
 }
 
 export function applyHiveRunError(
-  state: RoomState,
+  state: TaskSessionState,
   message: string,
   now = Date.now(),
   checkpoint?: HiveSessionCheckpoint,
-): RoomState {
+): TaskSessionState {
   return {
     ...state,
     version: state.version + 1,

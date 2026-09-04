@@ -11,18 +11,18 @@ import type { Experimental_SandboxSession } from "ai";
 
 import { hiveAgentFailureMessage, HiveAgentError } from "@/lib/hive-agent";
 import { getRepositoryCloneCredentials } from "@/lib/github-app";
-import { buildCodexPrompt } from "@/lib/hive-prompt";
+import { buildHivePrompt } from "@/lib/hive-prompt";
 import {
   isRepositoryWorkingCopy,
   resolvePersistentSandboxName,
-} from "@/lib/hive-session";
+} from "@/lib/hive-sandbox";
 import {
   createAgentSessionId,
   type MemberId,
-  type RoomState,
+  type TaskSessionState,
   type WorkspaceCommand,
   type WorkspaceFile,
-} from "@/lib/room";
+} from "@/lib/task-session";
 
 const DEFAULT_MODEL = "openai/gpt-5-mini";
 const CODEX_BRIDGE_PORT = 4319;
@@ -240,37 +240,36 @@ function collectCodexCommands(result: {
 }
 
 export async function runHiveCodingTask(
-  room: RoomState,
+  taskSession: TaskSessionState,
   actor: MemberId,
   steer?: string,
   auth?: { actorName?: string; vercelOidcToken?: string },
 ) {
-  if (!room.repository) {
+  if (!taskSession.repository) {
     throw new HiveAgentError(
       "Connect a GitHub repository before asking Hive to execute code.",
       new Error("Repository is not connected."),
     );
   }
 
-  if (
-    room.repository.provider !== "github-app" ||
-    !room.repository.installationId ||
-    !room.repository.id
-  ) {
+  if (!taskSession.repository.id) {
     throw new HiveAgentError(
-      "Reconnect the repository through the Hive GitHub App before running code.",
-      new Error("Repository is missing GitHub App installation metadata."),
+      "Reconnect the repository before running code.",
+      new Error("Repository is missing GitHub metadata."),
     );
   }
 
   const sessionId =
-    room.workspace.agentSession?.id ??
-    createAgentSessionId(room.roomId, room.repository.connectedAt);
-  const resumeFrom = room.workspace.agentSession?.resumeFrom as
+    taskSession.workspace.agentSession?.id ??
+    createAgentSessionId(
+      taskSession.sessionId,
+      taskSession.repository.connectedAt,
+    );
+  const resumeFrom = taskSession.workspace.agentSession?.resumeFrom as
     | HarnessAgentResumeSessionState
     | undefined;
-  const repositoryCwd = repositoryDirectory(room.repository.url);
-  const sandboxName = resolvePersistentSandboxName(room, sessionId);
+  const repositoryCwd = repositoryDirectory(taskSession.repository.url);
+  const sandboxName = resolvePersistentSandboxName(taskSession, sessionId);
   const gatewayApiKey = process.env.AI_GATEWAY_API_KEY?.trim();
   const codexAuth: "ai-gateway" | Readonly<Record<string, string>> = gatewayApiKey
     ? { AI_GATEWAY_API_KEY: gatewayApiKey }
@@ -283,14 +282,16 @@ export async function runHiveCodingTask(
   let sessionEnded = false;
 
   try {
-    const cloneCredentials = await getRepositoryCloneCredentials(room.repository);
+    const cloneCredentials = await getRepositoryCloneCredentials(
+      taskSession.repository,
+    );
     persistentSandbox = await Sandbox.getOrCreate({
       name: sandboxName,
       runtime: "node24",
       ports: [CODEX_BRIDGE_PORT],
       source: {
         type: "git",
-        url: room.repository.url,
+        url: taskSession.repository.url,
         ...cloneCredentials,
         depth: 20,
       },
@@ -299,7 +300,11 @@ export async function runHiveCodingTask(
       snapshotExpiration: 0,
       keepLastSnapshots: { count: 1, expiration: 0 },
       resources: { vcpus: 1 },
-      tags: { app: "hive", room: room.roomId, runtime: "codex" },
+      tags: {
+        app: "hive",
+        session: taskSession.sessionId,
+        runtime: "codex",
+      },
     });
     const sandbox = createVercelSandbox({ sandbox: persistentSandbox });
     const agent = new HarnessAgent({
@@ -351,11 +356,16 @@ export async function runHiveCodingTask(
       },
     });
 
-    const session = await agent.createSession({ sessionId, resumeFrom });
+    const agentSession = await agent.createSession({ sessionId, resumeFrom });
     try {
       const result = await agent.generate({
-        session,
-        prompt: buildCodexPrompt(room, actor, steer, auth?.actorName),
+        session: agentSession,
+        prompt: buildHivePrompt(
+          taskSession,
+          actor,
+          steer,
+          auth?.actorName,
+        ),
       });
       if (!sandboxSession || !sandboxWorkDir) {
         throw new Error("Vercel Sandbox session was not made available to Hive.");
@@ -366,7 +376,7 @@ export async function runHiveCodingTask(
         commands,
         sandboxWorkDir,
       );
-      const nextResumeFrom = await session.stop();
+      const nextResumeFrom = await agentSession.stop();
       sessionEnded = true;
       await persistentSandbox.stop().catch((error) => {
         console.error("Hive sandbox snapshot failed", error);
@@ -396,7 +406,7 @@ export async function runHiveCodingTask(
         };
       } | undefined;
       try {
-        const nextResumeFrom = await session.stop();
+        const nextResumeFrom = await agentSession.stop();
         sessionEnded = true;
         checkpoint = {
           sandboxName,

@@ -1,16 +1,56 @@
 # Hive
 
-Hive is a coding agent that a team owns together. Multiple teammates share the
-same live conversation, workspace, and run state. Each person can prompt Hive,
-annotate its work, talk directly to a teammate, and explicitly promote an
-annotation into a steer for the shared agent.
+Hive is a multiplayer coding agent: two or more teammates share one agent conversation, one task, and one execution workspace. Every human contribution is attributed; comments can stay human discussion or be explicitly promoted into instructions that steer Hive.
 
-**Live app:** [hive-roan-mu.vercel.app](https://hive-roan-mu.vercel.app/rooms/orbit-nav)
+**Live app:** [hive-roan-mu.vercel.app](https://hive-roan-mu.vercel.app/)
+
+## The problem
+
+Coding agents are still mostly single-player. One person owns the prompt, context, and running workspace; everyone else sees the result later in Slack, screenshots, or a pull request. By then, important intent has already been flattened or lost.
+
+Hive moves collaboration into the agent session itself. Teammates can see the same transcript and workspace, speak directly to each other, annotate a specific statement, and deliberately steer the same agent without racing to replace its prompt.
+
+## The product model
+
+- A **team** is long-lived and owns GitHub repository access.
+- A **task session** exists for one intended outcome. It has one shared transcript and at most one attached repository; seven-day signed links admit teammates explicitly.
+- A session can begin without code. Hive first helps the team clarify intent; a repository can be attached later.
+- A **message annotation** is discussion-only until a teammate promotes it to a **steer**.
+- A steer created during an active run enters an attributed, ordered queue and waits for a safe boundary.
+- Completing a task makes the session read-only; teammates can reopen it if the work genuinely continues.
+
+The canonical vocabulary is recorded in [`CONTEXT.md`](CONTEXT.md).
+
+## What is real
+
+```text
+GitHub OAuth → server-authoritative human identity
+signed invite → explicit task-session membership
+Postgres → transcript, presence, annotations, queue, lifecycle, and run state
+GitHub App → team-authorized repository pool
+task session → one selected repository
+short-lived installation token → private clone in Vercel Sandbox
+AI SDK Harness + Codex → inspect, edit, and run commands
+workspace evidence → changed files, command output, and real git diff
+```
+
+- Next.js route handlers and server actions own all mutations.
+- Postgres row locks serialize simultaneous teammate input.
+- Browser snapshots never expose the opaque Codex resume checkpoint.
+- Each repository-backed task maps to a persistent named Vercel Sandbox and Codex session; Neon remains the canonical team history if compute disappears.
+- GitHub App credentials stay server-side. Sandbox receives a fresh installation token limited to the selected repository.
+- AI Gateway uses Vercel OIDC in production. `openai/gpt-5-mini` is the low-cost default for both planning and coding turns and can be overridden.
+- The interface renders only real changed files, commands, and diffs returned by the runner—there are no hardcoded execution artifacts.
+
+## Deliberate boundaries
+
+- One team for the take-home; the membership model is explicit, but organization administration is out of scope.
+- One repository and one mutating run per task session.
+- Hive can clone, edit, test, and expose a diff. It does not yet push a branch or open a pull request.
+- Repository access uses the GitHub App directly. The Vercel Connect experiment was removed because its current install flow is intended for connector developers, not this product's end-user onboarding.
+- The current development database must be claimed or replaced with a durable Vercel Marketplace Postgres database before the final submission.
 
 ## Local development
-
-Provision a Postgres database through the Vercel Marketplace Neon integration,
-or provide another Postgres connection with the same environment variables:
 
 ```bash
 pnpm install
@@ -19,100 +59,44 @@ pnpm db:migrate
 pnpm dev
 ```
 
-To enable real Hive replies locally, link the app to its Vercel project and pull
-the project environment. Vercel AI Gateway uses the generated OIDC token, so the
-app does not need a personal Claude or OpenAI key:
+Open [http://localhost:3000](http://localhost:3000), sign in with GitHub, create a task, and copy its **Invite** link to a teammate.
+
+For production-equivalent Gateway authentication, link the Vercel project and pull its environment:
 
 ```bash
 pnpm exec vercel link
 pnpm exec vercel env pull .env.local
 ```
 
-Open [the local room](http://127.0.0.1:3000/rooms/orbit-nav), sign in with
-GitHub, and copy its **Invite** URL to a teammate. The URL selects the shared
-room; the signed server session determines who each person is. Messages,
-presence, annotations, steering, and Hive's run state synchronize between both
-clients.
-
-## Current vertical slice
+Required server variables are documented in [`.env.example`](.env.example). Register the GitHub App with these URLs:
 
 ```text
-GitHub user OAuth → revocable database session → attributed room member
-room URL → one durable transcript and Codex workspace shared by its members
-GitHub App installation → repository-scoped execution credential
-short-lived installation token → private repo in persistent Vercel Sandbox
-team prompt → Codex Harness turn → read/write/command → real git diff → shared room
-annotation → explicit steer → resume the same Codex thread and workspace
+Setup URL: https://your-domain.example/api/github/setup
+Callback URL: https://your-domain.example/api/github/callback
 ```
 
-## Current implementation boundary
-
-- One team, one repository per room, and one shared mutating run.
-- Any GitHub-authenticated teammate can join the shared room URL. Browser input
-  never chooses or overrides message authorship.
-- Human sessions are stored in Postgres behind random, hashed tokens and an
-  HTTP-only, secure, SameSite cookie. Signing out revokes the database session.
-- Room state and presence are persisted in Neon Postgres, with state transitions
-  serialized in a transaction so simultaneous teammates cannot overwrite each
-  other's input.
-- Messages addressed to Hive route through Vercel AI Gateway. Direct teammate
-  mentions remain human-to-human, while **Steer Hive** explicitly wakes the
-  agent with the promoted annotation.
-- Steers created while Hive is already running enter an attributed shared queue
-  instead of interrupting the current step. Teammates can reorder or remove
-  them, and the next item is consumed only at an explicit safe boundary.
-- Hive uses AI SDK Harness's Codex adapter with `openai/gpt-5-mini` as the
-  low-cost debugging default; `HIVE_CODEX_MODEL` can override it.
-- Each room maps to one persistent named Vercel Sandbox and one Codex session.
-  Hive checkpoints failed as well as successful turns, while Neon remains the
-  canonical team transcript if compute disappears.
-- Codex can inspect, edit, and execute commands against the repository. The
-  resulting changed files, command output, and `git diff` are persisted into the
-  same shared room.
-- Repository connection uses a GitHub App installed on exactly one selected
-  repository. GitHub user OAuth verifies who is allowed to bind that
-  installation to Hive; the one-time user token is discarded immediately.
-- Vercel Sandbox receives a fresh installation token limited to that repository
-  and `contents:read`. Hive never stores a personal access token, and the
-  installation token expires within one hour.
-- Codex Harness resume checkpoints stay server-side. Room API responses include
-  the public session ID and runtime but strip the opaque resume state.
-- The deployed app is connected to Postgres and the shared multiplayer room is
-  live. The current take-home database is temporary and must be replaced with a
-  durable Vercel Marketplace Postgres integration before final submission.
-- Production OIDC authentication to AI Gateway is verified after transferring
-  Hive to the credited Vercel scope. A resumed live Codex thread executed a real
-  repository command without adding a personal provider key.
-- The previous Orbit preview, hardcoded diff, hardcoded test output, and fake PR
-  number have been removed. The workspace only renders artifacts returned by a
-  real sandbox run.
-- GitHub write-back is intentionally not connected yet: Hive can clone, edit,
-  and test in Sandbox, but cannot push a branch or open a pull request.
-
-## GitHub App setup
-
-Register a GitHub App with repository Contents read/write and Pull requests
-read/write permissions, then configure its setup and OAuth callback URLs:
-
-```text
-https://your-domain.example/api/github/setup
-https://your-domain.example/api/github/callback
-```
-
-The deployed server needs `GITHUB_APP_ID`, `GITHUB_APP_SLUG`,
-`GITHUB_APP_PRIVATE_KEY`, `GITHUB_APP_CLIENT_ID`,
-`GITHUB_APP_CLIENT_SECRET`, and `GITHUB_APP_CALLBACK_URL`. All credentials stay
-server-side; none are exposed to the sandbox or browser.
-
-## State-machine driver
-
-The browser room is backed by a pure reducer. It can also be driven directly:
+## Verification
 
 ```bash
-pnpm prototype:state
+pnpm test
+pnpm lint
+pnpm exec tsc --noEmit
+pnpm exec next build --webpack
 ```
 
-## Presentation record
+The current suite covers the multiplayer state machine, attributed prompts, steering queue, completed-session immutability, persistent sandbox selection, failure checkpoints, and IME-safe message submission.
 
-The product narrative, decision log, AI collaboration notes, demo pacing, and
-evidence are maintained in [`docs/PRESENTATION_NOTES.md`](docs/PRESENTATION_NOTES.md).
+## Key decisions
+
+- **Agent conversation first.** This is not a chat room with a bot attached.
+- **Annotate is not steer.** Humans need room to discuss before directing execution.
+- **Attach code when intent is ready.** Repository selection is not a provisioning prerequisite.
+- **One task per session.** The team is durable; a session is intentionally disposable and bounded.
+- **Reuse the harness.** AI SDK Harness, Codex, and Vercel Sandbox are infrastructure; multiplayer control is the product.
+- **Quiet failures.** Errors appear as compact system state while the human prompt and resumable checkpoint remain intact.
+
+## AI collaboration
+
+AI helped compare product directions, generate interface alternatives, implement the full-stack vertical slice, diagnose infrastructure failures, and build regression coverage. Human judgment repeatedly changed the result: narrowing the product from a generic team workspace to a task-scoped multiplayer agent, separating annotation from steering, rejecting fake execution artifacts and verbose errors, choosing an existing harness, and correcting the assumption that a Codex session ID alone makes history durable.
+
+The fuller demo narrative, decision log, evidence, and 20-minute presentation outline live in [`docs/PRESENTATION_NOTES.md`](docs/PRESENTATION_NOTES.md).

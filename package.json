@@ -11,7 +11,7 @@
     "test": "node --test src/lib/*.test.ts",
     "start": "next start",
     "lint": "eslint",
-    "prototype:state": "node scripts/prototype-room-state.ts"
+    "prototype:state": "node scripts/prototype-task-session-state.ts"
   },
   "dependencies": {
     "@ai-sdk/harness": "^1.0.98",

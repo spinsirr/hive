@@ -5,9 +5,9 @@ import { createHash, randomBytes } from "node:crypto";
 import { and, eq, gt } from "drizzle-orm";
 
 import { db } from "@/db";
-import { sessions, users } from "@/db/schema";
+import { authSessions, users } from "@/db/schema";
 import type { GitHubUserPayload } from "@/lib/github-oauth";
-import type { TeamMember } from "@/lib/room";
+import type { TeamMember } from "@/lib/task-session";
 
 export const HIVE_SESSION_COOKIE = "hive_session";
 export const HIVE_SESSION_MAX_AGE = 60 * 60 * 24 * 30;
@@ -77,7 +77,7 @@ export async function createUserSession(
           updatedAt: now,
         },
       });
-    await transaction.insert(sessions).values({
+    await transaction.insert(authSessions).values({
       tokenHash: tokenHash(token),
       userId: member.id,
       createdAt: now,
@@ -93,12 +93,12 @@ export async function getSessionMember(token?: string | null) {
 
   const [result] = await db
     .select({ user: users })
-    .from(sessions)
-    .innerJoin(users, eq(sessions.userId, users.id))
+    .from(authSessions)
+    .innerJoin(users, eq(authSessions.userId, users.id))
     .where(
       and(
-        eq(sessions.tokenHash, tokenHash(token)),
-        gt(sessions.expiresAt, new Date()),
+        eq(authSessions.tokenHash, tokenHash(token)),
+        gt(authSessions.expiresAt, new Date()),
       ),
     )
     .limit(1);
@@ -108,7 +108,9 @@ export async function getSessionMember(token?: string | null) {
 
 export async function deleteUserSession(token?: string | null) {
   if (!token) return;
-  await db.delete(sessions).where(eq(sessions.tokenHash, tokenHash(token)));
+  await db
+    .delete(authSessions)
+    .where(eq(authSessions.tokenHash, tokenHash(token)));
 }
 
 export function sessionCookieOptions(secure: boolean) {

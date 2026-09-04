@@ -1,8 +1,10 @@
-import { NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
+import { getSessionMember, HIVE_SESSION_COOKIE } from "@/lib/auth-session";
 import { getInstallationRepositories } from "@/lib/github-app";
 import { verifyGitHubInstallState } from "@/lib/github-oauth";
-import { isRoomId } from "@/lib/room-id";
+import { isTaskSessionId } from "@/lib/task-session-id";
+import { isTaskSessionMember } from "@/lib/task-session-store";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -16,32 +18,30 @@ function installationIdFrom(request: Request) {
     : null;
 }
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   const installationId = installationIdFrom(request);
   const state = new URL(request.url).searchParams.get("state");
-  const roomId = verifyGitHubInstallState(state);
-  if (!installationId || !isRoomId(roomId)) {
+  const sessionId = verifyGitHubInstallState(state);
+  if (!installationId || !isTaskSessionId(sessionId)) {
     return NextResponse.json(
       { error: "GitHub did not provide a valid installation ID." },
       { status: 400 },
     );
   }
 
+  const member = await getSessionMember(
+    request.cookies.get(HIVE_SESSION_COOKIE)?.value,
+  );
+  if (!member || !(await isTaskSessionMember(sessionId, member.id))) {
+    return NextResponse.json({ error: "Session not found" }, { status: 404 });
+  }
+
   try {
-    const repositories = await getInstallationRepositories(installationId);
-    if (repositories.length !== 1) {
-      return NextResponse.json(
-        {
-          error:
-            "Hive's single-team demo expects exactly one selected repository. Update the GitHub App installation and try again.",
-        },
-        { status: 409 },
-      );
-    }
+    await getInstallationRepositories(installationId);
 
     return NextResponse.redirect(
       new URL(
-        `/api/github/login?installation_id=${installationId}&return_to=${encodeURIComponent(`/rooms/${roomId}`)}`,
+        `/api/github/login?installation_id=${installationId}&session_id=${encodeURIComponent(sessionId)}&return_to=${encodeURIComponent(`/sessions/${sessionId}?github=connected`)}`,
         request.url,
       ),
     );

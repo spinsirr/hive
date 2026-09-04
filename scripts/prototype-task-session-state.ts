@@ -1,14 +1,14 @@
 import { emitKeypressEvents } from "node:readline";
 
 import {
-  createInitialRoomState,
+  createInitialTaskSessionState,
   memberDirectory,
-  reduceRoom,
+  reduceTaskSession,
   type MemberId,
-  type RoomState,
-} from "../src/lib/room.ts";
+  type TaskSessionState,
+} from "../src/lib/task-session.ts";
 
-let state: RoomState = createInitialRoomState();
+let state: TaskSessionState = createInitialTaskSessionState();
 let actor: MemberId = "spencer";
 
 function render() {
@@ -38,9 +38,9 @@ render();
 process.stdin.on("keypress", (_input, key) => {
   if (key.name === "q" || (key.ctrl && key.name === "c")) process.exit(0);
   if (key.name === "p") actor = actor === "spencer" ? "maya" : "spencer";
-  if (key.name === "m") state = reduceRoom(state, { type: "send-message", actor, body: "I agree with the proposed behavior." });
-  if (key.name === "s") state = reduceRoom(state, { type: "steer-agent", actor });
-  if (key.name === "f" || key.name === "a") state = reduceRoom(state, { type: "advance-run", actor });
-  if (key.name === "r") state = reduceRoom(state, { type: "reset", actor });
+  if (key.name === "m") state = reduceTaskSession(state, { type: "send-message", actor, body: "I agree with the proposed behavior." });
+  if (key.name === "s") state = reduceTaskSession(state, { type: "steer-agent", actor });
+  if (key.name === "f" || key.name === "a") state = reduceTaskSession(state, { type: "advance-run", actor });
+  if (key.name === "r") state = reduceTaskSession(state, { type: "reset", actor });
   render();
 });

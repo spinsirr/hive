@@ -15,10 +15,12 @@ import {
   MessageSquarePlus,
   Play,
   RotateCcw,
+  Search,
   Send,
   WifiOff,
   X,
 } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
 
 import {
@@ -29,7 +31,8 @@ import {
 import { Message, MessageContent } from "@/components/ai-elements/message";
 import { Terminal } from "@/components/ai-elements/terminal";
 import { Button } from "@/components/ui/button";
-import { useSharedRoom } from "@/hooks/use-shared-room";
+import { Input } from "@/components/ui/input";
+import { useSharedSession } from "@/hooks/use-shared-session";
 import { displayHiveErrorMessage } from "@/lib/hive-error-copy";
 import {
   type ActiveSteer,
@@ -42,11 +45,18 @@ import {
   type SteeringQueueItem,
   type TeamMember,
   type WorkspaceState,
-} from "@/lib/room";
+} from "@/lib/task-session";
 import { shouldSubmitMessage } from "@/lib/message-keyboard";
 import { cn } from "@/lib/utils";
 
 type WorkspaceTab = "workspace" | "diff" | "files" | "terminal";
+
+type RepositoryOption = {
+  id: number;
+  name: string;
+  defaultBranch: string;
+  visibility: "private" | "public";
+};
 
 const stageCopy: Record<RunStage, { label: string; detail: string }> = {
   waiting: { label: "Ready", detail: "Ask Hive to inspect or change the connected repository." },
@@ -119,10 +129,14 @@ function ProductHeader({
   copied,
   currentMember,
   members,
+  lifecycle,
   repository,
+  sessionTitle,
+  stage,
   syncing,
   syncError,
   onCopyInvite,
+  onToggleLifecycle,
   onSignOut,
   onReset,
 }: {
@@ -130,26 +144,30 @@ function ProductHeader({
   copied: boolean;
   currentMember: TeamMember;
   members: TeamMember[];
+  lifecycle: "active" | "completed";
   repository?: RepositoryState;
+  sessionTitle: string;
+  stage: RunStage;
   syncing: boolean;
   syncError: boolean;
   onCopyInvite: () => void;
+  onToggleLifecycle: () => void;
   onSignOut: () => void;
   onReset: () => void;
 }) {
   return (
     <header className="flex h-13 shrink-0 items-center justify-between border-b border-[#e8e8e8] bg-white px-3 sm:px-4">
       <div className="flex min-w-0 items-center gap-2.5">
-        <HiveMark className="size-7" />
-        <span className="text-sm font-semibold tracking-[-0.025em]">Hive</span>
+        <Link className="flex shrink-0 items-center gap-2.5" href="/">
+          <HiveMark className="size-7" />
+          <span className="hidden text-sm font-semibold tracking-[-0.025em] sm:inline">Hive</span>
+        </Link>
         <span className="text-[#d4d4d4]">/</span>
-        <div className="flex min-w-0 items-baseline gap-2">
-          <span className="truncate text-xs font-medium text-[#3d3d3d]">
-            {repository?.name ?? "No repository"}
-          </span>
-          <span className="hidden text-[11px] text-[#8a8a8a] sm:inline">
-            {repository?.branch ?? "GitHub"}
-          </span>
+        <div className="min-w-0">
+          <p className="truncate text-xs font-medium text-[#3d3d3d]">{sessionTitle}</p>
+          <p className="hidden truncate text-[10px] text-[#929292] md:block">
+            {repository?.name ?? "Repository not attached"}
+          </p>
         </div>
       </div>
       <div className="flex items-center gap-2">
@@ -166,6 +184,15 @@ function ProductHeader({
           )}
           {syncError ? "Offline" : syncing ? "Syncing" : "Live"}
         </div>
+        <Button
+          className="hidden h-8 rounded-md bg-white px-2.5 text-xs text-[#333] lg:inline-flex"
+          disabled={stage === "running"}
+          onClick={onToggleLifecycle}
+          size="sm"
+          variant="outline"
+        >
+          <Check className="size-3.5" /> {lifecycle === "completed" ? "Reopen" : "Complete"}
+        </Button>
         <Button
           className="hidden h-8 rounded-md bg-white px-2.5 text-xs text-[#333] md:inline-flex"
           onClick={onCopyInvite}
@@ -192,6 +219,7 @@ function ProductHeader({
         <Button
           aria-label="Reset session"
           className="size-8 rounded-md text-[#777]"
+          disabled={lifecycle === "completed"}
           onClick={onReset}
           size="icon"
           title="Reset shared session"
@@ -290,7 +318,7 @@ function annotationTime(createdAt: number) {
   }).format(createdAt);
 }
 
-function SharedSession({ activeMembers, activeSteer, queued, queuedBy, queuePosition, steered, steeredBy, steeringQueue, currentMember, members, messages, onAnnotate, onMoveSteer, onRemoveSteer, onSteer, onSteerMessageAnnotation, onSend, onTyping, stage, typingMembers, workspaceAnnotation, compact = false }: {
+function SharedSession({ activeMembers, activeSteer, queued, queuedBy, queuePosition, steered, steeredBy, steeringQueue, currentMember, disabled, members, messages, onAnnotate, onMoveSteer, onRemoveSteer, onSteer, onSteerMessageAnnotation, onSend, onTyping, stage, typingMembers, workspaceAnnotation, compact = false }: {
   activeMembers: MemberId[];
   activeSteer?: ActiveSteer;
   queued: boolean;
@@ -300,6 +328,7 @@ function SharedSession({ activeMembers, activeSteer, queued, queuedBy, queuePosi
   steeredBy?: MemberId;
   steeringQueue: SteeringQueueItem[];
   currentMember: MemberId;
+  disabled: boolean;
   members: TeamMember[];
   messages: ChatMessage[];
   onAnnotate: (messageId: string, body: string) => void;
@@ -319,11 +348,11 @@ function SharedSession({ activeMembers, activeSteer, queued, queuedBy, queuePosi
   const [annotationDraft, setAnnotationDraft] = useState("");
   const submit = useCallback(() => {
     const body = draft.trim();
-    if (!body) return;
+    if (disabled || !body) return;
     onSend(body);
     onTyping(false);
     setDraft("");
-  }, [draft, onSend, onTyping]);
+  }, [disabled, draft, onSend, onTyping]);
 
   const beginAnnotation = useCallback((messageId: string) => {
     setAnnotationTarget(messageId);
@@ -349,7 +378,7 @@ function SharedSession({ activeMembers, activeSteer, queued, queuedBy, queuePosi
       <div className="flex h-11 shrink-0 items-center border-b border-[#ebebeb] px-4">
         <div className="flex items-center gap-2">
           <MessageSquare className="size-3.5 text-[#666]" />
-          <h2 className="text-xs font-semibold">Team room</h2>
+          <h2 className="text-xs font-semibold">Task conversation</h2>
           <span className="text-[11px] text-[#8a8a8a]">{activeMembers.length} online</span>
         </div>
       </div>
@@ -380,7 +409,7 @@ function SharedSession({ activeMembers, activeSteer, queued, queuedBy, queuePosi
                   {message.role === "agent" ? <HiveMark className="size-5 rounded-full border border-[#dedede]" light /> : <span className="grid size-5 place-items-center rounded-full border border-[#dedede] bg-[#fafafa] text-[8px] font-semibold">{message.initials}</span>}
                   <span className="text-[12px] font-medium">{message.name}</span>
                   <span className="text-[10px] text-[#999]">{message.time}</span>
-                  {message.role === "human" ? (
+                  {message.role === "human" && !disabled ? (
                     <button
                       aria-label={`Annotate ${message.name}'s message`}
                       className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-[#8f8f8f] opacity-0 transition hover:bg-[#f2f2f2] hover:text-[#171717] focus:opacity-100 group-hover:opacity-100"
@@ -473,6 +502,7 @@ function SharedSession({ activeMembers, activeSteer, queued, queuedBy, queuePosi
           <textarea
             aria-label="Ask Hive or mention a teammate"
             className="max-h-24 min-h-8 flex-1 resize-none bg-transparent px-1 py-1.5 text-[13px] leading-5 outline-none placeholder:text-[#aaa]"
+            disabled={disabled}
             onChange={(event) => {
               setDraft(event.target.value);
               onTyping(Boolean(event.target.value.trim()));
@@ -483,14 +513,14 @@ function SharedSession({ activeMembers, activeSteer, queued, queuedBy, queuePosi
                 submit();
               }
             }}
-            placeholder="Ask Hive or @mention a teammate…"
+            placeholder={disabled ? "This task is complete." : "Ask Hive or @mention a teammate…"}
             rows={1}
             value={draft}
           />
             <Button
               aria-label="Send message"
               className="size-8 rounded-lg"
-              disabled={!draft.trim()}
+              disabled={disabled || !draft.trim()}
               onClick={submit}
               size="icon"
             >
@@ -503,20 +533,148 @@ function SharedSession({ activeMembers, activeSteer, queued, queuedBy, queuePosi
   );
 }
 
-function WorkspaceOverview({ repository, roomId, workspace }: {
+function WorkspaceOverview({ repository, sessionId, workspace }: {
   repository?: RepositoryState;
-  roomId: string;
+  sessionId: string;
   workspace: WorkspaceState;
 }) {
+  const [repositories, setRepositories] = useState<RepositoryOption[] | null>(null);
+  const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [connectingId, setConnectingId] = useState<number | null>(null);
+  const [needsInstallation, setNeedsInstallation] = useState(false);
+  const [error, setError] = useState("");
+  const filteredRepositories = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    if (!normalizedQuery) return repositories ?? [];
+    return (repositories ?? []).filter((candidate) =>
+      candidate.name.toLowerCase().includes(normalizedQuery),
+    );
+  }, [query, repositories]);
+
+  const loadRepositories = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const response = await fetch(
+        `/api/github/repositories?session_id=${encodeURIComponent(sessionId)}`,
+        { cache: "no-store" },
+      );
+      if (response.status === 401) {
+        window.location.reload();
+        return;
+      }
+      const payload = (await response.json()) as {
+        error?: string;
+        needsInstallation?: boolean;
+        repositories?: RepositoryOption[];
+      };
+      if (!response.ok || !Array.isArray(payload.repositories)) {
+        throw new Error(payload.error || "Repositories are unavailable.");
+      }
+      setNeedsInstallation(payload.needsInstallation === true);
+      setRepositories(payload.repositories);
+    } catch (loadError) {
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Repositories are unavailable.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [sessionId]);
+
+  const connectRepository = useCallback(async (repositoryId: number) => {
+    setConnectingId(repositoryId);
+    setError("");
+    try {
+      const response = await fetch(
+        `/api/github/repositories?session_id=${encodeURIComponent(sessionId)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ repositoryId }),
+        },
+      );
+      if (response.status === 401) {
+        window.location.reload();
+        return;
+      }
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        throw new Error(payload.error || "Repository connection failed.");
+      }
+    } catch (connectError) {
+      setConnectingId(null);
+      setError(
+        connectError instanceof Error
+          ? connectError.message
+          : "Repository connection failed.",
+      );
+    }
+  }, [sessionId]);
+
   if (!repository) {
     return (
       <div className="hairline-grid flex h-full min-h-[420px] items-center justify-center bg-[#fafafa] p-8">
         <div className="w-full max-w-lg rounded-xl border border-[#dcdcdc] bg-white p-6 shadow-[0_10px_40px_rgba(0,0,0,0.05)]">
           <FolderGit2 className="size-7" />
-          <h3 className="mt-5 text-lg font-semibold tracking-[-0.03em]">Connect the repository Hive will operate</h3>
-          <p className="mt-2 text-sm leading-6 text-[#737373]">Install the repository-scoped GitHub App. Hive will mint a short-lived read token only when Vercel Sandbox needs to clone the selected repository.</p>
-          <a className="mt-5 inline-flex h-10 items-center gap-2 rounded-md bg-[#171717] px-4 text-sm font-medium text-white transition hover:bg-black" href={`/api/github/install?room_id=${encodeURIComponent(roomId)}`}><FolderGit2 className="size-4" /> Connect GitHub</a>
-          <p className="mt-3 font-mono text-[9px] text-[#a1a1a1]">One selected repository · no PAT · token expires within one hour</p>
+          <h3 className="mt-5 text-lg font-semibold tracking-[-0.03em]">Attach a repository</h3>
+          <p className="mt-2 text-sm leading-6 text-[#737373]">The conversation can start without code. When the task is ready, attach one repository from the team&apos;s GitHub access.</p>
+
+          {needsInstallation ? (
+            <a className="mt-5 inline-flex h-10 items-center gap-2 rounded-md bg-[#171717] px-4 text-sm font-medium text-white transition hover:bg-black" href={`/api/github/install?session_id=${encodeURIComponent(sessionId)}`}>
+              <FolderGit2 className="size-4" /> Connect team GitHub
+            </a>
+          ) : repositories ? (
+            <div className="mt-5">
+              {repositories.length > 5 ? (
+                <div className="relative mb-2">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-[#8a8a8a]" />
+                  <Input
+                    aria-label="Search repositories"
+                    className="h-9 rounded-md border-[#dedede] pl-9 text-xs shadow-none"
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder="Search repositories"
+                    value={query}
+                  />
+                </div>
+              ) : null}
+              <div className="max-h-64 overflow-y-auto rounded-lg border border-[#e5e5e5]">
+                {filteredRepositories.map((candidate) => (
+                  <button
+                    className="flex w-full items-center justify-between gap-4 border-b border-[#eeeeee] px-3 py-3 text-left transition last:border-b-0 hover:bg-[#fafafa] disabled:cursor-wait disabled:opacity-60"
+                    disabled={connectingId !== null}
+                    key={candidate.id}
+                    onClick={() => void connectRepository(candidate.id)}
+                    type="button"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium">{candidate.name}</span>
+                      <span className="mt-0.5 block text-[11px] text-[#888]">{candidate.defaultBranch} · {candidate.visibility}</span>
+                    </span>
+                    {connectingId === candidate.id ? <LoaderCircle className="size-4 shrink-0 animate-spin" /> : <span className="shrink-0 text-[11px] font-medium text-[#666]">Select</span>}
+                  </button>
+                ))}
+                {filteredRepositories.length === 0 ? (
+                  <p className="px-3 py-6 text-center text-xs text-[#888]">
+                    {repositories.length === 0
+                      ? "No repositories are authorized for the team."
+                      : "No matching repositories."}
+                  </p>
+                ) : null}
+              </div>
+              <Button className="mt-2 h-8 px-2 text-[11px]" disabled={loading || connectingId !== null} onClick={() => void loadRepositories()} size="sm" variant="ghost">Refresh repositories</Button>
+            </div>
+          ) : (
+            <Button className="mt-5 h-10 rounded-md px-4 text-sm" disabled={loading} onClick={() => void loadRepositories()}>
+              {loading ? <LoaderCircle className="size-4 animate-spin" /> : <FolderGit2 className="size-4" />}
+              {loading ? "Loading repositories…" : "Choose repository"}
+            </Button>
+          )}
+          {error ? <p className="mt-3 text-xs leading-5 text-[#777]">{error}</p> : null}
+          <p className="mt-3 font-mono text-[9px] text-[#a1a1a1]">Team access · one repository per task · short-lived credential</p>
         </div>
       </div>
     );
@@ -568,7 +726,7 @@ function WorkspaceOverview({ repository, roomId, workspace }: {
                 <div>
                   <p className="text-sm font-medium">No run yet</p>
                   <p className="mt-1 text-xs text-[#888]">
-                    Give Hive a concrete task in the team room.
+                    Give Hive a concrete task in the team session.
                   </p>
                 </div>
               </div>
@@ -638,7 +796,7 @@ function TerminalPane({ commands }: { commands: WorkspaceState["commands"] }) {
   );
 }
 
-function Workspace({ repository, roomId, tab, workspace, onTabChange }: { repository?: RepositoryState; roomId: string; tab: WorkspaceTab; workspace: WorkspaceState; onTabChange: (tab: WorkspaceTab) => void }) {
+function Workspace({ repository, sessionId, tab, workspace, onTabChange }: { repository?: RepositoryState; sessionId: string; tab: WorkspaceTab; workspace: WorkspaceState; onTabChange: (tab: WorkspaceTab) => void }) {
   return (
     <section className="flex h-full min-h-0 flex-col bg-white">
       <div className="flex h-11 shrink-0 items-center border-b border-[#ebebeb] bg-white px-2 sm:px-3">
@@ -662,30 +820,41 @@ function Workspace({ repository, roomId, tab, workspace, onTabChange }: { reposi
           })}
         </div>
       </div>
-      <div className="min-h-0 flex-1">{tab === "workspace" ? <WorkspaceOverview repository={repository} roomId={roomId} workspace={workspace} /> : null}{tab === "diff" ? <DiffPane diff={workspace.diff} /> : null}{tab === "files" ? <FilesPane files={workspace.files} /> : null}{tab === "terminal" ? <TerminalPane commands={workspace.commands} /> : null}</div>
+      <div className="min-h-0 flex-1">{tab === "workspace" ? <WorkspaceOverview repository={repository} sessionId={sessionId} workspace={workspace} /> : null}{tab === "diff" ? <DiffPane diff={workspace.diff} /> : null}{tab === "files" ? <FilesPane files={workspace.files} /> : null}{tab === "terminal" ? <TerminalPane commands={workspace.commands} /> : null}</div>
     </section>
   );
 }
 
-function RunBar({ activeSteer, queueCount, repository, stage, onAdvance }: { activeSteer?: ActiveSteer; queueCount: number; repository?: RepositoryState; stage: RunStage; onAdvance: () => void }) {
-  const action = !repository ? "Connect repository" : stage === "waiting" ? "Send Hive a task" : stage === "running" && activeSteer ? "Applying queued steer" : stage === "running" && queueCount > 0 ? "Apply next steer" : stage === "running" ? "Hive is working" : stage === "review" ? "Approve changes" : "Approved";
+function RunBar({ activeSteer, completed, queueCount, repository, stage, onAdvance }: { activeSteer?: ActiveSteer; completed: boolean; queueCount: number; repository?: RepositoryState; stage: RunStage; onAdvance: () => void }) {
+  const action = completed ? "Task complete" : stage === "waiting" ? "Send Hive a task" : stage === "running" && activeSteer ? "Applying queued steer" : stage === "running" && queueCount > 0 ? "Apply next steer" : stage === "running" ? "Hive is working" : stage === "review" ? "Approve changes" : "Approved";
   const Icon = stage === "review" || stage === "approved" ? GitPullRequest : Play;
-  const disabled = !repository || stage === "waiting" || stage === "approved" || Boolean(activeSteer) || (stage === "running" && queueCount === 0);
+  const disabled = completed || !repository || stage === "waiting" || stage === "approved" || Boolean(activeSteer) || (stage === "running" && queueCount === 0);
+  const detail = completed
+    ? "This task is read-only until a teammate reopens it."
+    : !repository
+      ? "Planning mode · discuss intent now, attach code when the team is ready."
+      : queueCount > 0
+        ? `${queueCount} steer${queueCount === 1 ? "" : "s"} waiting for a safe boundary.`
+        : stageCopy[stage].detail;
   return (
     <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-t border-[#ebebeb] bg-[#fafafa] px-3 sm:px-4">
       <p className="min-w-0 truncate text-[11px] text-[#777]">
-        {queueCount > 0
-          ? `${queueCount} steer${queueCount === 1 ? "" : "s"} waiting for a safe boundary.`
-          : stageCopy[stage].detail}
+        {detail}
       </p>
-      <Button
-        className="h-8 shrink-0 rounded-md bg-[#171717] px-3 text-xs text-white"
-        disabled={disabled}
-        onClick={onAdvance}
-        size="sm"
-      >
-        <Icon className="size-3.5" /> {action}
-      </Button>
+      {repository ? (
+        <Button
+          className="h-8 shrink-0 rounded-md bg-[#171717] px-3 text-xs text-white"
+          disabled={disabled}
+          onClick={onAdvance}
+          size="sm"
+        >
+          <Icon className="size-3.5" /> {action}
+        </Button>
+      ) : (
+        <span className="shrink-0 rounded border border-[#dedede] bg-white px-2 py-1 font-mono text-[9px] uppercase tracking-[0.12em] text-[#888]">
+          Planning
+        </span>
+      )}
     </div>
   );
 }
@@ -699,6 +868,7 @@ type SharedProps = {
   steered: boolean;
   steeredBy?: MemberId;
   currentMember: MemberId;
+  disabled: boolean;
   members: TeamMember[];
   messages: ChatMessage[];
   stage: RunStage;
@@ -719,21 +889,25 @@ type SharedProps = {
 
 export function HiveWorkspace({
   currentMember,
-  roomId,
+  inviteToken,
+  sessionId,
+  sessionTitle,
 }: {
   currentMember: TeamMember;
-  roomId: string;
+  inviteToken: string;
+  sessionId: string;
+  sessionTitle: string;
 }) {
   const [pane, setPane] = useState<"chat" | "workspace">("chat");
   const [tab, setTab] = useState<WorkspaceTab>("workspace");
   const [copied, setCopied] = useState(false);
-  const { dispatch, setTyping, snapshot, syncing, syncError } = useSharedRoom(roomId);
-  const { room, activeMembers, members, typingMembers } = snapshot;
+  const { dispatch, setTyping, snapshot, syncing, syncError } = useSharedSession(sessionId);
+  const { session, activeMembers, members, typingMembers } = snapshot;
   const teamMembers = useMemo(
     () => [currentMember, ...members.filter((member) => member.id !== currentMember.id)],
     [currentMember, members],
   );
-  const { activeSteer, annotation, messages, repository, stage, steeringQueue, workspace } = room;
+  const { activeSteer, annotation, lifecycle, messages, repository, stage, steeringQueue, workspace } = session;
   const steered = annotation.status === "steered";
   const queued = annotation.status === "queued";
   const queuePosition = steeringQueue.findIndex(
@@ -743,12 +917,13 @@ export function HiveWorkspace({
   const copyInvite = useCallback(() => {
     const url = new URL(window.location.href);
     url.search = "";
+    url.searchParams.set("invite", inviteToken);
     url.hash = "";
     void navigator.clipboard.writeText(url.toString()).then(() => {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1_500);
     });
-  }, []);
+  }, [inviteToken]);
   const signOut = useCallback(() => {
     void fetch("/api/auth/logout", { method: "POST" }).then(() => {
       window.location.reload();
@@ -775,7 +950,7 @@ export function HiveWorkspace({
       setTab("terminal");
     }
     void dispatch({ type: "send-message", body }).then((nextSnapshot) => {
-      if (nextSnapshot?.room.stage === "review") setTab("diff");
+      if (nextSnapshot?.session.stage === "review") setTab("diff");
     });
   }, [currentMember.id, dispatch, repository, teamMembers]);
   const advance = useCallback(() => {
@@ -783,7 +958,7 @@ export function HiveWorkspace({
       ? ({ type: "apply-next-steer" } as const)
       : ({ type: "advance-run" } as const);
     void dispatch(action).then((nextSnapshot) => {
-      if (nextSnapshot?.room.stage === "review") setTab("diff");
+      if (nextSnapshot?.session.stage === "review") setTab("diff");
     });
   }, [dispatch, stage, steeringQueue.length]);
   const reset = useCallback(() => {
@@ -791,6 +966,11 @@ export function HiveWorkspace({
     setTab("workspace");
     void dispatch({ type: "reset" });
   }, [dispatch]);
+  const toggleLifecycle = useCallback(() => {
+    void dispatch({
+      type: lifecycle === "completed" ? "reopen-session" : "complete-session",
+    });
+  }, [dispatch, lifecycle]);
 
   const shared = useMemo<SharedProps>(() => ({
     activeMembers,
@@ -801,6 +981,7 @@ export function HiveWorkspace({
     steered,
     steeredBy: annotation.steeredBy,
     currentMember: currentMember.id,
+    disabled: lifecycle === "completed",
     members: teamMembers,
     messages,
     stage,
@@ -817,11 +998,11 @@ export function HiveWorkspace({
     onTyping: setTyping,
     onAdvance: advance,
     onTabChange: setTab,
-  }), [activeMembers, activeSteer, advance, annotate, annotation.queuedBy, annotation.steeredBy, annotation.text, currentMember.id, messages, moveSteer, queuePosition, queued, removeSteer, send, setTyping, stage, steer, steerMessageAnnotation, steered, steeringQueue, tab, teamMembers, typingMembers]);
+  }), [activeMembers, activeSteer, advance, annotate, annotation.queuedBy, annotation.steeredBy, annotation.text, currentMember.id, lifecycle, messages, moveSteer, queuePosition, queued, removeSteer, send, setTyping, stage, steer, steerMessageAnnotation, steered, steeringQueue, tab, teamMembers, typingMembers]);
 
   return (
     <main className="flex h-dvh min-h-[560px] flex-col overflow-hidden bg-[#fafafa] text-[#171717]">
-      <ProductHeader activeMembers={activeMembers} copied={copied} currentMember={currentMember} members={teamMembers} onCopyInvite={copyInvite} onSignOut={signOut} onReset={reset} repository={repository} syncing={syncing} syncError={syncError} />
+      <ProductHeader activeMembers={activeMembers} copied={copied} currentMember={currentMember} lifecycle={lifecycle} members={teamMembers} onCopyInvite={copyInvite} onSignOut={signOut} onReset={reset} onToggleLifecycle={toggleLifecycle} repository={repository} sessionTitle={sessionTitle} stage={stage} syncing={syncing} syncError={syncError} />
       <div className="flex h-10 shrink-0 items-center gap-1 border-b border-[#e8e8e8] bg-[#fafafa] p-1 min-[960px]:hidden">
         <button
           aria-pressed={pane === "chat"}
@@ -832,7 +1013,7 @@ export function HiveWorkspace({
           onClick={() => setPane("chat")}
           type="button"
         >
-          <MessageSquare className="size-3.5" /> Team room
+          <MessageSquare className="size-3.5" /> Conversation
         </button>
         <button
           aria-pressed={pane === "workspace"}
@@ -867,9 +1048,9 @@ export function HiveWorkspace({
           )}
         >
           <div className="min-h-0 flex-1">
-            <Workspace repository={repository} roomId={roomId} tab={shared.tab} workspace={workspace} onTabChange={shared.onTabChange} />
+            <Workspace repository={repository} sessionId={sessionId} tab={shared.tab} workspace={workspace} onTabChange={shared.onTabChange} />
           </div>
-          <RunBar activeSteer={activeSteer} queueCount={steeringQueue.length} repository={repository} stage={shared.stage} onAdvance={shared.onAdvance} />
+          <RunBar activeSteer={activeSteer} completed={lifecycle === "completed"} queueCount={steeringQueue.length} repository={repository} stage={shared.stage} onAdvance={shared.onAdvance} />
         </div>
       </div>
     </main>

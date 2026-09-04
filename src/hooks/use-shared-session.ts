@@ -3,22 +3,25 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
-  createInitialRoomState,
-  type RoomAction,
-} from "@/lib/room";
-import type { RoomSnapshot } from "@/lib/room-store";
+  createInitialTaskSessionState,
+  type TaskSessionAction,
+} from "@/lib/task-session";
+import type { TaskSessionSnapshot } from "@/lib/task-session-store";
 
-type ClientRoomAction = Exclude<RoomAction, { type: "connect-repository" }>;
+type ClientTaskSessionAction = Exclude<
+  TaskSessionAction,
+  { type: "connect-repository" }
+>;
 
-type RoomDispatchAction = ClientRoomAction extends infer Action
-  ? Action extends ClientRoomAction
+type SessionDispatchAction = ClientTaskSessionAction extends infer Action
+  ? Action extends ClientTaskSessionAction
     ? Omit<Action, "actor">
     : never
   : never;
 
-export function useSharedRoom(roomId: string) {
-  const [snapshot, setSnapshot] = useState<RoomSnapshot>(() => ({
-    room: createInitialRoomState(0, roomId),
+export function useSharedSession(sessionId: string) {
+  const [snapshot, setSnapshot] = useState<TaskSessionSnapshot>(() => ({
+    session: createInitialTaskSessionState(0, sessionId),
     activeMembers: [],
     members: [],
     typingMembers: [],
@@ -28,7 +31,7 @@ export function useSharedRoom(roomId: string) {
   const typingRef = useRef(false);
   const channelRef = useRef<BroadcastChannel | null>(null);
 
-  const publish = useCallback((nextSnapshot: RoomSnapshot) => {
+  const publish = useCallback((nextSnapshot: TaskSessionSnapshot) => {
     setSnapshot(nextSnapshot);
     setSyncing(false);
     setSyncError(false);
@@ -37,14 +40,14 @@ export function useSharedRoom(roomId: string) {
 
   const post = useCallback(async (payload: object) => {
     try {
-      const response = await fetch(`/api/rooms/${encodeURIComponent(roomId)}`, {
+      const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
       if (response.status === 401) window.location.reload();
-      if (!response.ok) throw new Error("Room action failed");
-      const nextSnapshot = (await response.json()) as RoomSnapshot;
+      if (!response.ok) throw new Error("Session action failed");
+      const nextSnapshot = (await response.json()) as TaskSessionSnapshot;
       publish(nextSnapshot);
       return nextSnapshot;
     } catch {
@@ -52,16 +55,16 @@ export function useSharedRoom(roomId: string) {
       setSyncError(true);
       return null;
     }
-  }, [publish, roomId]);
+  }, [publish, sessionId]);
 
   const refresh = useCallback(async () => {
     try {
-      const response = await fetch(`/api/rooms/${encodeURIComponent(roomId)}`, {
+      const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, {
         cache: "no-store",
       });
       if (response.status === 401) window.location.reload();
-      if (!response.ok) throw new Error("Room refresh failed");
-      const nextSnapshot = (await response.json()) as RoomSnapshot;
+      if (!response.ok) throw new Error("Session refresh failed");
+      const nextSnapshot = (await response.json()) as TaskSessionSnapshot;
       setSnapshot(nextSnapshot);
       setSyncing(false);
       setSyncError(false);
@@ -69,12 +72,12 @@ export function useSharedRoom(roomId: string) {
       setSyncing(true);
       setSyncError(true);
     }
-  }, [roomId]);
+  }, [sessionId]);
 
   useEffect(() => {
     if (typeof BroadcastChannel !== "undefined") {
-      const channel = new BroadcastChannel(`hive-room-${roomId}`);
-      channel.onmessage = (event: MessageEvent<RoomSnapshot>) => {
+      const channel = new BroadcastChannel(`hive-session-${sessionId}`);
+      channel.onmessage = (event: MessageEvent<TaskSessionSnapshot>) => {
         setSnapshot(event.data);
         setSyncing(false);
       };
@@ -94,10 +97,10 @@ export function useSharedRoom(roomId: string) {
       channelRef.current?.close();
       channelRef.current = null;
     };
-  }, [post, refresh, roomId]);
+  }, [post, refresh, sessionId]);
 
   const dispatch = useCallback(
-    (action: RoomDispatchAction) => post(action),
+    (action: SessionDispatchAction) => post(action),
     [post],
   );
 

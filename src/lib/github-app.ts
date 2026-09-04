@@ -2,7 +2,7 @@ import "server-only";
 
 import { createAppAuth } from "@octokit/auth-app";
 
-import type { RepositoryState } from "@/lib/room";
+import type { RepositoryState } from "@/lib/task-session";
 
 const GITHUB_API_VERSION = "2026-03-10";
 const DEFAULT_APP_SLUG = "hive-multiplayer-agent";
@@ -87,30 +87,34 @@ export async function getInstallationRepositories(
   installationId: number,
 ): Promise<GitHubInstallationRepository[]> {
   const token = await tokenForInstallation(installationId);
-  const response = await fetch(
-    "https://api.github.com/installation/repositories?per_page=100",
-    {
-      cache: "no-store",
-      headers: {
-        Accept: "application/vnd.github+json",
-        Authorization: `Bearer ${token}`,
-        "X-GitHub-Api-Version": GITHUB_API_VERSION,
+  const repositories: GitHubRepositoryPayload[] = [];
+  let page = 1;
+  let totalCount = 0;
+
+  do {
+    const response = await fetch(
+      `https://api.github.com/installation/repositories?per_page=100&page=${page}`,
+      {
+        cache: "no-store",
+        headers: {
+          Accept: "application/vnd.github+json",
+          Authorization: `Bearer ${token}`,
+          "X-GitHub-Api-Version": GITHUB_API_VERSION,
+        },
       },
-    },
-  );
-
-  if (!response.ok) {
-    throw new Error(`GitHub rejected installation ${installationId}.`);
-  }
-
-  const payload = (await response.json()) as InstallationRepositoriesPayload;
-  if (payload.total_count > payload.repositories.length) {
-    throw new Error(
-      "Hive currently supports up to 100 repositories per installation.",
     );
-  }
 
-  return payload.repositories.map((repository) => ({
+    if (!response.ok) {
+      throw new Error(`GitHub rejected installation ${installationId}.`);
+    }
+
+    const payload = (await response.json()) as InstallationRepositoriesPayload;
+    totalCount = payload.total_count;
+    repositories.push(...payload.repositories);
+    page += 1;
+  } while (repositories.length < totalCount);
+
+  return repositories.map((repository) => ({
     id: repository.id,
     name: repository.full_name,
     cloneUrl: repository.clone_url,

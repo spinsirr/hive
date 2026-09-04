@@ -17,7 +17,7 @@ type OAuthStatePayload = {
 };
 
 type InstallStatePayload = {
-  roomId: string;
+  sessionId: string;
   expiresAt: number;
 };
 
@@ -71,10 +71,10 @@ function signaturesMatch(expected: string, received: string) {
   );
 }
 
-export function createGitHubInstallState(roomId: string) {
+export function createGitHubInstallState(sessionId: string) {
   const encoded = Buffer.from(
     JSON.stringify({
-      roomId,
+      sessionId,
       expiresAt: Date.now() + STATE_TTL_MS,
     } satisfies InstallStatePayload),
   ).toString("base64url");
@@ -90,7 +90,7 @@ export function verifyGitHubInstallState(state?: string | null) {
     const payload = JSON.parse(
       Buffer.from(encoded, "base64url").toString("utf8"),
     ) as InstallStatePayload;
-    return payload.expiresAt >= Date.now() ? payload.roomId : null;
+    return payload.expiresAt >= Date.now() ? payload.sessionId : null;
   } catch {
     return null;
   }
@@ -98,7 +98,7 @@ export function verifyGitHubInstallState(state?: string | null) {
 
 export function safeReturnTo(value?: string | null) {
   if (!value || !value.startsWith("/") || value.startsWith("//")) {
-    return "/rooms/orbit-nav";
+    return "/";
   }
   return value;
 }

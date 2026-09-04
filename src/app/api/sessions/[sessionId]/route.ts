@@ -2,38 +2,40 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { getSessionMember, HIVE_SESSION_COOKIE } from "@/lib/auth-session";
 import { HiveAgentError } from "@/lib/hive-agent";
+import { runHiveConversation } from "@/lib/hive-conversation";
 import { hiveErrorCopy } from "@/lib/hive-error-copy";
 import { runHiveCodingTask } from "@/lib/hive-runner";
 import {
   isDirectedAtTeammate,
   resolveMember,
-  type RoomAction,
-} from "@/lib/room";
-import { isRoomId } from "@/lib/room-id";
+  type TaskSessionAction,
+} from "@/lib/task-session";
+import { isTaskSessionId } from "@/lib/task-session-id";
 import {
   appendHiveReply,
-  applyRoomAction,
-  getRoomSnapshot,
+  applyTaskSessionAction,
+  getTaskSessionSnapshot,
   heartbeat,
-} from "@/lib/room-store";
-import type { RoomSnapshot } from "@/lib/room-store";
+  isTaskSessionMember,
+} from "@/lib/task-session-store";
+import type { TaskSessionSnapshot } from "@/lib/task-session-store";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-type RoomRouteContext = {
-  params: Promise<{ roomId: string }>;
+type TaskSessionRouteContext = {
+  params: Promise<{ sessionId: string }>;
 };
 
-function publicSnapshot(snapshot: RoomSnapshot): RoomSnapshot {
-  const session = snapshot.room.workspace.agentSession;
+function publicSnapshot(snapshot: TaskSessionSnapshot): TaskSessionSnapshot {
+  const session = snapshot.session.workspace.agentSession;
   return {
     ...snapshot,
-    room: {
-      ...snapshot.room,
+    session: {
+      ...snapshot.session,
       workspace: {
-        ...snapshot.room.workspace,
+        ...snapshot.session.workspace,
         agentSession: session
           ? { id: session.id, runtime: session.runtime }
           : undefined,
@@ -42,45 +44,49 @@ function publicSnapshot(snapshot: RoomSnapshot): RoomSnapshot {
   };
 }
 
-function roomResponse(snapshot: RoomSnapshot) {
+function sessionResponse(snapshot: TaskSessionSnapshot) {
   return NextResponse.json(publicSnapshot(snapshot), {
     headers: { "Cache-Control": "no-store" },
   });
 }
 
-async function authenticatedRoom(request: NextRequest, context: RoomRouteContext) {
-  const { roomId } = await context.params;
-  if (!isRoomId(roomId)) return null;
+async function authenticatedSession(
+  request: NextRequest,
+  context: TaskSessionRouteContext,
+) {
+  const { sessionId } = await context.params;
+  if (!isTaskSessionId(sessionId)) return null;
   const member = await getSessionMember(
     request.cookies.get(HIVE_SESSION_COOKIE)?.value,
   );
-  return member ? { member, roomId } : null;
+  if (!member || !(await isTaskSessionMember(sessionId, member.id))) return null;
+  return { member, sessionId: sessionId };
 }
 
-export async function GET(request: NextRequest, context: RoomRouteContext) {
-  const auth = await authenticatedRoom(request, context);
+export async function GET(request: NextRequest, context: TaskSessionRouteContext) {
+  const auth = await authenticatedSession(request, context);
   if (!auth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  return roomResponse(await getRoomSnapshot(auth.roomId));
+  return sessionResponse(await getTaskSessionSnapshot(auth.sessionId));
 }
 
-export async function POST(request: NextRequest, context: RoomRouteContext) {
-  const auth = await authenticatedRoom(request, context);
+export async function POST(request: NextRequest, context: TaskSessionRouteContext) {
+  const auth = await authenticatedSession(request, context);
   if (!auth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const { member, roomId } = auth;
+  const { member, sessionId } = auth;
   const vercelOidcToken =
     request.headers.get("x-vercel-oidc-token")?.trim() || undefined;
   const payload: unknown = await request.json().catch(() => null);
   if (!payload || typeof payload !== "object" || !("type" in payload)) {
-    return NextResponse.json({ error: "Invalid room action" }, { status: 400 });
+    return NextResponse.json({ error: "Invalid session action" }, { status: 400 });
   }
 
   if (payload.type === "heartbeat") {
     const typing = "typing" in payload && payload.typing === true;
-    return roomResponse(await heartbeat(roomId, member.id, typing));
+    return sessionResponse(await heartbeat(sessionId, member.id, typing));
   }
 
   if (
@@ -92,9 +98,11 @@ export async function POST(request: NextRequest, context: RoomRouteContext) {
     payload.type !== "reorder-queued-steer" &&
     payload.type !== "steer-agent" &&
     payload.type !== "advance-run" &&
+    payload.type !== "complete-session" &&
+    payload.type !== "reopen-session" &&
     payload.type !== "reset"
   ) {
-    return NextResponse.json({ error: "Unknown room action" }, { status: 400 });
+    return NextResponse.json({ error: "Unknown session action" }, { status: 400 });
   }
 
   if (
@@ -135,20 +143,20 @@ export async function POST(request: NextRequest, context: RoomRouteContext) {
     return NextResponse.json({ error: "Invalid queue direction" }, { status: 400 });
   }
 
-  const action = { ...payload, actor: member.id } as RoomAction;
+  const action = { ...payload, actor: member.id } as TaskSessionAction;
   const actionAt = Date.now();
-  const snapshot = await applyRoomAction(roomId, action, member, actionAt);
+  const snapshot = await applyTaskSessionAction(sessionId, action, member, actionAt);
 
   const shouldGenerateForMessage =
     action.type === "send-message" &&
     !isDirectedAtTeammate(action.body, action.actor, snapshot.members) &&
-    snapshot.room.workspace.startedAt === actionAt;
+    snapshot.session.workspace.startedAt === actionAt;
   const shouldGenerateForSteer =
     action.type === "steer-agent" &&
-    snapshot.room.annotation.steeredAt === actionAt;
+    snapshot.session.annotation.steeredAt === actionAt;
   const messageAnnotation =
     action.type === "steer-message-annotation"
-      ? snapshot.room.messages
+      ? snapshot.session.messages
           .find((message) => message.id === action.messageId)
           ?.annotations?.find(
             (annotation) => annotation.id === action.annotationId,
@@ -159,7 +167,7 @@ export async function POST(request: NextRequest, context: RoomRouteContext) {
     messageAnnotation?.steeredAt === actionAt;
   const shouldGenerateForQueuedSteer =
     action.type === "apply-next-steer" &&
-    snapshot.room.activeSteer?.appliedAt === actionAt;
+    snapshot.session.activeSteer?.appliedAt === actionAt;
 
   if (
     !shouldGenerateForMessage &&
@@ -167,12 +175,12 @@ export async function POST(request: NextRequest, context: RoomRouteContext) {
     !shouldGenerateForMessageAnnotation &&
     !shouldGenerateForQueuedSteer
   ) {
-    return roomResponse(snapshot);
+    return sessionResponse(snapshot);
   }
 
   const sourceMessageId =
     action.type === "send-message"
-      ? snapshot.room.messages.findLast(
+      ? snapshot.session.messages.findLast(
           (message) =>
             message.id.startsWith(`human-${actionAt}-`) &&
             message.memberId === action.actor,
@@ -190,35 +198,19 @@ export async function POST(request: NextRequest, context: RoomRouteContext) {
       : undefined;
   const annotatedMessage =
     action.type === "steer-message-annotation"
-      ? snapshot.room.messages.find(
+      ? snapshot.session.messages.find(
           (message) => message.id === action.messageId,
         )
       : undefined;
   const activeSteer =
     action.type === "apply-next-steer"
-      ? snapshot.room.activeSteer
+      ? snapshot.session.activeSteer
       : undefined;
-
-  if (!snapshot.room.repository) {
-    return roomResponse(
-      await appendHiveReply(
-        roomId,
-        "Connect a repository through the Hive GitHub App before asking Hive to inspect or change code.",
-        {
-          forMessageId: sourceMessageId,
-          forMessageAnnotation: sourceMessageAnnotation,
-          forActiveSteerAt: activeSteer?.appliedAt,
-          forSteerAt: sourceSteerAt,
-          status: "error",
-        },
-      ),
-    );
-  }
 
   try {
     const steer =
       action.type === "steer-agent"
-        ? snapshot.room.annotation.text
+        ? snapshot.session.annotation.text
         : action.type === "steer-message-annotation" && messageAnnotation
           ? [
               messageAnnotation.body,
@@ -242,12 +234,29 @@ export async function POST(request: NextRequest, context: RoomRouteContext) {
       action.type === "apply-next-steer" && activeSteer
         ? activeSteer.authorId
         : action.actor;
-    const runResult = await runHiveCodingTask(snapshot.room, runActor, steer, {
-      actorName: resolveMember(runActor, snapshot.members).name,
+    const actorName = resolveMember(runActor, snapshot.members).name;
+    if (!snapshot.session.repository) {
+      const reply = await runHiveConversation(
+        snapshot.session,
+        runActor,
+        actorName,
+      );
+      return sessionResponse(
+        await appendHiveReply(sessionId, reply, {
+          forMessageId: sourceMessageId,
+          forMessageAnnotation: sourceMessageAnnotation,
+          forActiveSteerAt: activeSteer?.appliedAt,
+          forSteerAt: sourceSteerAt,
+        }),
+      );
+    }
+
+    const runResult = await runHiveCodingTask(snapshot.session, runActor, steer, {
+      actorName,
       vercelOidcToken,
     });
-    return roomResponse(
-      await appendHiveReply(roomId, runResult.summary, {
+    return sessionResponse(
+      await appendHiveReply(sessionId, runResult.summary, {
         forMessageId: sourceMessageId,
         forMessageAnnotation: sourceMessageAnnotation,
         forActiveSteerAt: activeSteer?.appliedAt,
@@ -264,8 +273,8 @@ export async function POST(request: NextRequest, context: RoomRouteContext) {
       error instanceof HiveAgentError
         ? error.message
         : hiveErrorCopy.generic;
-    return roomResponse(
-      await appendHiveReply(roomId, message, {
+    return sessionResponse(
+      await appendHiveReply(sessionId, message, {
         forMessageId: sourceMessageId,
         forMessageAnnotation: sourceMessageAnnotation,
         forActiveSteerAt: activeSteer?.appliedAt,

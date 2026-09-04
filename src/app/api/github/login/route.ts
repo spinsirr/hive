@@ -1,11 +1,14 @@
 import { type NextRequest, NextResponse } from "next/server";
 
+import { getSessionMember, HIVE_SESSION_COOKIE } from "@/lib/auth-session";
 import { getInstallationRepositories } from "@/lib/github-app";
 import {
   createGitHubOAuthState,
   GITHUB_OAUTH_COOKIE,
   githubOAuthAuthorizeUrl,
 } from "@/lib/github-oauth";
+import { isTaskSessionId } from "@/lib/task-session-id";
+import { isTaskSessionMember } from "@/lib/task-session-store";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -21,9 +24,22 @@ function installationIdFrom(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   const installationId = installationIdFrom(request);
+  const sessionId = request.nextUrl.searchParams.get("session_id");
 
   try {
     if (installationId) {
+      if (!isTaskSessionId(sessionId)) {
+        return NextResponse.json({ error: "Invalid session" }, { status: 400 });
+      }
+      const member = await getSessionMember(
+        request.cookies.get(HIVE_SESSION_COOKIE)?.value,
+      );
+      if (!member || !(await isTaskSessionMember(sessionId, member.id))) {
+        return NextResponse.json(
+          { error: "Session not found" },
+          { status: 404 },
+        );
+      }
       await getInstallationRepositories(installationId);
     }
     const { maxAge, nonce, state } = createGitHubOAuthState({
