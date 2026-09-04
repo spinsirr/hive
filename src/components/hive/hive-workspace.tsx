@@ -29,7 +29,10 @@ import {
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
 import { Message, MessageContent } from "@/components/ai-elements/message";
-import { Terminal } from "@/components/ai-elements/terminal";
+import {
+  Terminal,
+  TerminalContent,
+} from "@/components/ai-elements/terminal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useSharedSession } from "@/hooks/use-shared-session";
@@ -713,7 +716,9 @@ function TerminalPane({ commands }: { commands: WorkspaceState["commands"] }) {
     ? commands.map((command) => `$ ${command.command}\n${command.output || "(no output)"}\n\n[exit ${command.exitCode}${command.durationMs ? ` · ${command.durationMs}ms` : ""}]`).join("\n\n")
     : "Waiting for Hive to run a real repository command…";
   return (
-    <div className="h-full overflow-auto bg-white p-5"><div className="mx-auto max-w-5xl"><Terminal output={output} /></div></div>
+    <Terminal className="h-full rounded-none border-0" output={output}>
+      <TerminalContent className="max-h-none flex-1 p-4 font-mono text-[12px] leading-6 sm:p-5" />
+    </Terminal>
   );
 }
 

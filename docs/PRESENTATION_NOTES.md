@@ -64,6 +64,7 @@ This correction matters: the team is the durable collaboration space; a session 
 | GitHub App for team access, OAuth for identity | Repository authority and human identity have different lifecycles. | Personal access tokens or browser-supplied identity. |
 | Reuse AI SDK Harness + Codex + Sandbox | The differentiator is multiplayer control, not rebuilding an agent runtime. | A custom harness and container platform. |
 | Show artifacts, not a generic overview | Diff, changed files, and terminal output each have a clear object and can be verified. | A dashboard tab that mixes repository metadata, status, and summary counts. |
+| Let work surfaces fill the workspace | Terminal output is a first-class surface with no nested card, duplicate title, or arbitrary max width. | Reusing a generic terminal card inside another workspace panel. |
 | Neon is canonical history | Native Codex history can disappear with compute; team intent cannot. | Treating sandbox files as the product database. |
 | Quiet error state | A failure should not become a theatrical agent apology. | Large error bubbles that repeat internal details. |
 | Ordinary frontend demo task | A second-level menu exposes intent ambiguity without domain setup. | A deployment workflow that distracts from collaboration. |
@@ -171,6 +172,7 @@ Be explicit: GitHub write-back is not built; organization administration is not 
 
 - Created a clean dogfood task against the real `spinsirr/hive` repository for the multiplayer demo.
 - Removed the ambiguous workspace Overview tab; repository attachment is now a standalone pre-run state and connected tasks default directly to Diff, with Files and Terminal as the only other artifact views.
+- Flattened Terminal into the shared workspace chrome: the terminal now fills its pane and relies on the existing artifact tabs for identity instead of repeating a framed Terminal card.
 
 ## Questions to prepare for
 
