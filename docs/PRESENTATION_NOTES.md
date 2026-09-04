@@ -185,6 +185,7 @@ Be explicit: GitHub write-back is not built; organization administration is not 
 - Reproduced a client synchronization race with controlled response ordering: delayed polling/action/broadcast snapshots removed a newer human message. Added one shared version guard to all three entry points and kept reset versions monotonic; the regression and cross-task-response checks now pass. This is deterministic local coverage, not a substitute for two-account live testing.
 - Fixed the initial reload flash of an empty task by passing the existing server snapshot to the keyed task component. The page and session API now share one public projection, with a regression confirming that Codex resume checkpoints are excluded without mutating durable recovery state. Reconnection/focus also triggers an immediate refresh.
 - Verification for the synchronization changes: 32 tests, targeted ESLint, TypeScript, and a production Webpack build pass. Full live network-loss and two-account recovery checks remain open.
+- Production verification: Vercel marked commit `3af4c7a` Ready and assigned it to `hive-roan-mu.vercel.app`. Reloading the real task retained the attached repository, attributed conversation, latest coding request, and its failed-run status. GitHub App settings still require the owner's Confirm access; no second-user authorization or App-visibility change has been verified.
 
 ## Questions to prepare for
 
