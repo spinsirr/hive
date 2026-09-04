@@ -4,12 +4,13 @@ import {
   ArrowDown,
   ArrowUp,
   Check,
+  ChevronDown,
   Code2,
   Copy,
-  FileTerminal,
   FileCode2,
   FolderGit2,
   GitPullRequest,
+  ListChecks,
   LoaderCircle,
   MessageSquare,
   MessageSquarePlus,
@@ -29,10 +30,6 @@ import {
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
 import { Message, MessageContent } from "@/components/ai-elements/message";
-import {
-  Terminal,
-  TerminalContent,
-} from "@/components/ai-elements/terminal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useSharedSession } from "@/hooks/use-shared-session";
@@ -52,7 +49,7 @@ import {
 import { shouldSubmitMessage } from "@/lib/message-keyboard";
 import { cn } from "@/lib/utils";
 
-type WorkspaceTab = "diff" | "files" | "terminal";
+type WorkspaceTab = "diff" | "files" | "runs";
 
 type RepositoryOption = {
   id: number;
@@ -71,7 +68,7 @@ const stageCopy: Record<RunStage, { label: string; detail: string }> = {
 const tabs: Array<{ key: WorkspaceTab; label: string; icon: typeof Code2 }> = [
   { key: "diff", label: "Diff", icon: Code2 },
   { key: "files", label: "Files", icon: FileCode2 },
-  { key: "terminal", label: "Terminal", icon: FileTerminal },
+  { key: "runs", label: "Runs", icon: ListChecks },
 ];
 
 function HiveMark({ className, light = false }: { className?: string; light?: boolean }) {
@@ -711,14 +708,63 @@ function FilesPane({ files }: { files: WorkspaceState["files"] }) {
   );
 }
 
-function TerminalPane({ commands }: { commands: WorkspaceState["commands"] }) {
-  const output = commands.length > 0
-    ? commands.map((command) => `$ ${command.command}\n${command.output || "(no output)"}\n\n[exit ${command.exitCode}${command.durationMs ? ` · ${command.durationMs}ms` : ""}]`).join("\n\n")
-    : "Waiting for Hive to run a real repository command…";
+function RunsPane({ commands }: { commands: WorkspaceState["commands"] }) {
+  if (commands.length === 0) {
+    return (
+      <div className="grid h-full place-items-center bg-[#fafafa] p-8 text-center">
+        <div>
+          <ListChecks className="mx-auto size-6 text-[#737373]" />
+          <p className="mt-3 text-sm font-medium">No runs yet</p>
+          <p className="mt-1 text-xs text-[#8f8f8f]">
+            Commands executed by Hive will appear here for the team to review.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <Terminal className="h-full rounded-none border-0" output={output}>
-      <TerminalContent className="max-h-none flex-1 p-4 font-mono text-[12px] leading-6 sm:p-5" />
-    </Terminal>
+    <div className="h-full overflow-auto bg-white">
+      {commands.map((command, index) => {
+        const succeeded = command.exitCode === 0;
+        return (
+          <details
+            className="group border-b border-[#e9e9e9] last:border-b-0"
+            key={`${index}-${command.command}`}
+          >
+            <summary className="grid cursor-pointer list-none grid-cols-[24px_minmax(0,1fr)_auto_auto_16px] items-center gap-3 px-4 py-3.5 transition hover:bg-[#fafafa] [&::-webkit-details-marker]:hidden">
+              <span className="grid size-6 place-items-center rounded-full border border-[#dedede] font-mono text-[9px] text-[#737373]">
+                {index + 1}
+              </span>
+              <code className="truncate font-mono text-[12px] text-[#292929]">
+                {command.command}
+              </code>
+              <span
+                className={cn(
+                  "flex items-center gap-1.5 text-[10px] font-medium",
+                  succeeded ? "text-[#3d3d3d]" : "text-[#737373]",
+                )}
+              >
+                <span
+                  className={cn(
+                    "size-1.5 rounded-full",
+                    succeeded ? "bg-[#171717]" : "bg-[#a1a1a1]",
+                  )}
+                />
+                {succeeded ? "Passed" : `Failed · ${command.exitCode}`}
+              </span>
+              <span className="font-mono text-[10px] text-[#999]">
+                {command.durationMs ? `${command.durationMs}ms` : "—"}
+              </span>
+              <ChevronDown className="size-3.5 text-[#999] transition-transform group-open:rotate-180" />
+            </summary>
+            <pre className="overflow-x-auto border-t border-[#242424] bg-[#0a0a0a] px-4 py-4 font-mono text-[11px] leading-5 text-[#d8d8d8]">
+              {command.output || "No output"}
+            </pre>
+          </details>
+        );
+      })}
+    </div>
   );
 }
 
@@ -754,7 +800,7 @@ function Workspace({ repository, sessionId, tab, workspace, onTabChange }: { rep
           })}
         </div>
       </div>
-      <div className="min-h-0 flex-1">{tab === "diff" ? <DiffPane diff={workspace.diff} /> : null}{tab === "files" ? <FilesPane files={workspace.files} /> : null}{tab === "terminal" ? <TerminalPane commands={workspace.commands} /> : null}</div>
+      <div className="min-h-0 flex-1">{tab === "diff" ? <DiffPane diff={workspace.diff} /> : null}{tab === "files" ? <FilesPane files={workspace.files} /> : null}{tab === "runs" ? <RunsPane commands={workspace.commands} /> : null}</div>
     </section>
   );
 }
@@ -881,7 +927,7 @@ export function HiveWorkspace({
       repository &&
       !isDirectedAtTeammate(body, currentMember.id, teamMembers)
     ) {
-      setTab("terminal");
+      setTab("runs");
     }
     void dispatch({ type: "send-message", body }).then((nextSnapshot) => {
       if (nextSnapshot?.session.stage === "review") setTab("diff");

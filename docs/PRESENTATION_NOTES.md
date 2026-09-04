@@ -63,8 +63,8 @@ This correction matters: the team is the durable collaboration space; a session 
 | One repository per task | Keeps credentials, filesystem scope, and review evidence legible. | Ambient access to every team repository. |
 | GitHub App for team access, OAuth for identity | Repository authority and human identity have different lifecycles. | Personal access tokens or browser-supplied identity. |
 | Reuse AI SDK Harness + Codex + Sandbox | The differentiator is multiplayer control, not rebuilding an agent runtime. | A custom harness and container platform. |
-| Show artifacts, not a generic overview | Diff, changed files, and terminal output each have a clear object and can be verified. | A dashboard tab that mixes repository metadata, status, and summary counts. |
-| Let work surfaces fill the workspace | Terminal output is a first-class surface with no nested card, duplicate title, or arbitrary max width. | Reusing a generic terminal card inside another workspace panel. |
+| Show artifacts, not a generic overview | Diff, changed files, and run history each have a clear object and can be verified. | A dashboard tab that mixes repository metadata, status, and summary counts. |
+| Name the human need, not the implementation | Runs is an audit trail for teammates: command, outcome, duration, and expandable output. | Calling a read-only log “Terminal” and implying that humans should operate it. |
 | Neon is canonical history | Native Codex history can disappear with compute; team intent cannot. | Treating sandbox files as the product database. |
 | Quiet error state | A failure should not become a theatrical agent apology. | Large error bubbles that repeat internal details. |
 | Ordinary frontend demo task | A second-level menu exposes intent ambiguity without domain setup. | A deployment workflow that distracts from collaboration. |
@@ -123,7 +123,7 @@ Be explicit: GitHub write-back is not built; organization administration is not 
 - Fresh repository-scoped installation tokens for private Sandbox clones.
 - AI SDK Harness with Codex and a persistent named Vercel Sandbox.
 - Successful and failed Codex checkpoints persisted server-side; opaque resume state stripped from clients.
-- Real changed-file contents, terminal output, and git diff; no fake PR, preview, test, or tool-result cards.
+- Real changed-file contents, run output, and git diff; no fake PR, preview, test, or tool-result cards.
 - IME-aware message submission that avoids duplicate CJK sends.
 - Compact error states that preserve the human prompt and session.
 
@@ -171,8 +171,8 @@ Be explicit: GitHub write-back is not built; organization administration is not 
 ### 2026-09-04
 
 - Created a clean dogfood task against the real `spinsirr/hive` repository for the multiplayer demo.
-- Removed the ambiguous workspace Overview tab; repository attachment is now a standalone pre-run state and connected tasks default directly to Diff, with Files and Terminal as the only other artifact views.
-- Flattened Terminal into the shared workspace chrome: the terminal now fills its pane and relies on the existing artifact tabs for identity instead of repeating a framed Terminal card.
+- Removed the ambiguous workspace Overview tab; repository attachment is now a standalone pre-run state and connected tasks default directly to Diff, with Files and Runs as the only other artifact views.
+- Replaced the read-only Terminal metaphor with Runs: a compact, team-facing audit trail where each command exposes its result, duration, and expandable raw output.
 
 ## Questions to prepare for
 
