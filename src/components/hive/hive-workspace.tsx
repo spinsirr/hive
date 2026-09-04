@@ -49,7 +49,7 @@ import {
 import { shouldSubmitMessage } from "@/lib/message-keyboard";
 import { cn } from "@/lib/utils";
 
-type WorkspaceTab = "workspace" | "diff" | "files" | "terminal";
+type WorkspaceTab = "diff" | "files" | "terminal";
 
 type RepositoryOption = {
   id: number;
@@ -66,7 +66,6 @@ const stageCopy: Record<RunStage, { label: string; detail: string }> = {
 };
 
 const tabs: Array<{ key: WorkspaceTab; label: string; icon: typeof Code2 }> = [
-  { key: "workspace", label: "Overview", icon: FolderGit2 },
   { key: "diff", label: "Diff", icon: Code2 },
   { key: "files", label: "Files", icon: FileCode2 },
   { key: "terminal", label: "Terminal", icon: FileTerminal },
@@ -533,11 +532,7 @@ function SharedSession({ activeMembers, activeSteer, queued, queuedBy, queuePosi
   );
 }
 
-function WorkspaceOverview({ repository, sessionId, workspace }: {
-  repository?: RepositoryState;
-  sessionId: string;
-  workspace: WorkspaceState;
-}) {
+function RepositorySetup({ sessionId }: { sessionId: string }) {
   const [repositories, setRepositories] = useState<RepositoryOption[] | null>(null);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
@@ -615,139 +610,65 @@ function WorkspaceOverview({ repository, sessionId, workspace }: {
     }
   }, [sessionId]);
 
-  if (!repository) {
-    return (
-      <div className="hairline-grid flex h-full min-h-[420px] items-center justify-center bg-[#fafafa] p-8">
-        <div className="w-full max-w-lg rounded-xl border border-[#dcdcdc] bg-white p-6 shadow-[0_10px_40px_rgba(0,0,0,0.05)]">
-          <FolderGit2 className="size-7" />
-          <h3 className="mt-5 text-lg font-semibold tracking-[-0.03em]">Attach a repository</h3>
-          <p className="mt-2 text-sm leading-6 text-[#737373]">The conversation can start without code. When the task is ready, attach one repository from the team&apos;s GitHub access.</p>
-
-          {needsInstallation ? (
-            <a className="mt-5 inline-flex h-10 items-center gap-2 rounded-md bg-[#171717] px-4 text-sm font-medium text-white transition hover:bg-black" href={`/api/github/install?session_id=${encodeURIComponent(sessionId)}`}>
-              <FolderGit2 className="size-4" /> Connect team GitHub
-            </a>
-          ) : repositories ? (
-            <div className="mt-5">
-              {repositories.length > 5 ? (
-                <div className="relative mb-2">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-[#8a8a8a]" />
-                  <Input
-                    aria-label="Search repositories"
-                    className="h-9 rounded-md border-[#dedede] pl-9 text-xs shadow-none"
-                    onChange={(event) => setQuery(event.target.value)}
-                    placeholder="Search repositories"
-                    value={query}
-                  />
-                </div>
-              ) : null}
-              <div className="max-h-64 overflow-y-auto rounded-lg border border-[#e5e5e5]">
-                {filteredRepositories.map((candidate) => (
-                  <button
-                    className="flex w-full items-center justify-between gap-4 border-b border-[#eeeeee] px-3 py-3 text-left transition last:border-b-0 hover:bg-[#fafafa] disabled:cursor-wait disabled:opacity-60"
-                    disabled={connectingId !== null}
-                    key={candidate.id}
-                    onClick={() => void connectRepository(candidate.id)}
-                    type="button"
-                  >
-                    <span className="min-w-0">
-                      <span className="block truncate text-sm font-medium">{candidate.name}</span>
-                      <span className="mt-0.5 block text-[11px] text-[#888]">{candidate.defaultBranch} · {candidate.visibility}</span>
-                    </span>
-                    {connectingId === candidate.id ? <LoaderCircle className="size-4 shrink-0 animate-spin" /> : <span className="shrink-0 text-[11px] font-medium text-[#666]">Select</span>}
-                  </button>
-                ))}
-                {filteredRepositories.length === 0 ? (
-                  <p className="px-3 py-6 text-center text-xs text-[#888]">
-                    {repositories.length === 0
-                      ? "No repositories are authorized for the team."
-                      : "No matching repositories."}
-                  </p>
-                ) : null}
-              </div>
-              <Button className="mt-2 h-8 px-2 text-[11px]" disabled={loading || connectingId !== null} onClick={() => void loadRepositories()} size="sm" variant="ghost">Refresh repositories</Button>
-            </div>
-          ) : (
-            <Button className="mt-5 h-10 rounded-md px-4 text-sm" disabled={loading} onClick={() => void loadRepositories()}>
-              {loading ? <LoaderCircle className="size-4 animate-spin" /> : <FolderGit2 className="size-4" />}
-              {loading ? "Loading repositories…" : "Choose repository"}
-            </Button>
-          )}
-          {error ? <p className="mt-3 text-xs leading-5 text-[#777]">{error}</p> : null}
-          <p className="mt-3 font-mono text-[9px] text-[#a1a1a1]">Team access · one repository per task · short-lived credential</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="h-full overflow-auto bg-[#fafafa] p-4 sm:p-6">
-      <div className="mx-auto max-w-3xl">
-        <div className="overflow-hidden rounded-xl border border-[#dedede] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
-          <div className="flex items-start justify-between gap-4 border-b border-[#ededed] px-4 py-3.5">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <FolderGit2 className="size-3.5 text-[#666]" />
-                <span className="truncate text-xs font-semibold">
-                  {repository.name}
-                </span>
-                <span className="text-[11px] text-[#888]">
-                  {repository.branch}
-                </span>
-              </div>
-              <p className="mt-1.5 text-[11px] text-[#888]">
-                {repository.visibility} repository · GitHub App
-              </p>
-            </div>
-          </div>
+    <div className="hairline-grid flex h-full min-h-[420px] items-center justify-center bg-[#fafafa] p-8">
+      <div className="w-full max-w-lg rounded-xl border border-[#dcdcdc] bg-white p-6 shadow-[0_10px_40px_rgba(0,0,0,0.05)]">
+        <FolderGit2 className="size-7" />
+        <h3 className="mt-5 text-lg font-semibold tracking-[-0.03em]">Attach a repository</h3>
+        <p className="mt-2 text-sm leading-6 text-[#737373]">The conversation can start without code. When the task is ready, attach one repository from the team&apos;s GitHub access.</p>
 
-          <div className="min-h-36 px-4 py-5">
-            {workspace.status === "running" ? (
-              <div className="flex items-start gap-3 text-sm text-[#444]">
-                <LoaderCircle className="mt-0.5 size-4 animate-spin" />
-                <p className="font-medium">Working in Sandbox…</p>
+        {needsInstallation ? (
+          <a className="mt-5 inline-flex h-10 items-center gap-2 rounded-md bg-[#171717] px-4 text-sm font-medium text-white transition hover:bg-black" href={`/api/github/install?session_id=${encodeURIComponent(sessionId)}`}>
+            <FolderGit2 className="size-4" /> Connect team GitHub
+          </a>
+        ) : repositories ? (
+          <div className="mt-5">
+            {repositories.length > 5 ? (
+              <div className="relative mb-2">
+                <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-[#8a8a8a]" />
+                <Input
+                  aria-label="Search repositories"
+                  className="h-9 rounded-md border-[#dedede] pl-9 text-xs shadow-none"
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Search repositories"
+                  value={query}
+                />
               </div>
-            ) : workspace.error ? (
-              <div className="flex items-center gap-2 text-xs text-[#777]">
-                <WifiOff className="size-3.5" />
-                <span>{displayHiveErrorMessage(workspace.error)}</span>
-              </div>
-            ) : workspace.summary ? (
-              <div>
-                <p className="text-[11px] font-medium text-[#777]">
-                  Latest result
+            ) : null}
+            <div className="max-h-64 overflow-y-auto rounded-lg border border-[#e5e5e5]">
+              {filteredRepositories.map((candidate) => (
+                <button
+                  className="flex w-full items-center justify-between gap-4 border-b border-[#eeeeee] px-3 py-3 text-left transition last:border-b-0 hover:bg-[#fafafa] disabled:cursor-wait disabled:opacity-60"
+                  disabled={connectingId !== null}
+                  key={candidate.id}
+                  onClick={() => void connectRepository(candidate.id)}
+                  type="button"
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-medium">{candidate.name}</span>
+                    <span className="mt-0.5 block text-[11px] text-[#888]">{candidate.defaultBranch} · {candidate.visibility}</span>
+                  </span>
+                  {connectingId === candidate.id ? <LoaderCircle className="size-4 shrink-0 animate-spin" /> : <span className="shrink-0 text-[11px] font-medium text-[#666]">Select</span>}
+                </button>
+              ))}
+              {filteredRepositories.length === 0 ? (
+                <p className="px-3 py-6 text-center text-xs text-[#888]">
+                  {repositories.length === 0
+                    ? "No repositories are authorized for the team."
+                    : "No matching repositories."}
                 </p>
-                <p className="mt-3 text-sm leading-6 text-[#444]">
-                  {workspace.summary}
-                </p>
-              </div>
-            ) : (
-              <div className="grid min-h-24 place-items-center text-center">
-                <div>
-                  <p className="text-sm font-medium">No run yet</p>
-                  <p className="mt-1 text-xs text-[#888]">
-                    Give Hive a concrete task in the team session.
-                  </p>
-                </div>
-              </div>
-            )}
+              ) : null}
+            </div>
+            <Button className="mt-2 h-8 px-2 text-[11px]" disabled={loading || connectingId !== null} onClick={() => void loadRepositories()} size="sm" variant="ghost">Refresh repositories</Button>
           </div>
-
-          <div className="grid grid-cols-3 border-t border-[#ededed] bg-[#fafafa]">
-            <div className="px-4 py-3">
-              <p className="text-[11px] text-[#888]">Files</p>
-              <p className="mt-1 text-sm font-semibold">{workspace.changedFiles.length}</p>
-            </div>
-            <div className="border-l border-[#ededed] px-4 py-3">
-              <p className="text-[11px] text-[#888]">Commands</p>
-              <p className="mt-1 text-sm font-semibold">{workspace.commands.length}</p>
-            </div>
-            <div className="border-l border-[#ededed] px-4 py-3">
-              <p className="text-[11px] text-[#888]">Runtime</p>
-              <p className="mt-1 text-sm font-semibold">Sandbox</p>
-            </div>
-          </div>
-        </div>
+        ) : (
+          <Button className="mt-5 h-10 rounded-md px-4 text-sm" disabled={loading} onClick={() => void loadRepositories()}>
+            {loading ? <LoaderCircle className="size-4 animate-spin" /> : <FolderGit2 className="size-4" />}
+            {loading ? "Loading repositories…" : "Choose repository"}
+          </Button>
+        )}
+        {error ? <p className="mt-3 text-xs leading-5 text-[#777]">{error}</p> : null}
+        <p className="mt-3 font-mono text-[9px] text-[#a1a1a1]">Team access · one repository per task · short-lived credential</p>
       </div>
     </div>
   );
@@ -797,6 +718,14 @@ function TerminalPane({ commands }: { commands: WorkspaceState["commands"] }) {
 }
 
 function Workspace({ repository, sessionId, tab, workspace, onTabChange }: { repository?: RepositoryState; sessionId: string; tab: WorkspaceTab; workspace: WorkspaceState; onTabChange: (tab: WorkspaceTab) => void }) {
+  if (!repository) {
+    return (
+      <section className="h-full min-h-0 bg-white">
+        <RepositorySetup sessionId={sessionId} />
+      </section>
+    );
+  }
+
   return (
     <section className="flex h-full min-h-0 flex-col bg-white">
       <div className="flex h-11 shrink-0 items-center border-b border-[#ebebeb] bg-white px-2 sm:px-3">
@@ -820,7 +749,7 @@ function Workspace({ repository, sessionId, tab, workspace, onTabChange }: { rep
           })}
         </div>
       </div>
-      <div className="min-h-0 flex-1">{tab === "workspace" ? <WorkspaceOverview repository={repository} sessionId={sessionId} workspace={workspace} /> : null}{tab === "diff" ? <DiffPane diff={workspace.diff} /> : null}{tab === "files" ? <FilesPane files={workspace.files} /> : null}{tab === "terminal" ? <TerminalPane commands={workspace.commands} /> : null}</div>
+      <div className="min-h-0 flex-1">{tab === "diff" ? <DiffPane diff={workspace.diff} /> : null}{tab === "files" ? <FilesPane files={workspace.files} /> : null}{tab === "terminal" ? <TerminalPane commands={workspace.commands} /> : null}</div>
     </section>
   );
 }
@@ -899,7 +828,7 @@ export function HiveWorkspace({
   sessionTitle: string;
 }) {
   const [pane, setPane] = useState<"chat" | "workspace">("chat");
-  const [tab, setTab] = useState<WorkspaceTab>("workspace");
+  const [tab, setTab] = useState<WorkspaceTab>("diff");
   const [copied, setCopied] = useState(false);
   const { dispatch, setTyping, snapshot, syncing, syncError } = useSharedSession(sessionId);
   const { session, activeMembers, members, typingMembers } = snapshot;
@@ -963,7 +892,7 @@ export function HiveWorkspace({
   }, [dispatch, stage, steeringQueue.length]);
   const reset = useCallback(() => {
     setPane("chat");
-    setTab("workspace");
+    setTab("diff");
     void dispatch({ type: "reset" });
   }, [dispatch]);
   const toggleLifecycle = useCallback(() => {

@@ -93,6 +93,7 @@ The current suite covers the multiplayer state machine, attributed prompts, stee
 - **Attach code when intent is ready.** Repository selection is not a provisioning prerequisite.
 - **One task per session.** The team is durable; a session is intentionally disposable and bounded.
 - **Reuse the harness.** AI SDK Harness, Codex, and Vercel Sandbox are infrastructure; multiplayer control is the product.
+- **Artifacts over summaries.** Workspace navigation exposes only the verifiable diff, changed files, and terminal output; repository setup stands on its own before a run.
 - **Quiet failures.** Errors appear as compact system state while the human prompt and resumable checkpoint remain intact.
 
 ## AI collaboration
