@@ -362,6 +362,7 @@ test("reset preserves the repository but clears run artifacts", () => {
   };
   const reset = reduceTaskSession(session, { type: "reset", actor: "maya" }, 40);
 
+  assert.equal(reset.version, session.version + 1);
   assert.equal(reset.repository?.name, "spinsirr/hive");
   assert.equal(reset.stage, "waiting");
   assert.equal(reset.workspace.status, "ready");

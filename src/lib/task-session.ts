@@ -366,6 +366,7 @@ export function reduceTaskSession(
       createdBy: state.createdBy,
     });
     initialSession.createdAt = state.createdAt;
+    initialSession.version = state.version + 1;
     if (!state.repository) return initialSession;
     return {
       ...initialSession,

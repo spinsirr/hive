@@ -5,6 +5,7 @@ import { HiveSignIn } from "@/components/hive/hive-sign-in";
 import { HiveWorkspace } from "@/components/hive/hive-workspace";
 import { getSessionMember, HIVE_SESSION_COOKIE } from "@/lib/auth-session";
 import { isTaskSessionId } from "@/lib/task-session-id";
+import { publicTaskSessionSnapshot } from "@/lib/task-session-snapshot";
 import {
   getTaskSessionSnapshot,
   isTaskSessionMember,
@@ -57,7 +58,9 @@ export default async function SessionPage({
   return (
     <HiveWorkspace
       currentMember={member}
+      initialSnapshot={publicTaskSessionSnapshot(snapshot)}
       inviteToken={createSessionInviteToken(sessionId)}
+      key={sessionId}
       sessionId={sessionId}
       sessionTitle={snapshot.session.title}
     />

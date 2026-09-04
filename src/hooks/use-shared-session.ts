@@ -2,11 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import {
-  createInitialTaskSessionState,
-  type TaskSessionAction,
-} from "@/lib/task-session";
+import type { TaskSessionAction } from "@/lib/task-session";
 import type { TaskSessionSnapshot } from "@/lib/task-session-store";
+import { receiveTaskSessionSnapshot } from "@/lib/task-session-snapshot";
 
 type ClientTaskSessionAction = Exclude<
   TaskSessionAction,
@@ -19,20 +17,15 @@ type SessionDispatchAction = ClientTaskSessionAction extends infer Action
     : never
   : never;
 
-export function useSharedSession(sessionId: string) {
-  const [snapshot, setSnapshot] = useState<TaskSessionSnapshot>(() => ({
-    session: createInitialTaskSessionState(0, sessionId),
-    activeMembers: [],
-    members: [],
-    typingMembers: [],
-  }));
+export function useSharedSession(sessionId: string, initialSnapshot: TaskSessionSnapshot) {
+  const [snapshot, setSnapshot] = useState(initialSnapshot);
   const [syncing, setSyncing] = useState(true);
   const [syncError, setSyncError] = useState(false);
   const typingRef = useRef(false);
   const channelRef = useRef<BroadcastChannel | null>(null);
 
   const publish = useCallback((nextSnapshot: TaskSessionSnapshot) => {
-    setSnapshot(nextSnapshot);
+    setSnapshot((current) => receiveTaskSessionSnapshot(current, nextSnapshot));
     setSyncing(false);
     setSyncError(false);
     channelRef.current?.postMessage(nextSnapshot);
@@ -65,7 +58,7 @@ export function useSharedSession(sessionId: string) {
       if (response.status === 401) window.location.reload();
       if (!response.ok) throw new Error("Session refresh failed");
       const nextSnapshot = (await response.json()) as TaskSessionSnapshot;
-      setSnapshot(nextSnapshot);
+      setSnapshot((current) => receiveTaskSessionSnapshot(current, nextSnapshot));
       setSyncing(false);
       setSyncError(false);
     } catch {
@@ -78,7 +71,7 @@ export function useSharedSession(sessionId: string) {
     if (typeof BroadcastChannel !== "undefined") {
       const channel = new BroadcastChannel(`hive-session-${sessionId}`);
       channel.onmessage = (event: MessageEvent<TaskSessionSnapshot>) => {
-        setSnapshot(event.data);
+        setSnapshot((current) => receiveTaskSessionSnapshot(current, event.data));
         setSyncing(false);
       };
       channelRef.current = channel;
@@ -90,10 +83,15 @@ export function useSharedSession(sessionId: string) {
       () => void post({ type: "heartbeat", typing: typingRef.current }),
       5_000,
     );
+    const reconnect = () => void refresh();
+    window.addEventListener("online", reconnect);
+    window.addEventListener("focus", reconnect);
 
     return () => {
       window.clearInterval(pollTimer);
       window.clearInterval(heartbeatTimer);
+      window.removeEventListener("online", reconnect);
+      window.removeEventListener("focus", reconnect);
       channelRef.current?.close();
       channelRef.current = null;
     };

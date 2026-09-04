@@ -11,6 +11,7 @@ import {
   type TaskSessionAction,
 } from "@/lib/task-session";
 import { isTaskSessionId } from "@/lib/task-session-id";
+import { publicTaskSessionSnapshot } from "@/lib/task-session-snapshot";
 import {
   appendHiveReply,
   applyTaskSessionAction,
@@ -28,24 +29,8 @@ type TaskSessionRouteContext = {
   params: Promise<{ sessionId: string }>;
 };
 
-function publicSnapshot(snapshot: TaskSessionSnapshot): TaskSessionSnapshot {
-  const session = snapshot.session.workspace.agentSession;
-  return {
-    ...snapshot,
-    session: {
-      ...snapshot.session,
-      workspace: {
-        ...snapshot.session.workspace,
-        agentSession: session
-          ? { id: session.id, runtime: session.runtime }
-          : undefined,
-      },
-    },
-  };
-}
-
 function sessionResponse(snapshot: TaskSessionSnapshot) {
-  return NextResponse.json(publicSnapshot(snapshot), {
+  return NextResponse.json(publicTaskSessionSnapshot(snapshot), {
     headers: { "Cache-Control": "no-store" },
   });
 }

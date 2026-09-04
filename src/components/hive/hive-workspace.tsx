@@ -48,6 +48,7 @@ import {
   type WorkspaceState,
 } from "@/lib/task-session";
 import { shouldSubmitMessage } from "@/lib/message-keyboard";
+import type { TaskSessionSnapshot } from "@/lib/task-session-store";
 import { cn } from "@/lib/utils";
 
 type WorkspaceTab = "diff" | "files" | "runs";
@@ -902,11 +903,13 @@ type SharedProps = {
 
 export function HiveWorkspace({
   currentMember,
+  initialSnapshot,
   inviteToken,
   sessionId,
   sessionTitle,
 }: {
   currentMember: TeamMember;
+  initialSnapshot: TaskSessionSnapshot;
   inviteToken: string;
   sessionId: string;
   sessionTitle: string;
@@ -914,7 +917,7 @@ export function HiveWorkspace({
   const [pane, setPane] = useState<"chat" | "workspace">("chat");
   const [tab, setTab] = useState<WorkspaceTab>("diff");
   const [copied, setCopied] = useState(false);
-  const { dispatch, setTyping, snapshot, syncing, syncError } = useSharedSession(sessionId);
+  const { dispatch, setTyping, snapshot, syncing, syncError } = useSharedSession(sessionId, initialSnapshot);
   const { session, activeMembers, members, typingMembers } = snapshot;
   const teamMembers = useMemo(
     () => [currentMember, ...members.filter((member) => member.id !== currentMember.id)],
