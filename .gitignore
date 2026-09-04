@@ -20,6 +20,9 @@
 # production
 /build
 
+# Generated from the pinned monaco-editor dependency during install/build.
+/public/monaco/
+
 # misc
 .DS_Store
 *.pem

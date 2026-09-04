@@ -22,6 +22,7 @@ function errorStatusCode(error: unknown): number | undefined {
 }
 
 function errorMessages(error: unknown): string[] {
+  if (typeof error === "string") return [error];
   if (!error || typeof error !== "object") return [];
 
   const messages =

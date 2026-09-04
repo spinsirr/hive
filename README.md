@@ -46,7 +46,7 @@ workspace evidence → changed files, command output, and real git diff
 
 - One team for the take-home; the membership model is explicit, but organization administration is out of scope.
 - One repository and one mutating run per task session.
-- Hive can clone, edit, test, and expose a diff. It does not yet push a branch or open a pull request.
+- Hive can clone, edit, test, and expose a diff. Explicit branch push and PR creation are now in the [completion plan](docs/GOAL.md), but are not implemented yet.
 - Repository access uses the GitHub App directly. The Vercel Connect experiment was removed because its current install flow is intended for connector developers, not this product's end-user onboarding.
 - Production history lives in a durable Neon Free database provisioned through Vercel Marketplace. The previous temporary database is retained only for the short rollback window after migration.
 

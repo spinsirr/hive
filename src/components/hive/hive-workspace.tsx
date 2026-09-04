@@ -21,6 +21,7 @@ import {
   WifiOff,
   X,
 } from "lucide-react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
 
@@ -50,6 +51,11 @@ import { shouldSubmitMessage } from "@/lib/message-keyboard";
 import { cn } from "@/lib/utils";
 
 type WorkspaceTab = "diff" | "files" | "runs";
+
+const CodeViewer = dynamic(() => import("./code-viewer"), {
+  ssr: false,
+  loading: () => <div className="grid h-full place-items-center text-xs text-[#737373]" role="status">Loading code viewer…</div>,
+});
 
 type RepositoryOption = {
   id: number;
@@ -155,8 +161,8 @@ function ProductHeader({
   onReset: () => void;
 }) {
   return (
-    <header className="flex h-13 shrink-0 items-center justify-between border-b border-[#e8e8e8] bg-white px-3 sm:px-4">
-      <div className="flex min-w-0 items-center gap-2.5">
+    <header className="flex h-13 shrink-0 items-center justify-between gap-3 border-b border-[#e8e8e8] bg-white px-3 sm:px-4">
+      <div className="flex min-w-0 flex-1 items-center gap-2.5">
         <Link className="flex shrink-0 items-center gap-2.5" href="/">
           <HiveMark className="size-7" />
           <span className="hidden text-sm font-semibold tracking-[-0.025em] sm:inline">Hive</span>
@@ -169,7 +175,7 @@ function ProductHeader({
           </p>
         </div>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex shrink-0 items-center gap-1 sm:gap-2">
         <div className="hidden items-center gap-1.5 text-[11px] text-[#777] sm:flex">
           {syncError ? (
             <WifiOff className="size-3" />
@@ -184,21 +190,27 @@ function ProductHeader({
           {syncError ? "Offline" : syncing ? "Syncing" : "Live"}
         </div>
         <Button
-          className="hidden h-8 rounded-md bg-white px-2.5 text-xs text-[#333] lg:inline-flex"
+          aria-label={lifecycle === "completed" ? "Reopen task" : "Complete task"}
+          className="h-8 rounded-md bg-white px-2 text-xs text-[#333] sm:px-2.5"
           disabled={stage === "running"}
           onClick={onToggleLifecycle}
           size="sm"
+          title={lifecycle === "completed" ? "Reopen task" : "Complete task"}
           variant="outline"
         >
-          <Check className="size-3.5" /> {lifecycle === "completed" ? "Reopen" : "Complete"}
+          <Check className="size-3.5" />
+          <span className="hidden sm:inline">{lifecycle === "completed" ? "Reopen" : "Complete"}</span>
         </Button>
         <Button
-          className="hidden h-8 rounded-md bg-white px-2.5 text-xs text-[#333] md:inline-flex"
+          aria-label={copied ? "Invite link copied" : "Invite teammate"}
+          className="h-8 rounded-md bg-white px-2 text-xs text-[#333] sm:px-2.5"
           onClick={onCopyInvite}
           size="sm"
+          title={copied ? "Invite link copied" : "Invite teammate"}
           variant="outline"
         >
-          <Copy className="size-3.5" /> {copied ? "Copied" : "Invite"}
+          {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+          <span className="hidden sm:inline">{copied ? "Copied" : "Invite"}</span>
         </Button>
         <Button
           className="h-8 rounded-md bg-white px-2 text-xs text-[#333]"
@@ -698,12 +710,33 @@ function FilesPane({ files }: { files: WorkspaceState["files"] }) {
   const [selected, setSelected] = useState("");
   const selectedFile = files.find((file) => file.path === selected) ?? files[0];
   if (!selectedFile) {
-    return <div className="grid h-full place-items-center bg-[#fafafa] p-8 text-center"><div><FileCode2 className="mx-auto size-6 text-[#737373]" /><p className="mt-3 text-sm font-medium">No changed files yet</p><p className="mt-1 text-xs text-[#8f8f8f]">Files written by Hive will appear here verbatim.</p></div></div>;
+    return <div className="grid h-full place-items-center bg-[#fafafa] p-8 text-center"><div><FileCode2 className="mx-auto size-6 text-[#737373]" /><p className="mt-3 text-sm font-medium">No changed files yet</p><p className="mt-1 text-xs text-[#8f8f8f]">Review file snapshots here after Hive makes a change.</p></div></div>;
   }
   return (
-    <div className="grid h-full min-h-[420px] grid-cols-[230px_1fr] bg-white">
-      <div className="h-full overflow-auto border-r border-[#ebebeb] bg-[#fafafa] p-2">{files.map((file) => <button className={cn("mb-1 block w-full truncate rounded px-2 py-2 text-left font-mono text-[10px] text-[#737373] hover:bg-white", selectedFile.path === file.path && "bg-white text-[#171717]")} key={file.path} onClick={() => setSelected(file.path)} title={file.path} type="button">{file.path}</button>)}</div>
-      <div className="min-w-0 overflow-auto"><div className="sticky top-0 border-b border-[#ebebeb] bg-[#fafafa] px-4 py-2 font-mono text-[11px] text-[#737373]">{selectedFile.path}</div><pre className="p-5 font-mono text-[12px] leading-6 text-[#4d4d4d]">{selectedFile.content}</pre></div>
+    <div className="flex h-full min-h-0 flex-col bg-white sm:flex-row">
+      <nav aria-label="Changed files" className="flex max-h-36 shrink-0 gap-1 overflow-auto border-b border-[#ebebeb] bg-[#fafafa] p-2 sm:max-h-none sm:w-40 sm:flex-col sm:border-b-0 sm:border-r lg:w-52">
+        {files.map((file) => (
+          <button
+            aria-current={selectedFile.path === file.path ? "true" : undefined}
+            className={cn("shrink-0 truncate rounded px-2 py-2 text-left font-mono text-[11px] text-[#737373] hover:bg-white focus-visible:outline-2 focus-visible:outline-[#737373] sm:w-full", selectedFile.path === file.path && "bg-white text-[#171717]")}
+            key={file.path}
+            onClick={() => setSelected(file.path)}
+            title={file.path}
+            type="button"
+          >
+            {file.path}
+          </button>
+        ))}
+      </nav>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div className="flex shrink-0 items-center gap-3 border-b border-[#ebebeb] px-4 py-2 text-[11px] text-[#737373]">
+          <span className="min-w-0 flex-1 truncate font-mono" title={selectedFile.path}>{selectedFile.path}</span>
+          <span className="shrink-0">Snapshot · Read-only</span>
+        </div>
+        <div className="min-h-0 flex-1">
+          <CodeViewer content={selectedFile.content} path={selectedFile.path} />
+        </div>
+      </div>
     </div>
   );
 }

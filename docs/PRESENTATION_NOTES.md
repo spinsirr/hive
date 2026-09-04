@@ -19,7 +19,7 @@ Current app: [hive-roan-mu.vercel.app](https://hive-roan-mu.vercel.app/)
 
 Hive is a multiplayer coding agent for small software teams. Instead of one person privately prompting an agent and handing the result to teammates later, everyone shares the same task-scoped conversation and execution workspace. Teammates can talk directly to one another, annotate a specific message, or deliberately promote an annotation into a steer for Hive.
 
-I built the smallest full-stack version that proves that interaction. GitHub OAuth provides real authorship, signed invites control session membership, Postgres persists and serializes shared state, a GitHub App supplies team repository access, and AI SDK Harness runs Codex inside a persistent Vercel Sandbox. The product exposes real files, commands, and diffs, while intentionally stopping before branch push and pull-request creation.
+I built the smallest full-stack version that proves that interaction. GitHub OAuth provides real authorship, signed invites control session membership, Postgres persists and serializes shared state, a GitHub App supplies team repository access, and AI SDK Harness runs Codex inside a persistent Vercel Sandbox. The product exposes real files, commands, and diffs for the team to review together.
 
 ## Problem
 
@@ -109,7 +109,7 @@ Show the brainstorm as evidence of collaboration rather than a perfect linear pl
 
 ### 18–20 min — Boundaries
 
-Be explicit: GitHub write-back is not built; organization administration is not built; sandbox disaster recovery from the canonical transcript is a next layer. The validated product claim is two people collaborating with and steering one real coding agent.
+Be explicit: GitHub write-back is not built; organization administration is not built; sandbox disaster recovery from the canonical transcript is a next layer. The intended product claim is two people collaborating with and steering one real coding agent; do not present it as validated until the two-account check below is complete.
 
 ## What is real today
 
@@ -131,7 +131,7 @@ Be explicit: GitHub write-back is not built; organization administration is not 
 
 - Retire the previous temporary database after the production migration rollback window closes.
 - Verify the migrated production deployment end to end with two GitHub users.
-- Decide whether to add branch push and PR creation; it is optional for the multiplayer thesis and should only be added if the core demo is already polished.
+- Implement and verify explicit branch push and PR creation after shared diff review. This is now in scope; acceptance criteria and remaining work are tracked in [GOAL.md](GOAL.md).
 - Make the GitHub repository public and submit it with the live URL at least 24 hours before presenting.
 
 ## Evidence log
@@ -173,6 +173,13 @@ Be explicit: GitHub write-back is not built; organization administration is not 
 - Created a clean dogfood task against the real `spinsirr/hive` repository for the multiplayer demo.
 - Removed the ambiguous workspace Overview tab; repository attachment is now a standalone pre-run state and connected tasks default directly to Diff, with Files and Runs as the only other artifact views.
 - Replaced the read-only Terminal metaphor with Runs: a compact, team-facing audit trail where each command exposes its result, duration, and expandable raw output.
+- Scope decision: the user added PR creation to complete the task handoff. Planned flow: review the diff, explicitly create a task branch and PR, and persist the real link for the team. This has not yet been implemented or verified.
+- The real dogfood run returned Gateway 429 after several successful GPT-5 mini calls. The Gateway dashboard still showed $24.95 free credit, so insufficient balance is not established as the cause. Failed request: `gen_01M1PZHDC9HZCW0E9YCAN48JDA`, 2026-09-04 19:50:11 UTC. Resolving the underlying limit and completing a real code change remain open.
+- Reproduced why that failure appeared as a generic error: the Codex bridge throws a raw string, but the error normalizer only read Error objects. Added a regression for raw, wrapped, and nested-cause errors, observed it fail, and fixed the normalizer. This repairs the message, not the upstream rate limit.
+- Invite and Complete/Reopen now remain available as accessible icon buttons at narrow widths. Production responsive verification remains open.
+- Added a lazy-loaded, read-only Monaco viewer with a monochrome syntax theme, file models selected by path, and same-origin editor/worker assets. Local browser verification covered TypeScript and JSON switching, CJK rendering, read-only DOM state, and same-origin script URLs. The temporary local fixture route was removed before deployment; this does not substitute for live agent artifact verification. Files still display bounded changed-file snapshots, not an editable or complete repository browser.
+- Verification after these changes: all 27 tests, targeted ESLint, TypeScript, and the production Webpack build passed.
+- Two-account testing is not complete. The second account stopped on GitHub's authorization endpoint with a 404. A likely cause is personally owned private App visibility (GitHub restricts sign-in to the owner); App settings are gated by the owner's Confirm access step, so the actual visibility and remedy still need verification. Keep repository visibility separate from App visibility.
 
 ## Questions to prepare for
 
