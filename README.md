@@ -48,7 +48,7 @@ workspace evidence → changed files, command output, and real git diff
 - One repository and one mutating run per task session.
 - Hive can clone, edit, test, and expose a diff. It does not yet push a branch or open a pull request.
 - Repository access uses the GitHub App directly. The Vercel Connect experiment was removed because its current install flow is intended for connector developers, not this product's end-user onboarding.
-- The current development database must be claimed or replaced with a durable Vercel Marketplace Postgres database before the final submission.
+- Production history lives in a durable Neon Free database provisioned through Vercel Marketplace. The previous temporary database is retained only for the short rollback window after migration.
 
 ## Local development
 

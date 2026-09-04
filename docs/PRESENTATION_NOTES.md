@@ -127,7 +127,7 @@ Be explicit: GitHub write-back is not built; organization administration is not 
 
 ## Current boundaries before final submission
 
-- Claim or replace the temporary database with durable Vercel Marketplace Postgres.
+- Retire the previous temporary database after the production migration rollback window closes.
 - Verify the migrated production deployment end to end with two GitHub users.
 - Decide whether to add branch push and PR creation; it is optional for the multiplayer thesis and should only be added if the core demo is already polished.
 - Make the GitHub repository public and submit it with the live URL at least 24 hours before presenting.
@@ -162,6 +162,8 @@ Be explicit: GitHub write-back is not built; organization administration is not 
 - Removed the unfinished Vercel Connect path and kept direct GitHub App onboarding.
 - Renamed database tables to distinguish `auth_sessions` from `task_sessions`, backfilled legacy members and GitHub installation access, and applied the migration without losing the existing demo session.
 - Browser-tested task creation, pre-repo agent routing, message annotation, annotation-to-steer promotion, invite copying, completion, and reopening.
+- Provisioned a durable Neon Free database through Vercel Marketplace, connected it under an isolated prefix, migrated all six Hive tables with matching row counts, switched production only after verification, and redeployed successfully.
+- Production regression: GitHub sign-in, task listing, `Orbit Nav`, its attached private repository, and presence all survived the database cutover; public routes returned 200 and the unauthenticated session API remained 401.
 - Verification: 27 focused tests, ESLint, TypeScript, and a production Webpack build pass.
 
 ## Questions to prepare for
