@@ -235,7 +235,7 @@ Be explicit: GitHub write-back is not built; organization administration is not 
 - Refresh retained the attributed transcript, successful result, and diff. This proves continuation of the existing task workspace and product history across earlier failures; it does not prove recovery after permanent sandbox deletion or a full network-disconnection scenario. Longer-run 429 behavior remains unresolved; no billing or model setting was changed.
 - Added `pnpm typecheck` (`next typegen && tsc --noEmit`) and documented it, so a clean clone does not require a previous build merely to generate route helper types.
 - Production completion/reopening was not performed: safety review required owner confirmation because completing the real shared task makes it read-only for collaborators. The task remains active. Only the local controlled lifecycle check above is complete.
-- All 73 local tests, full ESLint, the generated-type check, and a production Webpack build passed. Deployment and production checks for the review-state fix are pending.
+- All 73 local tests, full ESLint, the generated-type check, and a production Webpack build passed. Commit `ee3c7b9` deployed to production successfully (Vercel deployment `EdQEcTHRR3Y85A8MWXG9wef5h2jd`, Ready). The production alias reloaded with the retained transcript and actual diff, rendered the updated check-mark approval control, and returned no browser warning/error entries in the inspected log. The local empty/changed-diff interaction checks were not repeated as production mutations; the shared task remains active pending owner confirmation for the lifecycle test.
 
 ## Questions to prepare for
 
