@@ -5,8 +5,11 @@ import { createHash, randomBytes } from "node:crypto";
 import { and, eq, gt } from "drizzle-orm";
 
 import { db } from "@/db";
-import { authSessions, users } from "@/db/schema";
+import { authSessions, taskSessions, users } from "@/db/schema";
+import { getGitHubAppOwnerId } from "@/lib/github-app";
 import type { GitHubUserPayload } from "@/lib/github-oauth";
+import { verifySessionInviteToken } from "@/lib/session-invite";
+import { requireTeamAdmission } from "@/lib/team-admission";
 import type { TeamMember } from "@/lib/task-session";
 
 export const HIVE_SESSION_COOKIE = "hive_session";
@@ -39,8 +42,26 @@ function memberFromUser(user: typeof users.$inferSelect): TeamMember {
 
 export async function createUserSession(
   githubUser: GitHubUserPayload,
+  returnTo: string,
   now = new Date(),
 ) {
+  await requireTeamAdmission(githubUser.id, returnTo, {
+    isTeamMember: async (githubUserId) => Boolean(
+      await db.query.users.findFirst({
+        columns: { id: true },
+        where: eq(users.githubUserId, githubUserId),
+      }),
+    ),
+    isAppOwner: async (githubUserId) => githubUserId === await getGitHubAppOwnerId(),
+    sessionExists: async (sessionId) => Boolean(
+      await db.query.taskSessions.findFirst({
+        columns: { id: true },
+        where: eq(taskSessions.id, sessionId),
+      }),
+    ),
+    verifyInvite: verifySessionInviteToken,
+  });
+
   const name = displayName(githubUser);
   const member: TeamMember = {
     id: `github-${githubUser.id}`,

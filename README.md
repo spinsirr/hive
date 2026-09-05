@@ -12,7 +12,7 @@ Hive moves collaboration into the agent session itself. Teammates can see the sa
 
 ## The product model
 
-- A **team** is long-lived and owns GitHub repository access.
+- A **team** is long-lived and owns GitHub repository access. New members need a valid task invitation; joining grants access to the team's authorized repository pool, not just the invited task's repository.
 - A **task session** exists for one intended outcome. It has one shared transcript and at most one attached repository; seven-day signed links admit teammates explicitly.
 - A session can begin without code. Hive first helps the team clarify intent; a repository can be attached later.
 - A **message annotation** is discussion-only until a teammate promotes it to a **steer**.
@@ -25,7 +25,7 @@ The canonical vocabulary is recorded in [`CONTEXT.md`](CONTEXT.md).
 ## What is real
 
 ```text
-GitHub OAuth → server-authoritative human identity
+GitHub OAuth → verified identity → invitation-only team admission → database login session
 signed invite → explicit task-session membership
 Postgres → transcript, presence, annotations, queue, lifecycle, and run state
 GitHub App → team-authorized repository pool
@@ -36,6 +36,7 @@ workspace evidence → changed files, command output, and real git diff
 ```
 
 - Next.js route handlers and server actions own all mutations.
+- GitHub identity alone cannot create a Hive account. The login boundary admits existing members, the verified GitHub App owner, or a valid seven-day invitation to an existing task; account/session writes happen only after admission. Task access still requires explicit task membership.
 - Postgres row locks serialize simultaneous teammate input.
 - The same locked state transition grants the right to start a run; matching request timestamps do not grant execution.
 - Browser snapshots never expose the opaque Codex resume checkpoint.
@@ -61,7 +62,7 @@ pnpm db:migrate
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000), sign in with GitHub, create a task, and copy its **Invite** link to a teammate.
+Open [http://localhost:3000](http://localhost:3000), sign in as the GitHub App owner to bootstrap the team, create a task, and copy its **Invite** link to a teammate. The App must be public for other GitHub accounts to authorize it; this does not make the code repository public. Keep non-production deployments protected because older builds may not enforce the current admission policy.
 
 For production-equivalent Gateway authentication, link the Vercel project and pull its environment:
 
@@ -86,7 +87,7 @@ pnpm exec tsc --noEmit
 pnpm exec next build --webpack
 ```
 
-The current suite covers the multiplayer state machine, attributed prompts, safe-boundary queue execution and recovery, completed-session immutability, persistent sandbox selection, failure checkpoints, and IME-safe message submission. Deterministic state tests and local UI fixtures do not replace the still-pending two-account production test; see the evidence log below.
+The current suite covers invitation-only admission, signed invitation expiry and scope, local OAuth return paths, the multiplayer state machine, attributed prompts, safe-boundary queue execution and recovery, completed-session immutability, persistent sandbox selection, failure checkpoints, and IME-safe message submission. Deterministic tests and local UI fixtures do not replace the still-pending two-account production test; see the evidence log below.
 
 ## Key decisions
 

@@ -192,6 +192,14 @@ Be explicit: GitHub write-back is not built; organization administration is not 
 - A 375px iframe fixture reported its actual inner viewport as 375px. Rendered screenshots and the accessible tree showed Invite, Complete, and the queue action fitting the narrow layout. This supplements the earlier 737px production check, not a claim of a real-device production test. All five temporary fixture files were removed before the production build.
 - Verification after the safe-boundary changes: 37 tests, targeted ESLint, and a production Webpack build including TypeScript pass. The production build route list contains no QA endpoints. Real coding remains blocked by Gateway 429, and second-account onboarding remains blocked at GitHub authorization.
 
+### Onboarding security follow-up
+
+- After the owner's Confirm access step, the GitHub App's Advanced settings explicitly showed **Make public**. The App is private; this confirms the suspected reason the second account cannot authorize. The owner approved making the App public only after adding invitation-only admission; the code repository stays private.
+- Found why visibility alone was insufficient: any GitHub identity previously received a Hive account, could create its own task, and then query the single team's repository pool. The private App prevented unrelated accounts from reaching that path; no unauthorized access is claimed.
+- Added admission inside account/session creation, before persistence: existing members retain access, the App owner is verified through GitHub's authenticated App endpoint for bootstrap, and new members need a correctly signed, unexpired invitation to an existing task. Merely installing the App is not admission. No new multi-team model or manual account allowlist was introduced.
+- Invitations preserve their existing seven-day token format. Duplicate parameters, wrong-task or expired signatures, missing tasks, and external OAuth return paths are rejected. A denied account switch clears the browser's previous Hive login cookie and shows a compact invitation-required page. The invitation screen states that team members share authorized repository access.
+- Verification: 49 tests, targeted ESLint, and a production Webpack/TypeScript build passed. Local rendering verified the invitation-required page. Tests use the real parser/signature/policy but simulate database and GitHub ownership lookups; this is not a two-account live sign-in claim. The previous deployment's unauthenticated URL redirects to Vercel SSO, protecting the old build. Deployment and App-visibility verification follow separately.
+
 ## Questions to prepare for
 
 - How is Hive different from tagging Claude in a shared channel?

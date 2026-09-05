@@ -49,6 +49,25 @@ function installationAuth() {
   return createAppAuth(appCredentials());
 }
 
+export async function getGitHubAppOwnerId() {
+  const authentication = await createAppAuth(appCredentials())({ type: "app" });
+  const response = await fetch("https://api.github.com/app", {
+    cache: "no-store",
+    headers: {
+      Accept: "application/vnd.github+json",
+      Authorization: `Bearer ${authentication.token}`,
+      "X-GitHub-Api-Version": GITHUB_API_VERSION,
+    },
+  });
+  if (!response.ok) throw new Error("GitHub could not verify the App owner.");
+  const payload = (await response.json()) as { owner?: { id?: number } };
+  const ownerId = payload.owner?.id;
+  if (typeof ownerId !== "number" || !Number.isSafeInteger(ownerId) || ownerId <= 0) {
+    throw new Error("GitHub did not return a valid App owner.");
+  }
+  return ownerId;
+}
+
 async function tokenForInstallation(
   installationId: number,
   repositoryId?: number,

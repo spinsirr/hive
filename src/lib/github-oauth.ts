@@ -3,6 +3,7 @@ import "server-only";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 import type { GitHubInstallationRepository } from "@/lib/github-app";
+import { safeReturnTo } from "@/lib/return-to";
 
 const GITHUB_API_VERSION = "2026-03-10";
 const STATE_TTL_MS = 10 * 60 * 1000;
@@ -94,13 +95,6 @@ export function verifyGitHubInstallState(state?: string | null) {
   } catch {
     return null;
   }
-}
-
-export function safeReturnTo(value?: string | null) {
-  if (!value || !value.startsWith("/") || value.startsWith("//")) {
-    return "/";
-  }
-  return value;
 }
 
 export function createGitHubOAuthState(options: {

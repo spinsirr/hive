@@ -28,17 +28,25 @@ function relativeTime(timestamp: number) {
   return `${Math.round(hours / 24)}d ago`;
 }
 
-export default async function Home() {
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<{ signin?: string | string[] }>;
+}) {
   const cookieStore = await cookies();
   const member = await getSessionMember(
     cookieStore.get(HIVE_SESSION_COOKIE)?.value,
   );
   if (!member) {
+    const { signin } = await searchParams;
+    const inviteRequired = signin === "invite-required";
     return (
       <HiveSignIn
-        description="Create a task, invite a teammate, and steer the same coding agent together."
+        description={inviteRequired
+          ? "Ask a teammate for an Invite link, then open it to join. Already a member? Sign in with the GitHub account you joined with."
+          : "Create a task, invite a teammate, and steer the same coding agent together. New members need an invitation."}
         returnTo="/"
-        title="Your team’s work with Hive"
+        title={inviteRequired ? "You need a team invitation" : "Your team’s work with Hive"}
       />
     );
   }

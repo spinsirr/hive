@@ -13,6 +13,7 @@ import {
   sessionCookieOptions,
 } from "@/lib/auth-session";
 import { saveGitHubInstallation } from "@/lib/github-connection-store";
+import { TeamInviteRequiredError } from "@/lib/team-admission";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -59,6 +60,7 @@ export async function GET(request: NextRequest) {
         };
     const { expiresAt, member, token } = await createUserSession(
       authorization.user,
+      oauthState.returnTo,
     );
 
     if (oauthState.installationId) {
@@ -76,6 +78,17 @@ export async function GET(request: NextRequest) {
     });
     return clearOAuthCookie(response);
   } catch (error) {
+    if (error instanceof TeamInviteRequiredError) {
+      const response = NextResponse.redirect(
+        new URL("/?signin=invite-required", request.url),
+      );
+      // Do not leave the previous account signed in after a denied account switch.
+      response.cookies.set(HIVE_SESSION_COOKIE, "", {
+        ...sessionCookieOptions(request.nextUrl.protocol === "https:"),
+        maxAge: 0,
+      });
+      return clearOAuthCookie(response);
+    }
     console.error("GitHub OAuth callback failed", error);
     return clearOAuthCookie(
       NextResponse.json(

@@ -24,10 +24,11 @@ export default async function SessionPage({
   searchParams,
 }: {
   params: Promise<{ sessionId: string }>;
-  searchParams: Promise<{ invite?: string }>;
+  searchParams: Promise<{ invite?: string | string[] }>;
 }) {
   const { sessionId } = await params;
-  const { invite } = await searchParams;
+  const { invite: inviteParam } = await searchParams;
+  const invite = typeof inviteParam === "string" ? inviteParam : undefined;
   if (!isTaskSessionId(sessionId) || !(await taskSessionExists(sessionId))) notFound();
 
   const cookieStore = await cookies();
@@ -42,7 +43,7 @@ export default async function SessionPage({
   if (!member) {
     return (
       <HiveSignIn
-        description="Join your teammate and steer the same task-scoped coding agent."
+        description="This invitation joins you to the team and this task. Team members share authorized repository access."
         returnTo={returnTo}
         title="Join this task"
       />
