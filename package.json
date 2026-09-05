@@ -10,6 +10,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "test": "node --test src/lib/*.test.ts",
+    "typecheck": "next typegen && tsc --noEmit",
     "start": "next start",
     "lint": "eslint",
     "prototype:state": "node scripts/prototype-task-session-state.ts"

@@ -8,14 +8,15 @@ The user added branch push and pull-request creation to the active goal. This su
 
 ## Completion checklist
 
-- [ ] Complete a small change in a real attached repository; verify the checks, Runs, Files, and Diff.
+- [x] Complete a small change in a real attached repository; verify the checks, Runs, Files, and Diff (formal task, 2026-09-05 05:22 UTC; 27 sandbox-revision tests, TypeScript, and diff check passed after continuation).
 - [x] Make Invite and Complete accessible at narrow viewport widths (375px local interaction fixture; production controls verified at 737px).
 - [ ] Verify two real GitHub users sharing a task: attribution, annotations, steering during a run, queue ordering, and synchronization.
 - [ ] Verify refresh, reconnect, and continuation after a failed run preserve messages and execution context.
-- [x] Add a read-only Monaco file viewer with file navigation and syntax highlighting (live changed-file evidence still belongs to the first check).
+- [x] Add a read-only Monaco file viewer with file navigation and syntax highlighting (production changed-file snapshot rendered for the completed accessibility change).
 - [x] Add and verify teammate autocomplete when typing `@` in the conversation composer (production task, actual teammate `josephmreb1`).
 - [ ] Add explicit PR creation after reviewing the shared diff; verify the real GitHub result.
 - [ ] Finish loading, empty, and error states plus task completion and reopening.
+- [x] Prevent approval of empty or ineligible diffs in both the state machine and UI; verified with regression tests and the real local component. Production rollout is recorded separately in the evidence log.
 - [ ] Finish the README, one-to-two-paragraph summary, decision log, and AI collaboration evidence.
 - [ ] Rehearse the approximately 20-minute demo and verify the deployed app and submission links.
 - [ ] With the user's approval, make the repository public and send all four submission items at least 24 hours before the presentation.

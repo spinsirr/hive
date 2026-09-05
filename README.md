@@ -16,9 +16,11 @@ Hive moves collaboration into the agent session itself. Teammates can see the sa
 - A **task session** exists for one intended outcome. It has one shared transcript and at most one attached repository; seven-day signed links admit teammates explicitly.
 - A session can begin without code. Hive first helps the team clarify intent; a repository can be attached later.
 - A **message annotation** is discussion-only until a teammate promotes it to a **steer**.
+- Typing `@` suggests actual session teammates. A leading teammate mention stays human discussion; choosing a suggestion does not send the message.
 - A steer created during an active run enters an attributed, ordered queue and waits for a safe boundary.
 - A safe boundary is the end of the current execution, including a failed attempt. Teammates explicitly apply the next steer from the conversation; later directions do not jump the existing queue.
 - Completing a task makes the session read-only; teammates can reopen it if the work genuinely continues.
+- Only a nonempty diff from a successful run, with no pending steer, can be approved. Approval records the team's review; it does not publish code.
 
 The canonical vocabulary is recorded in [`CONTEXT.md`](CONTEXT.md).
 
@@ -85,11 +87,13 @@ Callback URL: https://your-domain.example/api/github/callback
 ```bash
 pnpm test
 pnpm lint
-pnpm exec tsc --noEmit
+pnpm typecheck
 pnpm exec next build --webpack
 ```
 
-The current suite covers invitation-only admission, signed invitation expiry and scope, local OAuth return paths, the multiplayer state machine, attributed prompts, safe-boundary queue execution and recovery, completed-session immutability, persistent sandbox selection, failure checkpoints, IME-safe submission, retry deduplication, and draft recovery. Deterministic tests and local UI fixtures do not replace the still-pending two-account production test; see the evidence log below.
+The current suite covers invitation-only admission, signed invitation expiry and scope, local OAuth return paths, the multiplayer state machine, attributed prompts, safe-boundary queue execution and recovery, completed-session immutability, nonempty-diff approval, persistent sandbox selection, failure checkpoints, IME-safe submission, teammate autocomplete, retry deduplication, and draft recovery. Two real GitHub accounts have joined the production task; attribution, automatic message queuing, and retained transcript/queue after refresh were observed. A real accessibility change was recovered after earlier failed turns and verified through Runs, Files, and Diff, with the sandbox revision's 27 tests, TypeScript, and diff check passing. Annotation promotion and full two-account recovery remain unverified, and longer model runs have returned 429. Deterministic tests and local fixtures do not replace those production checks; see the evidence log below.
+
+`pnpm typecheck` generates Next.js route types before running TypeScript, so it also works in a freshly cloned workspace that has not run a build or development server.
 
 ## Key decisions
 

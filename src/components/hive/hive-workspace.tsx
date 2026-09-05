@@ -9,7 +9,6 @@ import {
   Copy,
   FileCode2,
   FolderGit2,
-  GitPullRequest,
   ListChecks,
   LoaderCircle,
   MessageSquare,
@@ -42,6 +41,7 @@ import {
   type ActiveSteer,
   type ChatMessage,
   canApplyNextSteer,
+  canApproveChanges,
   isHiveRunActive,
   isDirectedAtTeammate,
   type MemberId,
@@ -877,17 +877,17 @@ function Workspace({ repository, sessionId, tab, workspace, onTabChange }: { rep
   );
 }
 
-function RunBar({ activeSteer, completed, runActive, queueCount, repository, stage, onAdvance }: { activeSteer?: ActiveSteer; completed: boolean; runActive: boolean; queueCount: number; repository?: RepositoryState; stage: RunStage; onAdvance: () => void }) {
-  const action = completed ? "Task complete" : runActive ? activeSteer ? "Applying queued steer" : "Hive is working" : queueCount > 0 ? "Steers queued" : stage === "review" ? "Approve changes" : stage === "approved" ? "Approved" : "Send Hive a task";
-  const Icon = stage === "review" || stage === "approved" ? GitPullRequest : Play;
-  const disabled = completed || !repository || runActive || queueCount > 0 || stage !== "review";
+function RunBar({ activeSteer, completed, reviewReady, runActive, queueCount, repository, stage, onAdvance }: { activeSteer?: ActiveSteer; completed: boolean; reviewReady: boolean; runActive: boolean; queueCount: number; repository?: RepositoryState; stage: RunStage; onAdvance: () => void }) {
+  const action = completed ? "Task complete" : runActive ? activeSteer ? "Applying queued steer" : "Hive is working" : queueCount > 0 ? "Steers queued" : reviewReady ? "Approve changes" : stage === "approved" ? "Approved" : "Send Hive a task";
+  const Icon = reviewReady || stage === "approved" ? Check : Play;
+  const disabled = !reviewReady;
   const detail = completed
     ? "This task is read-only until a teammate reopens it."
     : !repository
       ? "Planning mode · discuss intent now, attach code when the team is ready."
       : queueCount > 0
         ? runActive ? `${queueCount} steer${queueCount === 1 ? "" : "s"} waiting for this run to finish.` : "Apply the next steer from the conversation."
-        : stageCopy[stage].detail;
+        : stageCopy[stage === "review" && !reviewReady ? "waiting" : stage].detail;
   return (
     <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-t border-[#ebebeb] bg-[#fafafa] px-3 sm:px-4">
       <p className="min-w-0 truncate text-[11px] text-[#777]">
@@ -1091,7 +1091,7 @@ export function HiveWorkspace({
           <div className="min-h-0 flex-1">
             <Workspace repository={repository} sessionId={sessionId} tab={shared.tab} workspace={workspace} onTabChange={shared.onTabChange} />
           </div>
-          <RunBar activeSteer={activeSteer} completed={lifecycle === "completed"} runActive={runActive} queueCount={steeringQueue.length} repository={repository} stage={shared.stage} onAdvance={shared.onAdvance} />
+          <RunBar activeSteer={activeSteer} completed={lifecycle === "completed"} reviewReady={canApproveChanges(session)} runActive={runActive} queueCount={steeringQueue.length} repository={repository} stage={shared.stage} onAdvance={shared.onAdvance} />
         </div>
       </div>
     </main>

@@ -308,6 +308,16 @@ export function canApplyNextSteer(state: TaskSessionState): boolean {
     !isHiveRunActive(state);
 }
 
+export function canApproveChanges(state: TaskSessionState): boolean {
+  return state.lifecycle === "active" &&
+    Boolean(state.repository) &&
+    state.stage === "review" &&
+    state.workspace.status === "review" &&
+    state.workspace.diff.trim().length > 0 &&
+    state.steeringQueue.length === 0 &&
+    !state.activeSteer;
+}
+
 export function didStartHiveRun(previous: TaskSessionState, next: TaskSessionState): boolean {
   return !isHiveRunActive(previous) && isHiveRunActive(next);
 }
@@ -783,14 +793,15 @@ export function reduceTaskSession(
     if (!queuedSteer) return state;
     const queuedSource = queuedSteer.source;
     const steeringQueue = state.steeringQueue.filter((item) => item.id !== action.steerId);
-    const readyForReview = state.repository && state.stage === "running" &&
+    const queueDrained = state.repository && state.stage === "running" &&
       state.workspace.completedAt !== undefined && steeringQueue.length === 0;
+    const hasChanges = state.workspace.diff.trim().length > 0;
 
     return {
       ...state,
       version: state.version + 1,
-      stage: readyForReview ? "review" : state.stage,
-      workspace: readyForReview ? { ...state.workspace, status: "review" } : state.workspace,
+      stage: queueDrained ? hasChanges ? "review" : "waiting" : state.stage,
+      workspace: queueDrained ? { ...state.workspace, status: hasChanges ? "review" : "ready" } : state.workspace,
       annotation:
         queuedSource.kind === "workspace-annotation"
           ? {
@@ -849,7 +860,7 @@ export function reduceTaskSession(
   }
 
   if (action.type === "advance-run") {
-    if (state.stage === "review") {
+    if (canApproveChanges(state)) {
       const member = actor;
       return {
         ...state,
@@ -857,7 +868,7 @@ export function reduceTaskSession(
         stage: "approved",
         messages: appendAgentMessage(
           state,
-          `${member.shortName} approved the shared diff. It is ready for the GitHub write layer to open a pull request.`,
+          `${member.shortName} approved the current diff.`,
           now,
         ),
         updatedAt: now,
@@ -874,14 +885,15 @@ export function applyHiveRunResult(
   now = Date.now(),
 ): TaskSessionState {
   const hasQueuedSteer = state.steeringQueue.length > 0;
+  const hasChanges = result.diff.trim().length > 0;
   return {
     ...state,
     version: state.version + 1,
     revision: 2,
-    stage: hasQueuedSteer ? "running" : "review",
+    stage: hasQueuedSteer ? "running" : hasChanges ? "review" : "waiting",
     activeSteer: undefined,
     workspace: {
-      status: hasQueuedSteer ? "running" : "review",
+      status: hasQueuedSteer ? "running" : hasChanges ? "review" : "ready",
       sandboxName: result.sandboxName,
       agentSession: result.agentSession,
       summary: result.summary,

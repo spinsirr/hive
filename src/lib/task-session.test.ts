@@ -6,6 +6,7 @@ import {
   applyHiveRunResult,
   appendHiveReply,
   canApplyNextSteer,
+  canApproveChanges,
   createInitialTaskSessionState,
   didStartHiveRun,
   isHiveRunActive,
@@ -31,6 +32,71 @@ function connectedSession(): TaskSessionState {
     10,
   );
 }
+
+function finishInspection(state: TaskSessionState, diff = "") {
+  return applyHiveRunResult(state, {
+    sandboxName: "hive-session-test",
+    agentSession: state.workspace.agentSession!,
+    summary: diff ? "Updated navigation." : "Inspected the repository; no changes.",
+    diff,
+    files: [],
+    changedFiles: diff ? ["nav.tsx"] : [],
+    commands: [{ command: "git status --short", output: "", exitCode: 0 }],
+  }, 40);
+}
+
+test("a successful read-only run does not offer or accept diff approval", () => {
+  const running = reduceTaskSession(connectedSession(), {
+    type: "send-message", actor: "spencer", body: "Inspect navigation only",
+  }, 20);
+  const finished = finishInspection(running);
+  assert.equal(finished.stage, "waiting");
+  assert.equal(finished.workspace.status, "ready");
+  assert.equal(finished.workspace.commands[0]?.exitCode, 0);
+  assert.equal(reduceTaskSession(finished, { type: "advance-run", actor: "spencer" }, 50), finished);
+});
+
+test("approval requires a current successful nonempty diff and no pending work", () => {
+  const running = reduceTaskSession(connectedSession(), {
+    type: "send-message", actor: "spencer", body: "Update navigation",
+  }, 20);
+  const review = finishInspection(running, "+ keyboard support");
+  const cases: TaskSessionState[] = [
+    { ...review, workspace: { ...review.workspace, diff: " \n " } },
+    { ...review, workspace: { ...review.workspace, status: "error", error: "Rate limit reached." } },
+    { ...review, lifecycle: "completed" },
+    { ...review, repository: undefined },
+    { ...review, steeringQueue: [{ id: "pending", authorId: "maya", body: "Check focus", source: { kind: "message", messageId: "m1" }, queuedAt: 45, sourceLabel: "Teammate message" }] },
+    { ...review, activeSteer: { id: "active", authorId: "maya", body: "Check focus", source: { kind: "message", messageId: "m1" }, queuedAt: 35, appliedAt: 45, sourceLabel: "Teammate message" } },
+  ];
+  for (const invalid of cases) {
+    assert.equal(canApproveChanges(invalid), false);
+    assert.equal(reduceTaskSession(invalid, { type: "advance-run", actor: "spencer" }, 50), invalid);
+  }
+
+  assert.equal(canApproveChanges(review), true);
+  const approved = reduceTaskSession(review, { type: "advance-run", actor: "spencer" }, 50);
+  assert.equal(approved.stage, "approved");
+  assert.match(approved.messages.at(-1)!.body, /Spencer approved the current diff\./);
+  assert.doesNotMatch(approved.messages.at(-1)!.body, /pull request|GitHub write/i);
+  assert.equal(reduceTaskSession(approved, { type: "advance-run", actor: "spencer" }, 60), approved);
+});
+
+test("removing the final steer after a read-only run returns to ready, not review", () => {
+  const running = reduceTaskSession(connectedSession(), {
+    type: "send-message", actor: "spencer", body: "Inspect navigation only",
+  }, 20);
+  const queued = reduceTaskSession(running, {
+    type: "send-message", actor: "maya", body: "Also check the footer",
+  }, 30);
+  const finished = finishInspection(queued);
+  const removed = reduceTaskSession(finished, {
+    type: "remove-queued-steer", actor: "maya", steerId: finished.steeringQueue[0].id,
+  }, 50);
+  assert.equal(removed.stage, "waiting");
+  assert.equal(removed.workspace.status, "ready");
+  assert.deepEqual(removed.workspace.commands, finished.workspace.commands);
+});
 
 test("retrying the same accepted message does not queue a second run", () => {
   const action = {
