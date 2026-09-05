@@ -267,6 +267,13 @@ Be explicit: GitHub write-back is not built; organization administration is not 
 - A subsequent read-only production check opened the formal task in the in-app browser and Chrome. Both authenticated as `Spinsirr`, retained the real accessibility diff and transcript, and showed the existing approved review state (the transcript records approval at 06:33). No new message, annotation, run, or lifecycle action was sent. The accessible Chrome profile is not the second member's login; this check cannot satisfy the two-account acceptance gate. The unshipped local changes remain at working-tree status above commit `13d4bd1`.
 - The owner subsequently replied “上线” to the explicit `main` push and production-deployment confirmation. This authorizes releasing the tested realtime changes through the existing Git deployment workflow; it does not authorize making the repository public or sending submission materials. Deployment and live verification results are recorded separately below.
 
+### 2026-09-05 — Realtime production release
+
+- Pushed functional commit `a689b26` to `main`. Vercel deployment `Vivs17hWvWe5w3UJMeHQi6hQmpPh` became Ready and Current on `hive-roan-mu.vercel.app`; the dashboard reports a 50-second build.
+- Opened the formal task on the production alias as the existing authenticated `Spinsirr` member. The new client reached Live through its WebSocket subscription, rendered 11 existing Hive replies through Streamdown, and retained the attributed transcript, actual accessibility diff, and approved review state. The inspected browser warning/error log was empty.
+- At 16:15 UTC, independent unauthenticated requests returned 200 for `/`, 401 for the task API, and 401 for a real WebSocket handshake using the correct production Origin. No login cookies or other credentials were copied into this diagnostic.
+- These release checks sent no human messages, annotations, agent requests, or lifecycle changes. They establish deployed rendering, authenticated live connection, retained state, and unauthenticated rejection—not actual model-delta cadence, network-loss recovery during generation, or two-account steering. Those acceptance gates remain open.
+
 ## Questions to prepare for
 
 - How is Hive different from tagging Claude in a shared channel?
