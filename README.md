@@ -44,6 +44,8 @@ workspace evidence → changed files, command output, and real git diff
 - Messages and annotations carry a client submission ID. Retrying an unconfirmed submission reuses that ID; the locked transition does not duplicate an already accepted message or start another run. Acknowledgement means the contribution was saved, not that the agent succeeded.
 - Unsent drafts survive refresh within the current browser tab, isolated by task and member. Failed delivery keeps the draft for explicit retry; background synchronization can confirm an accepted contribution, but never automatically resends it. If browser storage is unavailable, drafts remain in memory only.
 - Browser snapshots never expose the opaque Codex resume checkpoint.
+- Authenticated WebSockets carry shared snapshots and incremental agent replies. Postgres `LISTEN/NOTIFY` reaches viewers on different function instances; the listener uses the direct endpoint of the same Neon database, not its transaction pool.
+- Public agent text is checkpointed in 250 ms batches with a stable reply ID and monotonic sequence. Reconnect subscribes before reading a fresh snapshot; it never starts another run. Tool output stays in Runs and reasoning never enters the chat. Streamdown renders Markdown as the text arrives.
 - Each repository-backed task maps to a persistent named Vercel Sandbox and Codex session; Neon remains the canonical team history if compute disappears.
 - GitHub App credentials stay server-side. Sandbox receives a fresh installation token limited to the selected repository.
 - AI Gateway uses Vercel OIDC in production. `openai/gpt-5-mini` is the low-cost default for both planning and coding turns and can be overridden.
@@ -63,10 +65,12 @@ workspace evidence → changed files, command output, and real git diff
 pnpm install
 cp .env.example .env.local
 pnpm db:migrate
-pnpm dev
+vercel dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000), sign in as the GitHub App owner to bootstrap the team, create a task, and copy its **Invite** link to a teammate. The App must be public for other GitHub accounts to authorize it; this does not make the code repository public. Keep non-production deployments protected because older builds may not enforce the current admission policy.
+
+Install the [Vercel CLI](https://vercel.com/docs/cli) before running `vercel dev`. The WebSocket upgrade requires the Vercel runtime; plain `pnpm dev` / `next dev` remains useful for UI development but does not provide live session connections. Production requires Fluid compute, which is enabled on the current Hive project. See [Vercel's WebSocket documentation](https://vercel.com/docs/functions/websockets).
 
 For production-equivalent Gateway authentication, link the Vercel project and pull its environment:
 
@@ -94,6 +98,14 @@ pnpm exec next build --webpack
 The current suite covers invitation-only admission, signed invitation expiry and scope, local OAuth return paths, the multiplayer state machine, attributed prompts, safe-boundary queue execution and recovery, completed-session immutability, nonempty-diff approval, persistent sandbox selection, failure checkpoints, IME-safe submission, teammate autocomplete, retry deduplication, and draft recovery. Two real GitHub accounts have joined the production task; attribution, automatic message queuing, and retained transcript/queue after refresh were observed. A real accessibility change was recovered after earlier failed turns and verified through Runs, Files, and Diff, with the sandbox revision's 27 tests, TypeScript, and diff check passing. Annotation promotion and full two-account recovery remain unverified, and longer model runs have returned 429. Deterministic tests and local fixtures do not replace those production checks; see the evidence log below.
 
 `pnpm typecheck` generates Next.js route types before running TypeScript, so it also works in a freshly cloned workspace that has not run a build or development server.
+
+An opt-in transport diagnostic runs two independent Postgres listeners and two localhost WebSocket connections, checks delivery, reconnect snapshots, and authorization rechecks:
+
+```bash
+node --env-file=.env.local scripts/check-live-transport.ts
+```
+
+It uses transient notifications and isolated in-memory task fixtures, not task-table writes or model calls. It does not replace a two-account production test.
 
 ## Key decisions
 

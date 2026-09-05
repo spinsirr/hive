@@ -1,8 +1,25 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "streamdown/styles.css";
+
+@source "../../node_modules/streamdown/dist/*.js";
+@source "../../node_modules/@streamdown/code/dist/*.js";
 
 @custom-variant dark (&:is(.dark *));
+
+.hive-response [data-streamdown="code-block"],
+.hive-response [data-streamdown="table-wrapper"] {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
+}
+
+.hive-response [data-streamdown="code-block-body"] {
+  border-radius: 4px;
+  padding: 12px;
+}
 
 @theme inline {
   --color-background: var(--background);

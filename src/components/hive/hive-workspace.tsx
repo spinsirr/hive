@@ -30,6 +30,7 @@ import {
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
 import { Message, MessageContent } from "@/components/ai-elements/message";
+import { AgentResponse } from "@/components/hive/agent-response";
 import { MentionInput } from "@/components/hive/mention-input";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,6 +44,7 @@ import {
   canApplyNextSteer,
   canApproveChanges,
   isHiveRunActive,
+  conversationMessages,
   isDirectedAtTeammate,
   type MemberId,
   type RepositoryState,
@@ -494,7 +496,7 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
                   ) : null}
                 </div>
                 <MessageContent className={cn("w-fit max-w-[94%] rounded-lg border border-[#e8e8e8] px-3 py-2.5 text-[13px] leading-5 shadow-none", message.role === "agent" ? "bg-[#fafafa] text-[#4d4d4d]" : isCurrentMember ? "ml-auto bg-white" : "bg-white")}>
-                  {message.body}
+                  {message.role === "agent" ? <AgentResponse streaming={message.status === "streaming"}>{message.body}</AgentResponse> : message.body}
                 </MessageContent>
 
                 {messageAnnotations.length > 0 ? (
@@ -938,7 +940,8 @@ export function HiveWorkspace({
     () => [currentMember, ...members.filter((member) => member.id !== currentMember.id)],
     [currentMember, members],
   );
-  const { activeSteer, annotation, lifecycle, messages, repository, stage, steeringQueue, workspace } = session;
+  const { activeSteer, annotation, lifecycle, repository, stage, steeringQueue, workspace } = session;
+  const messages = useMemo(() => conversationMessages(session), [session]);
   const runActive = isHiveRunActive(session);
   const canApplySteer = canApplyNextSteer(session);
   const steered = annotation.status === "steered";

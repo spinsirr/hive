@@ -88,7 +88,7 @@ export type ChatMessage = {
   role: "human" | "agent";
   memberId?: MemberId;
   annotations?: MessageAnnotation[];
-  status?: "error";
+  status?: "error" | "streaming";
   time: string;
 };
 
@@ -139,6 +139,14 @@ export type WorkspaceState = {
   startedAt?: number;
   completedAt?: number;
   error?: string;
+  liveReply?: AgentReply;
+};
+
+export type AgentReply = {
+  id: string;
+  body: string;
+  sequence: number;
+  startedAt: number;
 };
 
 export type HiveRunResult = {
@@ -301,6 +309,27 @@ export function isHiveRunActive(state: TaskSessionState): boolean {
     state.workspace.completedAt === undefined;
 }
 
+function finishAgentReply(state: TaskSessionState, body: string, now: number): ChatMessage[] {
+  const liveReply = state.workspace.liveReply;
+  if (!liveReply) return appendAgentMessage(state, body, now);
+  return [...state.messages, {
+    id: liveReply.id,
+    name: "Hive",
+    initials: "AI",
+    body: liveReply.body || body,
+    role: "agent",
+    time: timeLabel(liveReply.startedAt),
+  }];
+}
+
+export function conversationMessages(state: TaskSessionState): ChatMessage[] {
+  if (!state.workspace.liveReply?.body) return state.messages;
+  const messages = finishAgentReply(state, "", state.updatedAt);
+  return messages.map((message, index) => index === messages.length - 1
+    ? { ...message, status: "streaming" }
+    : message);
+}
+
 export function canApplyNextSteer(state: TaskSessionState): boolean {
   return state.lifecycle === "active" &&
     state.steeringQueue.length > 0 &&
@@ -342,21 +371,13 @@ export function appendHiveReply(
           startedAt: undefined,
           completedAt: now,
           error: undefined,
+          liveReply: undefined,
         }
       : state.workspace,
     version: state.version + 1,
-    messages: [
-      ...state.messages,
-      {
-        id: `agent-${now}-${state.version + 1}`,
-        name: "Hive",
-        initials: "AI",
-        body,
-        role: "agent",
-        status,
-        time: timeLabel(now),
-      },
-    ],
+    messages: finishAgentReply(state, body, now).map((message, index, messages) =>
+      index === messages.length - 1 && status ? { ...message, status } : message,
+    ),
     updatedAt: now,
   };
 }
@@ -904,7 +925,7 @@ export function applyHiveRunResult(
       startedAt: state.workspace.startedAt,
       completedAt: now,
     },
-    messages: appendAgentMessage(state, result.summary, now),
+    messages: finishAgentReply(state, result.summary, now),
     updatedAt: now,
   };
 }
@@ -927,9 +948,10 @@ export function applyHiveRunError(
       status: "error",
       error: message,
       completedAt: now,
+      liveReply: undefined,
     },
     messages: [
-      ...state.messages,
+      ...(state.workspace.liveReply?.body ? finishAgentReply(state, "", now) : state.messages),
       {
         id: `agent-${now}-${state.version + 1}`,
         name: "Hive",

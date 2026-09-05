@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { TaskSessionAction } from "@/lib/task-session";
+import type { AgentReply, TaskSessionAction } from "@/lib/task-session";
 import type { TaskSessionSnapshot } from "@/lib/task-session-store";
-import { receiveTaskSessionSnapshot } from "@/lib/task-session-snapshot";
+import { receiveAgentReply, receiveTaskSessionSnapshot } from "@/lib/task-session-snapshot";
 
 type ClientTaskSessionAction = Exclude<
   TaskSessionAction,
@@ -22,14 +22,28 @@ export function useSharedSession(sessionId: string, initialSnapshot: TaskSession
   const [syncing, setSyncing] = useState(true);
   const [syncError, setSyncError] = useState(false);
   const typingRef = useRef(false);
-  const channelRef = useRef<BroadcastChannel | null>(null);
+  const connectedRef = useRef(false);
 
   const publish = useCallback((nextSnapshot: TaskSessionSnapshot) => {
     setSnapshot((current) => receiveTaskSessionSnapshot(current, nextSnapshot));
-    setSyncing(false);
+    setSyncing(!connectedRef.current);
     setSyncError(false);
-    channelRef.current?.postMessage(nextSnapshot);
   }, []);
+
+  const heartbeat = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "heartbeat", typing: typingRef.current }),
+      });
+      if (response.status === 401) window.location.reload();
+      if (!response.ok) throw new Error("Session heartbeat failed");
+      // A successful presence write does not mean the live subscription is connected.
+    } catch {
+      setSyncError(true);
+    }
+  }, [sessionId]);
 
   const post = useCallback(async (payload: object) => {
     try {
@@ -59,7 +73,7 @@ export function useSharedSession(sessionId: string, initialSnapshot: TaskSession
       if (!response.ok) throw new Error("Session refresh failed");
       const nextSnapshot = (await response.json()) as TaskSessionSnapshot;
       setSnapshot((current) => receiveTaskSessionSnapshot(current, nextSnapshot));
-      setSyncing(false);
+      setSyncing(!connectedRef.current);
       setSyncError(false);
     } catch {
       setSyncing(true);
@@ -68,34 +82,77 @@ export function useSharedSession(sessionId: string, initialSnapshot: TaskSession
   }, [sessionId]);
 
   useEffect(() => {
-    if (typeof BroadcastChannel !== "undefined") {
-      const channel = new BroadcastChannel(`hive-session-${sessionId}`);
-      channel.onmessage = (event: MessageEvent<TaskSessionSnapshot>) => {
-        setSnapshot((current) => receiveTaskSessionSnapshot(current, event.data));
-        setSyncing(false);
+    let stopped = false;
+    let socket: WebSocket | undefined;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    let connecting: ReturnType<typeof setTimeout> | undefined;
+    let delay = 500;
+    const url = new URL(`/api/sessions/${encodeURIComponent(sessionId)}/live`, window.location.href);
+    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+
+    function connect() {
+      if (stopped || socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) return;
+      clearTimeout(retry);
+      const current = new WebSocket(url);
+      socket = current;
+      connecting = setTimeout(() => current.close(), 15_000);
+      current.onopen = () => {
+        if (stopped || current !== socket) { current.close(); return; }
+        clearTimeout(connecting);
+        connectedRef.current = true;
+        delay = 500;
       };
-      channelRef.current = channel;
+      current.onmessage = (message: MessageEvent<string>) => {
+        if (stopped || current !== socket) return;
+        try {
+          const event = JSON.parse(message.data) as
+            | { type: "snapshot"; snapshot: TaskSessionSnapshot }
+            | { type: "reply"; sessionId: string; reply: AgentReply | null };
+          if (event.type === "snapshot") publish(event.snapshot);
+          if (event.type === "reply") setSnapshot((previous) => receiveAgentReply(previous, event.sessionId, event.reply));
+          setSyncing(false);
+          setSyncError(false);
+        } catch {
+          current.close();
+        }
+      };
+      current.onclose = (event) => {
+        if (stopped || current !== socket) return;
+        clearTimeout(connecting);
+        connectedRef.current = false;
+        setSyncing(true);
+        if (event.code === 4401) { window.location.reload(); return; }
+        setSyncError(!navigator.onLine);
+        retry = setTimeout(connect, delay + Math.random() * 250);
+        delay = Math.min(delay * 2, 10_000);
+      };
+      current.onerror = () => current.close();
+    }
+    function reconnect() {
+      connect();
+      void refresh();
     }
 
-    void post({ type: "heartbeat", typing: typingRef.current });
-    const pollTimer = window.setInterval(() => void refresh(), 1_200);
+    connect();
+    void heartbeat();
     const heartbeatTimer = window.setInterval(
-      () => void post({ type: "heartbeat", typing: typingRef.current }),
+      () => void heartbeat(),
       5_000,
     );
-    const reconnect = () => void refresh();
     window.addEventListener("online", reconnect);
     window.addEventListener("focus", reconnect);
 
     return () => {
-      window.clearInterval(pollTimer);
+      stopped = true;
+      connectedRef.current = false;
+      clearTimeout(retry);
+      clearTimeout(connecting);
       window.clearInterval(heartbeatTimer);
       window.removeEventListener("online", reconnect);
       window.removeEventListener("focus", reconnect);
-      channelRef.current?.close();
-      channelRef.current = null;
+      socket?.close();
     };
-  }, [post, refresh, sessionId]);
+  }, [heartbeat, publish, refresh, sessionId]);
 
   const dispatch = useCallback(
     (action: SessionDispatchAction) => post(action),
@@ -105,8 +162,8 @@ export function useSharedSession(sessionId: string, initialSnapshot: TaskSession
   const setTyping = useCallback((typing: boolean) => {
     if (typingRef.current === typing) return;
     typingRef.current = typing;
-    void post({ type: "heartbeat", typing });
-  }, [post]);
+    void heartbeat();
+  }, [heartbeat]);
 
   return { snapshot, syncing, syncError, dispatch, setTyping };
 }

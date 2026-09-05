@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createInitialTaskSessionState, reduceTaskSession } from "./task-session.ts";
-import { publicTaskSessionSnapshot, receiveTaskSessionSnapshot } from "./task-session-snapshot.ts";
+import { publicTaskSessionSnapshot, receiveAgentReply, receiveTaskSessionSnapshot } from "./task-session-snapshot.ts";
 import type { TaskSessionSnapshot } from "./task-session-store.ts";
 
 function snapshot(sessionId = "shared-task"): TaskSessionSnapshot {
@@ -14,14 +14,14 @@ function snapshot(sessionId = "shared-task"): TaskSessionSnapshot {
   };
 }
 
-test("late polling, action, and broadcast responses cannot roll back team messages", async () => {
+test("late reconnect snapshots and action responses cannot roll back team messages", async () => {
   const before = snapshot();
   const after = {
     ...before,
     session: reduceTaskSession(before.session, { type: "send-message", actor: "spencer", body: "Fix the navigation" }, 2),
   };
 
-  for (const source of ["poll", "action", "broadcast"]) {
+  for (const source of ["reconnect", "action", "websocket"]) {
     let current = before;
     let deliverOld!: (value: TaskSessionSnapshot) => void;
     const pendingOldResponse = new Promise<TaskSessionSnapshot>((resolve) => { deliverOld = resolve; })
@@ -32,6 +32,28 @@ test("late polling, action, and broadcast responses cannot roll back team messag
     assert.deepEqual(current.session.messages, after.session.messages, source);
     assert.equal(current.session.stage, "running", source);
   }
+});
+
+test("response checkpoints cannot roll back text or advance past unseen team actions", () => {
+  const current = snapshot();
+  current.session.workspace.liveReply = { id: "run-1", body: "Hello", sequence: 1, startedAt: 2 };
+  const reply = { ...current.session.workspace.liveReply, body: "Hello team", sequence: 2 };
+  const streamed = receiveAgentReply(current, "shared-task", reply);
+  assert.equal(streamed.session.version, current.session.version, "reply sequence is not the task version");
+  assert.equal(streamed.session.workspace.liveReply?.body, "Hello team");
+  assert.equal(receiveAgentReply(streamed, "shared-task", current.session.workspace.liveReply), streamed);
+  assert.equal(receiveAgentReply(streamed, "another-task", reply), streamed);
+  assert.equal(receiveAgentReply(streamed, "shared-task", { ...reply, id: "old-run", sequence: 99 }), streamed);
+
+  const queuedSnapshot = { ...current, session: { ...current.session, version: current.session.version + 1 } };
+  const received = receiveTaskSessionSnapshot(streamed, queuedSnapshot);
+  assert.equal(received.session.version, queuedSnapshot.session.version);
+  assert.equal(received.session.workspace.liveReply?.sequence, 2, "a concurrent team action must preserve newer reply text");
+});
+
+test("late stream packets never resurrect a finished reply", () => {
+  const current = snapshot();
+  assert.equal(receiveAgentReply(current, "shared-task", { id: "old", body: "late", sequence: 9, startedAt: 1 }), current);
 });
 
 test("same-version presence updates still refresh without changing the transcript", () => {

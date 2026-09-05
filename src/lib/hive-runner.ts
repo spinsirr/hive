@@ -10,6 +10,7 @@ import { Sandbox } from "@vercel/sandbox";
 import type { Experimental_SandboxSession } from "ai";
 
 import { hiveAgentFailureMessage, HiveAgentError } from "@/lib/hive-agent";
+import { consumeAgentText } from "@/lib/agent-stream";
 import { getRepositoryCloneCredentials } from "@/lib/github-app";
 import { buildHivePrompt } from "@/lib/hive-prompt";
 import {
@@ -243,7 +244,7 @@ export async function runHiveCodingTask(
   taskSession: TaskSessionState,
   actor: MemberId,
   steer?: string,
-  auth?: { actorName?: string; vercelOidcToken?: string },
+  auth?: { actorName?: string; vercelOidcToken?: string; onText?: (body: string) => void },
 ) {
   if (!taskSession.repository) {
     throw new HiveAgentError(
@@ -358,7 +359,7 @@ export async function runHiveCodingTask(
 
     const agentSession = await agent.createSession({ sessionId, resumeFrom });
     try {
-      const result = await agent.generate({
+      const result = await agent.stream({
         session: agentSession,
         prompt: buildHivePrompt(
           taskSession,
@@ -367,10 +368,14 @@ export async function runHiveCodingTask(
           auth?.actorName,
         ),
       });
+      await consumeAgentText(result.fullStream, (body) => auth?.onText?.(body));
       if (!sandboxSession || !sandboxWorkDir) {
         throw new Error("Vercel Sandbox session was not made available to Hive.");
       }
-      const commands = collectCodexCommands(result);
+      const commands = collectCodexCommands({
+        toolCalls: await result.toolCalls,
+        toolResults: await result.toolResults,
+      });
       const artifacts = await collectArtifacts(
         sandboxSession,
         commands,
@@ -390,7 +395,7 @@ export async function runHiveCodingTask(
           resumeFrom: nextResumeFrom,
         },
         summary:
-          result.text.trim() ||
+          (await result.text).trim() ||
           (artifacts.changedFiles.length > 0
             ? `Changed ${artifacts.changedFiles.join(", ")}. Review the real diff in the shared workspace.`
             : "I inspected the repository and did not make a code change."),

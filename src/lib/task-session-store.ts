@@ -1,8 +1,10 @@
-import { and, desc, eq, gte } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { customAlphabet } from "nanoid";
 
 import { db } from "@/db";
 import { taskSessionMembers, taskSessionPresence, taskSessions, users } from "@/db/schema";
+import { sessionNotification } from "@/lib/session-events";
 import {
   applyHiveRunError,
   applyHiveRunResult,
@@ -166,6 +168,7 @@ export async function joinTaskSession(
     .insert(taskSessionMembers)
     .values({ sessionId, memberId, joinedAt: new Date(now) })
     .onConflictDoNothing();
+  await db.execute(sessionNotification(sessionId));
   return true;
 }
 
@@ -206,7 +209,7 @@ export async function heartbeat(
       set: { lastSeen: new Date(now), typing },
     });
 
-  return getTaskSessionSnapshot(sessionId, now);
+  await db.execute(sessionNotification(sessionId));
 }
 
 export async function applyTaskSessionAction(
@@ -238,10 +241,19 @@ export async function applyTaskSessionAction(
       now,
       members,
     );
+    const startedRun = didStartHiveRun(previousSession, nextSession);
+    if (startedRun) {
+      nextSession.workspace = {
+        ...nextSession.workspace,
+        liveReply: { id: `agent-${randomUUID()}`, body: "", sequence: 0, startedAt: now },
+      };
+    }
     await transaction
       .update(taskSessions)
       .set(sessionValues(nextSession))
       .where(eq(taskSessions.id, sessionId));
+
+    await transaction.execute(sessionNotification(sessionId));
 
     await transaction
       .insert(taskSessionPresence)
@@ -259,7 +271,7 @@ export async function applyTaskSessionAction(
     return {
       session: nextSession,
       // Grant execution inside the row lock, not by comparing request timestamps.
-      startedRun: didStartHiveRun(previousSession, nextSession),
+      startedRun,
     };
   });
 
@@ -274,6 +286,7 @@ export async function appendHiveReply(
   sessionId: string,
   body: string,
   options: {
+    forReplyId?: string;
     forMessageId?: string;
     forMessageAnnotation?: {
       messageId: string;
@@ -301,6 +314,7 @@ export async function appendHiveReply(
     }
 
     const currentSession = sessionState(storedSession);
+    if (options.forReplyId && currentSession.workspace.liveReply?.id !== options.forReplyId) return;
     if (
       options.forMessageId &&
       !currentSession.messages.some(
@@ -344,8 +358,35 @@ export async function appendHiveReply(
       .update(taskSessions)
       .set(sessionValues(nextSession))
       .where(eq(taskSessions.id, sessionId));
+    await transaction.execute(sessionNotification(sessionId));
   });
   return getTaskSessionSnapshot(sessionId, now);
+}
+
+export async function checkpointAgentReply(sessionId: string, replyId: string, body: string, sequence: number) {
+  await db.transaction(async (transaction) => {
+    // Atomic JSON patch: no transcript/files round-trip and no stale read overwrites a teammate's action.
+    const changed = await transaction.update(taskSessions).set({
+      workspace: sql`jsonb_set(${taskSessions.workspace}, '{liveReply}',
+        (${taskSessions.workspace}->'liveReply') || ${JSON.stringify({ body, sequence })}::jsonb)`,
+    }).where(and(
+      eq(taskSessions.id, sessionId),
+      eq(taskSessions.stage, "running"),
+      sql`${taskSessions.workspace}->>'startedAt' IS NOT NULL`,
+      sql`${taskSessions.workspace}->>'completedAt' IS NULL`,
+      sql`${taskSessions.workspace}->'liveReply'->>'id' = ${replyId}`,
+      sql`(${taskSessions.workspace}->'liveReply'->>'sequence')::integer < ${sequence}`,
+    )).returning({ id: taskSessions.id });
+    if (changed.length) await transaction.execute(sessionNotification(sessionId, "reply"));
+  });
+}
+
+/** Streaming does not repeatedly transfer files, diffs, or private Codex checkpoints. */
+export async function getAgentReply(sessionId: string) {
+  const [row] = await db.select({
+    reply: sql<TaskSessionState["workspace"]["liveReply"]>`${taskSessions.workspace}->'liveReply'`,
+  }).from(taskSessions).where(eq(taskSessions.id, sessionId));
+  return row?.reply ?? null;
 }
 
 export async function getTaskSessionSnapshot(

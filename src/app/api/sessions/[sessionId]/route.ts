@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 import { getSessionMember, HIVE_SESSION_COOKIE } from "@/lib/auth-session";
+import { createReplyWriter } from "@/lib/agent-stream";
 import { HiveAgentError } from "@/lib/hive-agent";
 import { runHiveConversation } from "@/lib/hive-conversation";
 import { hiveErrorCopy } from "@/lib/hive-error-copy";
@@ -15,6 +16,7 @@ import { publicTaskSessionSnapshot } from "@/lib/task-session-snapshot";
 import {
   appendHiveReply,
   applyTaskSessionAction,
+  checkpointAgentReply,
   getTaskSessionSnapshot,
   heartbeat,
   isTaskSessionMember,
@@ -71,7 +73,8 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
 
   if (payload.type === "heartbeat") {
     const typing = "typing" in payload && payload.typing === true;
-    return sessionResponse(await heartbeat(sessionId, member.id, typing));
+    await heartbeat(sessionId, member.id, typing);
+    return new NextResponse(null, { status: 204 });
   }
 
   if (
@@ -177,6 +180,11 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
       ? snapshot.session.activeSteer
       : undefined;
 
+  const replyId = snapshot.session.workspace.liveReply!.id;
+  const writer = createReplyWriter((body, sequence) =>
+    checkpointAgentReply(sessionId, replyId, body, sequence),
+  );
+
   try {
     const steer =
       action.type === "steer-agent"
@@ -210,9 +218,12 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
         snapshot.session,
         runActor,
         actorName,
+        writer.push,
       );
+      await writer.close();
       return sessionResponse(
         await appendHiveReply(sessionId, reply, {
+          forReplyId: replyId,
           forMessageId: sourceMessageId,
           forMessageAnnotation: sourceMessageAnnotation,
           forActiveSteerAt: activeSteer?.appliedAt,
@@ -224,9 +235,12 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
     const runResult = await runHiveCodingTask(snapshot.session, runActor, steer, {
       actorName,
       vercelOidcToken,
+      onText: writer.push,
     });
+    await writer.close();
     return sessionResponse(
       await appendHiveReply(sessionId, runResult.summary, {
+        forReplyId: replyId,
         forMessageId: sourceMessageId,
         forMessageAnnotation: sourceMessageAnnotation,
         forActiveSteerAt: activeSteer?.appliedAt,
@@ -235,6 +249,7 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
       }),
     );
   } catch (error) {
+    await writer.close().catch(() => undefined);
     console.error(
       "Hive agent generation failed",
       error instanceof HiveAgentError ? error.cause : error,
@@ -245,6 +260,7 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
         : hiveErrorCopy.generic;
     return sessionResponse(
       await appendHiveReply(sessionId, message, {
+        forReplyId: replyId,
         forMessageId: sourceMessageId,
         forMessageAnnotation: sourceMessageAnnotation,
         forActiveSteerAt: activeSteer?.appliedAt,

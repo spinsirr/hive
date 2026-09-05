@@ -1,8 +1,9 @@
 import "server-only";
 
-import { generateText } from "ai";
+import { streamText } from "ai";
 
 import { hiveAgentFailureMessage, HiveAgentError } from "@/lib/hive-agent";
+import { consumeAgentText } from "@/lib/agent-stream";
 import { buildHivePrompt } from "@/lib/hive-prompt";
 import type { MemberId, TaskSessionState } from "@/lib/task-session";
 
@@ -12,9 +13,10 @@ export async function runHiveConversation(
   session: TaskSessionState,
   actor: MemberId,
   actorName?: string,
+  onText: (body: string) => void = () => undefined,
 ) {
   try {
-    const result = await generateText({
+    const result = streamText({
       model: process.env.HIVE_CHAT_MODEL?.trim() || DEFAULT_MODEL,
       system: [
         "You are Hive, a coding agent shared by a small software team.",
@@ -37,9 +39,10 @@ export async function runHiveConversation(
         },
       },
     });
+    await consumeAgentText(result.fullStream, onText);
 
     return (
-      result.text.trim() ||
+      (await result.text).trim() ||
       "What outcome should this task produce before we attach a repository?"
     );
   } catch (error) {
