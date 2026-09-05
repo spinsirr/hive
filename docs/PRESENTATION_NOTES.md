@@ -67,6 +67,7 @@ This correction matters: the team is the durable collaboration space; a session 
 | Name the human need, not the implementation | Runs is an audit trail for teammates: command, outcome, duration, and expandable output. | Calling a read-only log “Terminal” and implying that humans should operate it. |
 | Neon is canonical history | Native Codex history can disappear with compute; team intent cannot. | Treating sandbox files as the product database. |
 | Quiet error state | A failure should not become a theatrical agent apology. | Large error bubbles that repeat internal details. |
+| Neutral interface, semantic code colors | Syntax colors and green/red changes make the work readable; monochrome is for the surrounding interface. | Applying the black-and-white brand palette to every code token and diff line. |
 | A small frontend task in Hive itself | An author-specific accessible label makes teammate intent visible in both the conversation and the diff. | A separate demo application or deployment workflow that needs its own setup. |
 | Remove Vercel Connect experiment | The available install flow is developer-dashboard oriented; direct GitHub App onboarding fits users today. | Shipping a connector path users cannot complete. |
 
@@ -273,6 +274,15 @@ Be explicit: GitHub write-back is not built; organization administration is not 
 - Opened the formal task on the production alias as the existing authenticated `Spinsirr` member. The new client reached Live through its WebSocket subscription, rendered 11 existing Hive replies through Streamdown, and retained the attributed transcript, actual accessibility diff, and approved review state. The inspected browser warning/error log was empty.
 - At 16:15 UTC, independent unauthenticated requests returned 200 for `/`, 401 for the task API, and 401 for a real WebSocket handshake using the correct production Origin. No login cookies or other credentials were copied into this diagnostic.
 - These release checks sent no human messages, annotations, agent requests, or lifecycle changes. They establish deployed rendering, authenticated live connection, retained state, and unauthenticated rejection—not actual model-delta cadence, network-loss recovery during generation, or two-account steering. Those acceptance gates remain open.
+
+### 2026-09-05 — Login origins and review clarity
+
+- The owner reported a GitHub callback error after opening a deployment-specific hostname. An isolated production build with fixture credentials reproduced the exact 400 response: the login route set a host-only nonce on one origin while GitHub returned to the configured callback origin. `scripts/check-oauth-origin.mjs` failed before the fix and passed afterward against real HTTP routes; it does not perform a GitHub code exchange or database writes.
+- Login now redirects to the configured callback origin before generating any nonce, preserving task invitations and installation parameters. The browser's Host is checked because NextRequest normalizes loopback aliases in its URL; neither Host nor a return path controls the redirect destination. HMAC, nonce, expiry, invitation admission, and host-only cookie checks remain intact. Invalid callbacks clear the nonce and show a concise retry page instead of raw JSON. A fresh two-account authorization still needs live verification.
+- The code viewer was tokenizing correctly but its custom theme had made tokens grayscale. Restored Monaco's standard light syntax colors while retaining white interface surfaces; disabled unused/deprecated-code fading for bounded read-only snapshots. Added green insertion and red deletion rows in Diff, retaining `+`/`-` markers and leaving file headers neutral. Color fills now span horizontally scrolled lines.
+- A temporary page rendered the actual CodeViewer and DiffPane with isolated fixtures. DOM styles and a screenshot verified blue keywords, red strings, green comments, distinct green/red diff backgrounds, neutral `---`/`+++` headers, and read-only editor state. Removed the fixture before the production build. No repository content was altered by this visual check.
+- Reframed the homepage around “Your team. One coding agent. Build together.”, shared tasks, and inviting, annotating, and steering together. No simulated teammates or new team-management features were added.
+- All 92 tests, generated-type checking, full ESLint, the production Webpack build, and diff validation passed. Deployment of this follow-up and production visual verification are recorded separately; the wider multiplayer goal remains incomplete.
 
 ## Questions to prepare for
 

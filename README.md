@@ -86,6 +86,8 @@ Setup URL: https://your-domain.example/api/github/setup
 Callback URL: https://your-domain.example/api/github/callback
 ```
 
+Login always starts on the origin configured in `GITHUB_APP_CALLBACK_URL`. Deployment aliases redirect there before issuing the host-only OAuth nonce, so the GitHub callback can verify the same browser. For local sign-in, configure a local callback rather than the production URL.
+
 ## Verification
 
 ```bash

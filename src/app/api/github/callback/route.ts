@@ -40,10 +40,7 @@ export async function GET(request: NextRequest) {
 
   if (!code || !oauthState) {
     return clearOAuthCookie(
-      NextResponse.json(
-        { error: "GitHub authorization was cancelled or could not be verified." },
-        { status: 400 },
-      ),
+      NextResponse.redirect(new URL("/?signin=retry", request.url)),
     );
   }
 

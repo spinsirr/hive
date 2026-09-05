@@ -31,6 +31,7 @@ import {
 } from "@/components/ai-elements/conversation";
 import { Message, MessageContent } from "@/components/ai-elements/message";
 import { AgentResponse } from "@/components/hive/agent-response";
+import { DiffPane } from "@/components/hive/diff-pane";
 import { MentionInput } from "@/components/hive/mention-input";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -722,26 +723,6 @@ function RepositorySetup({ sessionId }: { sessionId: string }) {
         )}
         {error ? <p className="mt-3 text-xs leading-5 text-[#777]">{error}</p> : null}
         <p className="mt-3 font-mono text-[9px] text-[#a1a1a1]">Team access · one repository per task · short-lived credential</p>
-      </div>
-    </div>
-  );
-}
-
-function DiffPane({ diff }: { diff: string }) {
-  if (!diff.trim()) {
-    return <div className="grid h-full place-items-center bg-[#fafafa] p-8 text-center"><div><Code2 className="mx-auto size-6 text-[#737373]" /><p className="mt-3 text-sm font-medium">No git diff yet</p><p className="mt-1 text-xs text-[#8f8f8f]">Ask Hive to make a change in the connected repository.</p></div></div>;
-  }
-  return (
-    <div className="h-full overflow-auto bg-white p-5">
-      <div className="mx-auto max-w-5xl overflow-hidden rounded-lg border border-[#e2e2e2]">
-        <div className="border-b border-[#ebebeb] bg-[#fafafa] px-3 py-2 font-mono text-[11px]">git diff --no-ext-diff HEAD</div>
-        <div className="overflow-x-auto py-2 font-mono text-[12px] leading-6">
-          {diff.split("\n").map((line, index) => (
-            <div className={cn("flex min-w-[720px]", line.startsWith("+") && !line.startsWith("+++") && "bg-[#f2f2f2]", line.startsWith("-") && !line.startsWith("---") && "bg-[#fafafa] text-[#737373]")} key={`${index}-${line}`}>
-              <span className="w-12 shrink-0 select-none border-r border-[#eeeeee] px-2 text-right text-[#b0b0b0]">{index + 1}</span><code className="whitespace-pre px-3">{line || " "}</code>
-            </div>
-          ))}
-        </div>
       </div>
     </div>
   );

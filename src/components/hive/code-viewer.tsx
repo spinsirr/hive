@@ -8,16 +8,8 @@ loader.config({ paths: { vs: "/monaco/vs" } });
 const configureEditor: BeforeMount = (monaco) => {
   monaco.editor.defineTheme("hive", {
     base: "vs",
-    inherit: false,
-    rules: [
-      { token: "", foreground: "292929" },
-      { token: "comment", foreground: "858585", fontStyle: "italic" },
-      { token: "keyword", foreground: "171717", fontStyle: "bold" },
-      { token: "string", foreground: "626262" },
-      { token: "number", foreground: "626262" },
-      { token: "type", foreground: "404040" },
-      { token: "delimiter", foreground: "858585" },
-    ],
+    inherit: true,
+    rules: [],
     colors: {
       "editor.background": "#ffffff",
       "editor.foreground": "#292929",
@@ -76,6 +68,8 @@ export default function CodeViewer({ path, content }: { path: string; content: s
         scrollBeyondLastLine: false,
         renderLineHighlight: "none",
         renderValidationDecorations: "off",
+        showUnused: false,
+        showDeprecated: false,
         contextmenu: false,
         quickSuggestions: false,
         suggestOnTriggerCharacters: false,

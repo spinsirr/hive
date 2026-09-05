@@ -33,20 +33,23 @@ export default async function Home({
 }: {
   searchParams: Promise<{ signin?: string | string[] }>;
 }) {
+  const { signin } = await searchParams;
   const cookieStore = await cookies();
   const member = await getSessionMember(
     cookieStore.get(HIVE_SESSION_COOKIE)?.value,
   );
-  if (!member) {
-    const { signin } = await searchParams;
+  if (!member || signin === "retry") {
     const inviteRequired = signin === "invite-required";
+    const retry = signin === "retry";
     return (
       <HiveSignIn
-        description={inviteRequired
+        description={retry
+          ? "This sign-in expired or could not be verified. Try again from Hive. Joining a team? Reopen your invitation link."
+          : inviteRequired
           ? "Ask a teammate for an Invite link, then open it to join. Already a member? Sign in with the GitHub account you joined with."
           : "Create a task, invite a teammate, and steer the same coding agent together. New members need an invitation."}
         returnTo="/"
-        title={inviteRequired ? "You need a team invitation" : "Your team’s work with Hive"}
+        title={retry ? "Let’s try signing in again" : inviteRequired ? "You need a team invitation" : "Your team’s work with Hive"}
       />
     );
   }
@@ -71,10 +74,10 @@ export default async function Home({
         <section>
           <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#8a8a8a]">Multiplayer coding agent</p>
           <h1 className="mt-5 max-w-md text-4xl font-semibold leading-[1.02] tracking-[-0.055em] sm:text-5xl">
-            One task.<br />One agent.<br />Everyone can steer.
+            Your team.<br />One coding agent.<br />Build together.
           </h1>
           <p className="mt-6 max-w-sm text-sm leading-6 text-[#737373]">
-            Start with the intention. Attach a repository when the team is ready to work on code.
+            Invite your teammates into one shared agent session. Discuss ideas, annotate messages, and steer the work together—from the first prompt to the final diff.
           </p>
 
           <form action={createTaskSession} className="mt-10 flex max-w-md gap-2 rounded-lg border border-[#dcdcdc] bg-white p-2 shadow-[0_12px_40px_rgba(0,0,0,0.05)]">
@@ -84,7 +87,7 @@ export default async function Home({
               className="h-10 min-w-0 flex-1 bg-transparent px-3 text-sm outline-none placeholder:text-[#a1a1a1]"
               maxLength={120}
               name="title"
-              placeholder="What should Hive accomplish?"
+              placeholder="What should we build together?"
               required
             />
             <CreateSessionButton />
@@ -93,7 +96,7 @@ export default async function Home({
 
         <section className="self-start overflow-hidden rounded-xl border border-[#dedede] bg-white shadow-[0_16px_50px_rgba(0,0,0,0.045)]">
           <div className="flex items-center justify-between border-b border-[#ebebeb] px-5 py-4">
-            <h2 className="text-sm font-semibold tracking-[-0.02em]">Tasks</h2>
+            <h2 className="text-sm font-semibold tracking-[-0.02em]">Shared tasks</h2>
             <span className="font-mono text-[10px] text-[#999]">{active.length} active</span>
           </div>
 

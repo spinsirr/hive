@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { getSessionMember, HIVE_SESSION_COOKIE } from "@/lib/auth-session";
 import { getInstallationRepositories } from "@/lib/github-app";
+import { canonicalGitHubLoginUrl } from "@/lib/github-login-origin";
 import {
   createGitHubOAuthState,
   GITHUB_OAUTH_COOKIE,
@@ -27,6 +28,9 @@ export async function GET(request: NextRequest) {
   const sessionId = request.nextUrl.searchParams.get("session_id");
 
   try {
+    const canonicalLogin = canonicalGitHubLoginUrl(request.url, undefined, request.headers.get("host"));
+    if (canonicalLogin) return NextResponse.redirect(canonicalLogin);
+
     if (installationId) {
       if (!isTaskSessionId(sessionId)) {
         return NextResponse.json({ error: "Invalid session" }, { status: 400 });
