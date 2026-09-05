@@ -13,7 +13,7 @@ The user added branch push and pull-request creation to the active goal. This su
 - [ ] Verify two real GitHub users sharing a task: attribution, annotations, steering during a run, queue ordering, and synchronization.
 - [ ] Verify refresh, reconnect, and continuation after a failed run preserve messages and execution context.
 - [x] Add a read-only Monaco file viewer with file navigation and syntax highlighting (live changed-file evidence still belongs to the first check).
-- [ ] Add and verify teammate autocomplete when typing `@` in the conversation composer.
+- [x] Add and verify teammate autocomplete when typing `@` in the conversation composer (production task, actual teammate `josephmreb1`).
 - [ ] Add explicit PR creation after reviewing the shared diff; verify the real GitHub result.
 - [ ] Finish loading, empty, and error states plus task completion and reopening.
 - [ ] Finish the README, one-to-two-paragraph summary, decision log, and AI collaboration evidence.
