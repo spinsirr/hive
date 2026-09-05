@@ -119,7 +119,7 @@ export type WorkspaceFile = {
 export type WorkspaceCommand = {
   command: string;
   output: string;
-  exitCode: number;
+  exitCode: number | null;
   durationMs?: number;
 };
 
@@ -159,10 +159,9 @@ export type HiveRunResult = {
   changedFiles: string[];
 };
 
-export type HiveSessionCheckpoint = Pick<
-  HiveRunResult,
-  "sandboxName" | "agentSession"
->;
+// A failed turn may retain command results even if its sandbox or Codex
+// checkpoint could not be read. Missing fields preserve the last saved state.
+export type HiveSessionCheckpoint = Partial<Omit<HiveRunResult, "summary">>;
 
 export type Annotation = {
   status: "open" | "queued" | "steered";
@@ -945,6 +944,10 @@ export function applyHiveRunError(
       ...state.workspace,
       sandboxName: checkpoint?.sandboxName ?? state.workspace.sandboxName,
       agentSession: checkpoint?.agentSession ?? state.workspace.agentSession,
+      diff: checkpoint?.diff ?? state.workspace.diff,
+      files: checkpoint?.files ?? state.workspace.files,
+      commands: checkpoint?.commands ?? state.workspace.commands,
+      changedFiles: checkpoint?.changedFiles ?? state.workspace.changedFiles,
       status: "error",
       error: message,
       completedAt: now,

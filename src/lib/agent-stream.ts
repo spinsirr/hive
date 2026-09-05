@@ -1,11 +1,13 @@
 /** Only public assistant text belongs in the conversation, never tool output or reasoning. */
-export async function consumeAgentText(
-  stream: AsyncIterable<{ type: string; text?: string; error?: unknown }>,
+export async function consumeAgentText<TPart extends { type: string; text?: string; error?: unknown }>(
+  stream: AsyncIterable<TPart>,
   onText: (body: string) => void,
+  onPart?: (part: TPart) => void,
 ) {
   let body = "";
   let separator = false;
   for await (const part of stream) {
+    onPart?.(part);
     if (part.type === "error") throw part.error ?? new Error("Agent stream failed.");
     if (part.type === "abort") throw new Error("Agent stream was interrupted.");
     if (part.type === "text-start") separator = body.length > 0;

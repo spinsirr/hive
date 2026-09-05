@@ -9,7 +9,7 @@
     "postinstall": "node scripts/prepare-monaco.mjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "test": "node --test src/lib/*.test.ts",
+    "test": "node --test src/lib/*.test.ts && node --experimental-test-module-mocks scripts/check-failed-run.mjs",
     "typecheck": "next typegen && tsc --noEmit",
     "start": "next start",
     "lint": "eslint",

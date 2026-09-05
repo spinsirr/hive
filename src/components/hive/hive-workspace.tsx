@@ -806,7 +806,7 @@ function RunsPane({ commands }: { commands: WorkspaceState["commands"] }) {
                     succeeded ? "bg-[#171717]" : "bg-[#a1a1a1]",
                   )}
                 />
-                {succeeded ? "Passed" : `Failed · ${command.exitCode}`}
+                {succeeded ? "Passed" : command.exitCode === null ? "Incomplete" : `Failed · ${command.exitCode}`}
               </span>
               <span className="font-mono text-[10px] text-[#999]">
                 {command.durationMs ? `${command.durationMs}ms` : "—"}

@@ -310,6 +310,15 @@ Be explicit: GitHub write-back is not built; organization administration is not 
 - This establishes live public text before run completion and same-account refresh during an active execution. It does not establish token-by-token cadence, an offline network outage, two-account coordination, or successful recovery of execution artifacts. Those gates remain open.
 - Re-ran the local 92-test suite and generated-type/TypeScript check successfully. All 18 relative document links and anchors in the README, goal, submission packet, and presentation notes resolved. These local checks do not substitute for the blocked real coding run.
 
+### 2026-09-05 — Preserve evidence from failed runs
+
+- A deterministic regression through the production coding runner and task-state transition reproduced a concrete recovery gap: a completed command and changed working copy were omitted from Runs / Files / Diff when the model subsequently returned 429. The Codex, GitHub, and Sandbox boundaries in this diagnostic are controlled doubles, not a real production execution.
+- The runner now records tool events throughout the stream instead of depending on final result promises. On failure it captures the available working copy before stopping the caller-owned sandbox, with a bounded ten-second collection window. The failed task retains those artifacts and its available Codex checkpoint, stays in an error state, and cannot approve the diff. If collection itself fails, previous snapshots remain and completed command evidence is still saved; secondary collection errors do not replace the original run error.
+- Unknown command exit codes now remain unknown and render as **Incomplete**, rather than being converted to exit code 0 / Passed. Git collection errors are not displayed as code diffs. Tools and reasoning remain outside the conversation.
+- `scripts/check-failed-run.mjs` was red before the fix and now covers seven scenarios: a provider error, a thrown stream, a missing exit code, an unreachable sandbox, a Git collection error, a failed Codex checkpoint, and normal completion. It is included in `pnpm test` alongside the existing 92 tests. A temporary local page rendered the real Runs component and verified Passed / Incomplete / Failed plus expandable output; it was removed before building.
+- This strengthens failure-state handling but does not resolve the Gateway limit or count as two-account, live execution-recovery, or network-outage verification. Deployment and live results must be recorded separately.
+- All 92 existing tests plus the seven runner regressions, generated-type/TypeScript checking, ESLint, and diff validation passed. The default local Turbopack build was blocked first by font download access and then by its local port-binding requirement; the supported production Webpack build passed after permitting font access. No production build configuration or billing setting was changed.
+
 ## Questions to prepare for
 
 - How is Hive different from tagging Claude in a shared channel?

@@ -19,6 +19,7 @@ import {
 } from "@/lib/hive-sandbox";
 import {
   createAgentSessionId,
+  type HiveSessionCheckpoint,
   type MemberId,
   type TaskSessionState,
   type WorkspaceCommand,
@@ -52,12 +53,13 @@ async function commandOutput(
   sandbox: Experimental_SandboxSession,
   command: string,
   workingDirectory: string,
+  abortSignal = AbortSignal.timeout(120_000),
 ) {
   const startedAt = Date.now();
   const result = await sandbox.run({
     command,
     workingDirectory,
-    abortSignal: AbortSignal.timeout(120_000),
+    abortSignal,
   });
   return {
     exitCode: result.exitCode,
@@ -159,12 +161,17 @@ async function collectArtifacts(
   sandbox: Experimental_SandboxSession,
   commands: WorkspaceCommand[],
   workingDirectory: string,
+  abortSignal?: AbortSignal,
 ) {
   const changedFileResult = await commandOutput(
     sandbox,
-    "git diff --name-only --diff-filter=ACMRTUXB HEAD; git ls-files --others --exclude-standard",
+    "git diff --name-only --diff-filter=ACMRTUXB HEAD && git ls-files --others --exclude-standard",
     workingDirectory,
+    abortSignal,
   );
+  if (changedFileResult.exitCode !== 0) {
+    throw new Error("Could not list changed repository files.");
+  }
   const changedFiles = [
     ...new Set(
       changedFileResult.output
@@ -176,14 +183,19 @@ async function collectArtifacts(
 
   const diffResult = await commandOutput(
     sandbox,
-    'git diff --no-ext-diff HEAD; while IFS= read -r file; do git diff --no-index -- /dev/null "$file" || true; done < <(git ls-files --others --exclude-standard)',
+    'git diff --no-ext-diff HEAD && while IFS= read -r file; do git diff --no-index -- /dev/null "$file" || true; done < <(git ls-files --others --exclude-standard)',
     workingDirectory,
+    abortSignal,
   );
+  if (diffResult.exitCode !== 0) {
+    throw new Error("Could not capture the repository diff.");
+  }
 
   const files: WorkspaceFile[] = [];
   for (const filePath of changedFiles) {
     const content = await sandbox.readTextFile({
       path: path.posix.join(workingDirectory, filePath),
+      abortSignal,
     });
     if (content == null) continue;
     files.push({ path: filePath, content: truncate(content) });
@@ -223,18 +235,25 @@ function collectCodexCommands(result: {
 
   return result.toolCalls.flatMap((call): WorkspaceCommand[] => {
     if (call.toolName !== "bash") return [];
-    const input = call.input as { command?: unknown };
-    if (typeof input.command !== "string") return [];
+    const input = call.input;
+    if (
+      !input || typeof input !== "object" ||
+      !("command" in input) || typeof input.command !== "string"
+    ) return [];
     const output = results.get(call.toolCallId);
     const exitCode =
-      output && typeof output === "object" && "exitCode" in output
-        ? Number(output.exitCode)
-        : 0;
+      output && typeof output === "object" && "exitCode" in output &&
+      typeof output.exitCode === "number" && Number.isInteger(output.exitCode)
+        ? output.exitCode
+        : null;
+    const body = output && typeof output === "object" && "output" in output && typeof output.output === "string"
+      ? output.output
+      : toolOutput(output) ?? "";
     return [
       {
         command: input.command,
-        output: truncate(toolOutput(output)),
-        exitCode: Number.isFinite(exitCode) ? exitCode : 0,
+        output: truncate(body),
+        exitCode,
       },
     ];
   });
@@ -358,6 +377,12 @@ export async function runHiveCodingTask(
     });
 
     const agentSession = await agent.createSession({ sessionId, resumeFrom });
+    // Record tool events as they arrive: final result promises may reject after
+    // a provider error and cannot be the only record of completed commands.
+    const observedTools: Parameters<typeof collectCodexCommands>[0] = {
+      toolCalls: [],
+      toolResults: [],
+    };
     try {
       const result = await agent.stream({
         session: agentSession,
@@ -368,14 +393,18 @@ export async function runHiveCodingTask(
           auth?.actorName,
         ),
       });
-      await consumeAgentText(result.fullStream, (body) => auth?.onText?.(body));
+      await consumeAgentText(
+        result.fullStream,
+        (body) => auth?.onText?.(body),
+        (part) => {
+          if (part.type === "tool-call") observedTools.toolCalls.push(part);
+          if (part.type === "tool-result") observedTools.toolResults.push(part);
+        },
+      );
       if (!sandboxSession || !sandboxWorkDir) {
         throw new Error("Vercel Sandbox session was not made available to Hive.");
       }
-      const commands = collectCodexCommands({
-        toolCalls: await result.toolCalls,
-        toolResults: await result.toolResults,
-      });
+      const commands = collectCodexCommands(observedTools);
       const artifacts = await collectArtifacts(
         sandboxSession,
         commands,
@@ -402,19 +431,13 @@ export async function runHiveCodingTask(
         ...artifacts,
       };
     } catch (error) {
-      let checkpoint: {
-        sandboxName: string;
-        agentSession: {
-          id: string;
-          runtime: "codex";
-          resumeFrom: HarnessAgentResumeSessionState;
-        };
-      } | undefined;
+      const commands = collectCodexCommands(observedTools);
+      let checkpoint: HiveSessionCheckpoint = { sandboxName, commands };
       try {
         const nextResumeFrom = await agentSession.stop();
         sessionEnded = true;
         checkpoint = {
-          sandboxName,
+          ...checkpoint,
           agentSession: {
             id: sessionId,
             runtime: "codex",
@@ -423,6 +446,20 @@ export async function runHiveCodingTask(
         };
       } catch (stopError) {
         console.error("Hive could not checkpoint the Codex session", stopError);
+      }
+      // This sandbox is caller-owned: stopping Codex ends its turn, but leaves
+      // the working copy available until persistentSandbox.stop() snapshots it.
+      if (sandboxSession && sandboxWorkDir) {
+        try {
+          checkpoint = {
+            ...checkpoint,
+            ...await collectArtifacts(
+              sandboxSession, commands, sandboxWorkDir, AbortSignal.timeout(10_000),
+            ),
+          };
+        } catch (artifactError) {
+          console.error("Hive could not capture failed-run artifacts", artifactError);
+        }
       }
       await persistentSandbox.stop().catch((stopError) => {
         console.error("Hive sandbox snapshot failed", stopError);
