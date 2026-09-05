@@ -17,6 +17,7 @@ Hive moves collaboration into the agent session itself. Teammates can see the sa
 - A session can begin without code. Hive first helps the team clarify intent; a repository can be attached later.
 - A **message annotation** is discussion-only until a teammate promotes it to a **steer**.
 - A steer created during an active run enters an attributed, ordered queue and waits for a safe boundary.
+- A safe boundary is the end of the current execution, including a failed attempt. Teammates explicitly apply the next steer from the conversation; later directions do not jump the existing queue.
 - Completing a task makes the session read-only; teammates can reopen it if the work genuinely continues.
 
 The canonical vocabulary is recorded in [`CONTEXT.md`](CONTEXT.md).
@@ -36,6 +37,7 @@ workspace evidence → changed files, command output, and real git diff
 
 - Next.js route handlers and server actions own all mutations.
 - Postgres row locks serialize simultaneous teammate input.
+- The same locked state transition grants the right to start a run; matching request timestamps do not grant execution.
 - Browser snapshots never expose the opaque Codex resume checkpoint.
 - Each repository-backed task maps to a persistent named Vercel Sandbox and Codex session; Neon remains the canonical team history if compute disappears.
 - GitHub App credentials stay server-side. Sandbox receives a fresh installation token limited to the selected repository.
@@ -84,7 +86,7 @@ pnpm exec tsc --noEmit
 pnpm exec next build --webpack
 ```
 
-The current suite covers the multiplayer state machine, attributed prompts, steering queue, completed-session immutability, persistent sandbox selection, failure checkpoints, and IME-safe message submission.
+The current suite covers the multiplayer state machine, attributed prompts, safe-boundary queue execution and recovery, completed-session immutability, persistent sandbox selection, failure checkpoints, and IME-safe message submission. Deterministic state tests and local UI fixtures do not replace the still-pending two-account production test; see the evidence log below.
 
 ## Key decisions
 
@@ -93,7 +95,7 @@ The current suite covers the multiplayer state machine, attributed prompts, stee
 - **Attach code when intent is ready.** Repository selection is not a provisioning prerequisite.
 - **One task per session.** The team is durable; a session is intentionally disposable and bounded.
 - **Reuse the harness.** AI SDK Harness, Codex, and Vercel Sandbox are infrastructure; multiplayer control is the product.
-- **Artifacts over summaries.** Workspace navigation exposes only the verifiable diff, changed files, and auditable run history; repository setup stands on its own before a run. Each artifact is the workspace surface itself, without decorative cards or duplicated panel chrome.
+- **Artifacts over summaries.** Workspace navigation exposes the verifiable diff, bounded changed-file snapshots, and the latest run's command output; repository setup stands on its own before a run. Each artifact is the workspace surface itself, without decorative cards or duplicated panel chrome.
 - **Quiet failures.** Errors appear as compact system state while the human prompt and resumable checkpoint remain intact.
 
 ## AI collaboration

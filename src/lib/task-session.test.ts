@@ -5,7 +5,10 @@ import {
   applyHiveRunError,
   applyHiveRunResult,
   appendHiveReply,
+  canApplyNextSteer,
   createInitialTaskSessionState,
+  didStartHiveRun,
+  isHiveRunActive,
   reduceTaskSession,
   type TaskSessionState,
 } from "./task-session.ts";
@@ -241,17 +244,116 @@ test("an annotation created during a run waits for an explicit safe boundary", (
     "queued",
   );
 
-  const applied = reduceTaskSession(
+  const premature = reduceTaskSession(
     queued,
+    { type: "apply-next-steer", actor: "spencer" },
+    45,
+  );
+  assert.equal(premature, queued, "The current run must finish before a queued steer starts");
+
+  const finished = applyHiveRunResult(queued, {
+    sandboxName: "hive-session-test",
+    agentSession: queued.workspace.agentSession!,
+    summary: "Updated the menu.",
+    diff: "+ update",
+    files: [],
+    commands: [],
+    changedFiles: ["nav.tsx"],
+  }, 48);
+  const applied = reduceTaskSession(
+    finished,
     { type: "apply-next-steer", actor: "spencer" },
     50,
   );
   assert.equal(applied.steeringQueue.length, 0);
   assert.equal(applied.activeSteer?.body, annotation.body);
   assert.equal(
-    applied.messages.at(-1)?.annotations?.[0]?.status,
+    applied.messages.find((message) => message.id === sourceMessage.id)?.annotations?.[0]?.status,
     "steered",
   );
+});
+
+test("a failed run releases the next queued steer without losing its author or context", () => {
+  const running = reduceTaskSession(
+    connectedSession(),
+    { type: "send-message", actor: "spencer", body: "Inspect the navigation" },
+    20,
+  );
+  const queued = reduceTaskSession(
+    running,
+    { type: "send-message", actor: "maya", body: "Keep keyboard navigation intact" },
+    30,
+  );
+  const failed = applyHiveRunError(queued, "Rate limit reached", 40);
+  const applied = reduceTaskSession(
+    failed,
+    { type: "apply-next-steer", actor: "spencer" },
+    50,
+  );
+
+  assert.equal(applied.activeSteer?.body, "Keep keyboard navigation intact");
+  assert.equal(applied.activeSteer?.authorId, "maya");
+  assert.equal(applied.steeringQueue.length, 0);
+  assert.equal(applied.stage, "running");
+  assert.equal(applied.workspace.startedAt, 50);
+  assert.equal(applied.workspace.completedAt, undefined);
+  assert.equal(applied.workspace.error, undefined);
+  assert.equal(applied.workspace.agentSession?.id, running.workspace.agentSession?.id);
+  assert.deepEqual(applied.messages, failed.messages);
+});
+
+test("messages arriving after a failed run stay behind the existing queue", () => {
+  const running = reduceTaskSession(connectedSession(), {
+    type: "send-message", actor: "spencer", body: "Inspect navigation",
+  }, 20);
+  const queued = reduceTaskSession(running, {
+    type: "send-message", actor: "maya", body: "Keep keyboard navigation",
+  }, 30);
+  const failed = applyHiveRunError(queued, "Rate limit reached", 40);
+  const later = reduceTaskSession(failed, {
+    type: "send-message", actor: "spencer", body: "Also check focus styling",
+  }, 50);
+
+  assert.deepEqual(later.steeringQueue.map((item) => item.body), [
+    "Keep keyboard navigation", "Also check focus styling",
+  ]);
+  assert.equal(isHiveRunActive(later), false);
+  assert.equal(canApplyNextSteer(later), true);
+  const applied = reduceTaskSession(later, { type: "apply-next-steer", actor: "spencer" }, 60);
+  assert.equal(applied.activeSteer?.body, "Keep keyboard navigation");
+  assert.equal(applied.steeringQueue[0]?.body, "Also check focus styling");
+  assert.equal(canApplyNextSteer(applied), false);
+});
+
+test("two messages in the same millisecond grant only one run start", () => {
+  const connected = connectedSession();
+  const first = reduceTaskSession(connected, {
+    type: "send-message", actor: "spencer", body: "Inspect navigation",
+  }, 20);
+  const second = reduceTaskSession(first, {
+    type: "send-message", actor: "maya", body: "Keep keyboard navigation",
+  }, 20);
+
+  assert.deepEqual([didStartHiveRun(connected, first), didStartHiveRun(first, second)], [true, false]);
+  assert.equal(second.steeringQueue.length, 1);
+  const rejected = reduceTaskSession(second, { type: "apply-next-steer", actor: "maya" }, 20);
+  assert.equal(didStartHiveRun(second, rejected), false);
+});
+
+test("planning turns release queued steers after success as well as failure", () => {
+  const running = reduceTaskSession(createInitialTaskSessionState(1), {
+    type: "send-message", actor: "spencer", body: "Define the task",
+  }, 20);
+  const queued = reduceTaskSession(running, {
+    type: "send-message", actor: "maya", body: "Include keyboard acceptance criteria",
+  }, 30);
+  const replied = appendHiveReply(queued, "The task is a navigation update.", 40);
+  assert.equal(canApplyNextSteer(replied), true);
+  const applied = reduceTaskSession(replied, { type: "apply-next-steer", actor: "spencer" }, 50);
+  assert.equal(isHiveRunActive(applied), true);
+  const finished = appendHiveReply(applied, "Keyboard behavior is included.", 60);
+  assert.equal(isHiveRunActive(finished), false);
+  assert.equal(finished.activeSteer, undefined);
 });
 
 test("a review annotation can start the next turn in the same Codex session", () => {
@@ -344,6 +446,25 @@ test("a completed run stays running when another steer is queued", () => {
   assert.equal(completed.stage, "running");
   assert.equal(completed.workspace.status, "running");
   assert.equal(completed.workspace.changedFiles[0], "nav.tsx");
+});
+
+test("removing the final pending steer after a completed run returns to review", () => {
+  const running = reduceTaskSession(connectedSession(), {
+    type: "send-message", actor: "spencer", body: "Update the menu",
+  }, 20);
+  const queued = reduceTaskSession(running, {
+    type: "send-message", actor: "maya", body: "Check focus styling",
+  }, 30);
+  const finished = applyHiveRunResult(queued, {
+    sandboxName: "hive-test", agentSession: running.workspace.agentSession!,
+    summary: "Updated the menu", diff: "+ update", files: [], commands: [], changedFiles: ["nav.tsx"],
+  }, 40);
+  const removed = reduceTaskSession(finished, {
+    type: "remove-queued-steer", actor: "maya", steerId: finished.steeringQueue[0].id,
+  }, 50);
+  assert.equal(removed.stage, "review");
+  assert.equal(removed.workspace.status, "review");
+  assert.equal(removed.workspace.diff, "+ update");
 });
 
 test("reset preserves the repository but clears run artifacts", () => {

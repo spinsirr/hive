@@ -6,7 +6,6 @@ import { runHiveConversation } from "@/lib/hive-conversation";
 import { hiveErrorCopy } from "@/lib/hive-error-copy";
 import { runHiveCodingTask } from "@/lib/hive-runner";
 import {
-  isDirectedAtTeammate,
   resolveMember,
   type TaskSessionAction,
 } from "@/lib/task-session";
@@ -130,15 +129,9 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
 
   const action = { ...payload, actor: member.id } as TaskSessionAction;
   const actionAt = Date.now();
-  const snapshot = await applyTaskSessionAction(sessionId, action, member, actionAt);
+  const { snapshot, startedRun } = await applyTaskSessionAction(sessionId, action, member, actionAt);
+  if (!startedRun) return sessionResponse(snapshot);
 
-  const shouldGenerateForMessage =
-    action.type === "send-message" &&
-    !isDirectedAtTeammate(action.body, action.actor, snapshot.members) &&
-    snapshot.session.workspace.startedAt === actionAt;
-  const shouldGenerateForSteer =
-    action.type === "steer-agent" &&
-    snapshot.session.annotation.steeredAt === actionAt;
   const messageAnnotation =
     action.type === "steer-message-annotation"
       ? snapshot.session.messages
@@ -147,22 +140,6 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
             (annotation) => annotation.id === action.annotationId,
           )
       : undefined;
-  const shouldGenerateForMessageAnnotation =
-    action.type === "steer-message-annotation" &&
-    messageAnnotation?.steeredAt === actionAt;
-  const shouldGenerateForQueuedSteer =
-    action.type === "apply-next-steer" &&
-    snapshot.session.activeSteer?.appliedAt === actionAt;
-
-  if (
-    !shouldGenerateForMessage &&
-    !shouldGenerateForSteer &&
-    !shouldGenerateForMessageAnnotation &&
-    !shouldGenerateForQueuedSteer
-  ) {
-    return sessionResponse(snapshot);
-  }
-
   const sourceMessageId =
     action.type === "send-message"
       ? snapshot.session.messages.findLast(

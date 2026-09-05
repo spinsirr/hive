@@ -8,6 +8,7 @@ import {
   applyHiveRunResult,
   appendHiveReply as appendHiveReplyToSession,
   createInitialTaskSessionState,
+  didStartHiveRun,
   type HiveRunResult,
   type HiveSessionCheckpoint,
   isMemberId,
@@ -219,7 +220,7 @@ export async function applyTaskSessionAction(
     ? [actor, ...storedMembers.filter((member) => member.id !== actor.id)]
     : storedMembers;
 
-  await db.transaction(async (transaction) => {
+  const applied = await db.transaction(async (transaction) => {
     const [storedSession] = await transaction
       .select()
       .from(taskSessions)
@@ -230,8 +231,9 @@ export async function applyTaskSessionAction(
       throw new Error(`Session ${sessionId} could not be loaded.`);
     }
 
+    const previousSession = sessionState(storedSession);
     const nextSession = reduceTaskSession(
-      sessionState(storedSession),
+      previousSession,
       action,
       now,
       members,
@@ -253,9 +255,19 @@ export async function applyTaskSessionAction(
         target: [taskSessionPresence.sessionId, taskSessionPresence.memberId],
         set: { lastSeen: new Date(now) },
       });
+
+    return {
+      session: nextSession,
+      // Grant execution inside the row lock, not by comparing request timestamps.
+      startedRun: didStartHiveRun(previousSession, nextSession),
+    };
   });
 
-  return getTaskSessionSnapshot(sessionId, now);
+  const snapshot = await getTaskSessionSnapshot(sessionId, now);
+  return {
+    snapshot: { ...snapshot, session: applied.session },
+    startedRun: applied.startedRun,
+  };
 }
 
 export async function appendHiveReply(
@@ -318,7 +330,7 @@ export async function appendHiveReply(
       return;
     }
 
-    const repliedSession = options.runResult
+    const nextSession = options.runResult
       ? applyHiveRunResult(currentSession, options.runResult, now)
       : options.runError
         ? applyHiveRunError(
@@ -328,10 +340,6 @@ export async function appendHiveReply(
             options.runCheckpoint,
           )
         : appendHiveReplyToSession(currentSession, body, now, options.status);
-    const nextSession =
-      options.forActiveSteerAt && !options.runResult && !options.runError
-        ? { ...repliedSession, activeSteer: undefined }
-        : repliedSession;
     await transaction
       .update(taskSessions)
       .set(sessionValues(nextSession))

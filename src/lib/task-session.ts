@@ -291,6 +291,24 @@ function appendAgentMessage(state: TaskSessionState, body: string, now: number):
   ];
 }
 
+export function isHiveRunActive(state: TaskSessionState): boolean {
+  // Queued work can keep the task stage running after the execution has ended.
+  return state.stage === "running" &&
+    state.workspace.startedAt !== undefined &&
+    state.workspace.completedAt === undefined;
+}
+
+export function canApplyNextSteer(state: TaskSessionState): boolean {
+  return state.lifecycle === "active" &&
+    state.steeringQueue.length > 0 &&
+    !state.activeSteer &&
+    !isHiveRunActive(state);
+}
+
+export function didStartHiveRun(previous: TaskSessionState, next: TaskSessionState): boolean {
+  return !isHiveRunActive(previous) && isHiveRunActive(next);
+}
+
 export function appendHiveReply(
   state: TaskSessionState,
   body: string,
@@ -299,6 +317,7 @@ export function appendHiveReply(
 ): TaskSessionState {
   return {
     ...state,
+    activeSteer: undefined,
     stage:
       !state.repository && state.stage === "running"
         ? "waiting"
@@ -350,7 +369,7 @@ export function reduceTaskSession(
   if (state.lifecycle === "completed") return state;
 
   if (action.type === "complete-session") {
-    if (state.stage === "running") return state;
+    if (isHiveRunActive(state) || state.steeringQueue.length > 0) return state;
     return {
       ...state,
       lifecycle: "completed",
@@ -450,9 +469,9 @@ export function reduceTaskSession(
       action.actor,
       members,
     );
-    const startsRun =
-      addressesHive && state.stage !== "running";
-    const queuesRun = addressesHive && state.stage === "running";
+    const startsRun = addressesHive &&
+      !isHiveRunActive(state) && state.steeringQueue.length === 0;
+    const queuesRun = addressesHive && !startsRun;
     return {
       ...state,
       version: state.version + 1,
@@ -548,7 +567,7 @@ export function reduceTaskSession(
       );
     if (!targetAnnotation || targetAnnotation.status !== "open") return state;
 
-    if (state.stage === "running") {
+    if (isHiveRunActive(state) || state.steeringQueue.length > 0) {
       const queueItem: SteeringQueueItem = {
         id: `steer-${now}-${state.version + 1}`,
         body: targetAnnotation.body,
@@ -638,7 +657,7 @@ export function reduceTaskSession(
       !state.annotation.text.trim()
     ) return state;
 
-    if (state.stage === "running") {
+    if (isHiveRunActive(state) || state.steeringQueue.length > 0) {
       return {
         ...state,
         version: state.version + 1,
@@ -696,17 +715,23 @@ export function reduceTaskSession(
   }
 
   if (action.type === "apply-next-steer") {
-    if (
-      state.stage !== "running" ||
-      state.activeSteer ||
-      state.steeringQueue.length === 0
-    ) return state;
+    if (!canApplyNextSteer(state)) return state;
     const [nextSteer, ...remainingQueue] = state.steeringQueue;
     const nextSource = nextSteer.source;
 
     return {
       ...state,
       version: state.version + 1,
+      stage: "running",
+      workspace: {
+        ...state.workspace,
+        status: state.repository ? "running" : "disconnected",
+        startedAt: now,
+        completedAt: undefined,
+        summary: undefined,
+        error: undefined,
+        commands: [],
+      },
       annotation:
         nextSource.kind === "workspace-annotation"
           ? {
@@ -746,10 +771,15 @@ export function reduceTaskSession(
     );
     if (!queuedSteer) return state;
     const queuedSource = queuedSteer.source;
+    const steeringQueue = state.steeringQueue.filter((item) => item.id !== action.steerId);
+    const readyForReview = state.repository && state.stage === "running" &&
+      state.workspace.completedAt !== undefined && steeringQueue.length === 0;
 
     return {
       ...state,
       version: state.version + 1,
+      stage: readyForReview ? "review" : state.stage,
+      workspace: readyForReview ? { ...state.workspace, status: "review" } : state.workspace,
       annotation:
         queuedSource.kind === "workspace-annotation"
           ? {
@@ -777,9 +807,7 @@ export function reduceTaskSession(
             }
           : message,
       ),
-      steeringQueue: state.steeringQueue.filter(
-        (item) => item.id !== action.steerId,
-      ),
+      steeringQueue,
       updatedAt: now,
     };
   }

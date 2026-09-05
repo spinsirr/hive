@@ -38,6 +38,8 @@ import { displayHiveErrorMessage } from "@/lib/hive-error-copy";
 import {
   type ActiveSteer,
   type ChatMessage,
+  canApplyNextSteer,
+  isHiveRunActive,
   isDirectedAtTeammate,
   type MemberId,
   type RepositoryState,
@@ -138,7 +140,8 @@ function ProductHeader({
   lifecycle,
   repository,
   sessionTitle,
-  stage,
+  runActive,
+  queueCount,
   syncing,
   syncError,
   onCopyInvite,
@@ -153,7 +156,8 @@ function ProductHeader({
   lifecycle: "active" | "completed";
   repository?: RepositoryState;
   sessionTitle: string;
-  stage: RunStage;
+  runActive: boolean;
+  queueCount: number;
   syncing: boolean;
   syncError: boolean;
   onCopyInvite: () => void;
@@ -193,7 +197,7 @@ function ProductHeader({
         <Button
           aria-label={lifecycle === "completed" ? "Reopen task" : "Complete task"}
           className="h-8 rounded-md bg-white px-2 text-xs text-[#333] sm:px-2.5"
-          disabled={stage === "running"}
+          disabled={runActive || queueCount > 0}
           onClick={onToggleLifecycle}
           size="sm"
           title={lifecycle === "completed" ? "Reopen task" : "Complete task"}
@@ -276,10 +280,12 @@ function AnnotationCard({ members, queued, queuedBy, queuePosition, steered, ste
   );
 }
 
-function SteeringQueue({ activeSteer, items, members, onMove, onRemove }: {
+function SteeringQueue({ activeSteer, canApply, items, members, onApply, onMove, onRemove }: {
   activeSteer?: ActiveSteer;
+  canApply: boolean;
   items: SteeringQueueItem[];
   members: TeamMember[];
+  onApply: () => void;
   onMove: (steerId: string, direction: "up" | "down") => void;
   onRemove: (steerId: string) => void;
 }) {
@@ -292,6 +298,11 @@ function SteeringQueue({ activeSteer, items, members, onMove, onRemove }: {
           <span className="text-[11px] font-semibold">Queued steering</span>
           <span className="grid min-w-4 place-items-center rounded bg-[#171717] px-1 text-[9px] text-white">{items.length}</span>
         </div>
+        {items.length > 0 ? (
+          <Button className="h-7 rounded px-2 text-[11px]" disabled={!canApply} onClick={onApply} size="sm" variant="outline">
+            <Play className="size-3" /> Apply next steer
+          </Button>
+        ) : null}
       </div>
       {activeSteer ? (
         <div className="mb-1.5 flex items-center gap-2 border border-[#171717] bg-[#171717] px-2 py-1.5 text-white">
@@ -330,9 +341,11 @@ function annotationTime(createdAt: number) {
   }).format(createdAt);
 }
 
-function SharedSession({ activeMembers, activeSteer, queued, queuedBy, queuePosition, steered, steeredBy, steeringQueue, currentMember, disabled, members, messages, onAnnotate, onMoveSteer, onRemoveSteer, onSteer, onSteerMessageAnnotation, onSend, onTyping, stage, typingMembers, workspaceAnnotation, compact = false }: {
+function SharedSession({ activeMembers, activeSteer, canApplySteer, runActive, queued, queuedBy, queuePosition, steered, steeredBy, steeringQueue, currentMember, disabled, members, messages, onAdvance, onAnnotate, onMoveSteer, onRemoveSteer, onSteer, onSteerMessageAnnotation, onSend, onTyping, stage, typingMembers, workspaceAnnotation, compact = false }: {
   activeMembers: MemberId[];
   activeSteer?: ActiveSteer;
+  canApplySteer: boolean;
+  runActive: boolean;
   queued: boolean;
   queuedBy?: MemberId;
   queuePosition?: number;
@@ -343,6 +356,7 @@ function SharedSession({ activeMembers, activeSteer, queued, queuedBy, queuePosi
   disabled: boolean;
   members: TeamMember[];
   messages: ChatMessage[];
+  onAdvance: () => void;
   onAnnotate: (messageId: string, body: string) => void;
   onMoveSteer: (steerId: string, direction: "up" | "down") => void;
   onRemoveSteer: (steerId: string) => void;
@@ -394,7 +408,7 @@ function SharedSession({ activeMembers, activeSteer, queued, queuedBy, queuePosi
           <span className="text-[11px] text-[#8a8a8a]">{activeMembers.length} online</span>
         </div>
       </div>
-      <SteeringQueue activeSteer={activeSteer} items={steeringQueue} members={members} onMove={onMoveSteer} onRemove={onRemoveSteer} />
+      <SteeringQueue activeSteer={activeSteer} canApply={canApplySteer} items={steeringQueue} members={members} onApply={onAdvance} onMove={onMoveSteer} onRemove={onRemoveSteer} />
       <Conversation className="min-h-0 flex-1">
         <ConversationContent className={cn("gap-5 px-5 py-6", compact && "gap-4")}>
           {messages.map((message) => {
@@ -459,10 +473,10 @@ function SharedSession({ activeMembers, activeSteer, queued, queuedBy, queuePosi
                                   className="h-7 rounded px-2.5 text-[11px]"
                                   onClick={() => onSteerMessageAnnotation(message.id, annotation.id)}
                                   size="sm"
-                                  title={stage === "running" ? "Queue this steer for Hive's next safe boundary" : "Promote this annotation into a follow-up turn"}
+                                  title={runActive || steeringQueue.length > 0 ? "Queue this steer for Hive's next safe boundary" : "Promote this annotation into a follow-up turn"}
                                   variant="ghost"
                                 >
-                                  {stage === "running" ? "Queue steer" : "Steer Hive"}
+                                  {runActive || steeringQueue.length > 0 ? "Queue steer" : "Steer Hive"}
                                 </Button>
                               </div>
                             )}
@@ -503,6 +517,7 @@ function SharedSession({ activeMembers, activeSteer, queued, queuedBy, queuePosi
               </Message>
             );
           })}
+          {runActive && !activeSteer ? <p className="flex items-center gap-2 px-1 text-[11px] text-[#777]" role="status"><LoaderCircle className="size-3 animate-spin" /> Hive is working…</p> : null}
           {otherTyping.length > 0 ? <p className="px-1 text-[11px] text-[#8f8f8f]">{otherTyping.map((memberId) => resolveMember(memberId, members).shortName).join(", ")} {otherTyping.length === 1 ? "is" : "are"} typing…</p> : null}
         </ConversationContent>
         <ConversationScrollButton />
@@ -839,16 +854,16 @@ function Workspace({ repository, sessionId, tab, workspace, onTabChange }: { rep
   );
 }
 
-function RunBar({ activeSteer, completed, queueCount, repository, stage, onAdvance }: { activeSteer?: ActiveSteer; completed: boolean; queueCount: number; repository?: RepositoryState; stage: RunStage; onAdvance: () => void }) {
-  const action = completed ? "Task complete" : stage === "waiting" ? "Send Hive a task" : stage === "running" && activeSteer ? "Applying queued steer" : stage === "running" && queueCount > 0 ? "Apply next steer" : stage === "running" ? "Hive is working" : stage === "review" ? "Approve changes" : "Approved";
+function RunBar({ activeSteer, completed, runActive, queueCount, repository, stage, onAdvance }: { activeSteer?: ActiveSteer; completed: boolean; runActive: boolean; queueCount: number; repository?: RepositoryState; stage: RunStage; onAdvance: () => void }) {
+  const action = completed ? "Task complete" : runActive ? activeSteer ? "Applying queued steer" : "Hive is working" : queueCount > 0 ? "Steers queued" : stage === "review" ? "Approve changes" : stage === "approved" ? "Approved" : "Send Hive a task";
   const Icon = stage === "review" || stage === "approved" ? GitPullRequest : Play;
-  const disabled = completed || !repository || stage === "waiting" || stage === "approved" || Boolean(activeSteer) || (stage === "running" && queueCount === 0);
+  const disabled = completed || !repository || runActive || queueCount > 0 || stage !== "review";
   const detail = completed
     ? "This task is read-only until a teammate reopens it."
     : !repository
       ? "Planning mode · discuss intent now, attach code when the team is ready."
       : queueCount > 0
-        ? `${queueCount} steer${queueCount === 1 ? "" : "s"} waiting for a safe boundary.`
+        ? runActive ? `${queueCount} steer${queueCount === 1 ? "" : "s"} waiting for this run to finish.` : "Apply the next steer from the conversation."
         : stageCopy[stage].detail;
   return (
     <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-t border-[#ebebeb] bg-[#fafafa] px-3 sm:px-4">
@@ -876,6 +891,8 @@ function RunBar({ activeSteer, completed, queueCount, repository, stage, onAdvan
 type SharedProps = {
   activeMembers: MemberId[];
   activeSteer?: ActiveSteer;
+  canApplySteer: boolean;
+  runActive: boolean;
   queued: boolean;
   queuedBy?: MemberId;
   queuePosition?: number;
@@ -924,6 +941,8 @@ export function HiveWorkspace({
     [currentMember, members],
   );
   const { activeSteer, annotation, lifecycle, messages, repository, stage, steeringQueue, workspace } = session;
+  const runActive = isHiveRunActive(session);
+  const canApplySteer = canApplyNextSteer(session);
   const steered = annotation.status === "steered";
   const queued = annotation.status === "queued";
   const queuePosition = steeringQueue.findIndex(
@@ -970,13 +989,13 @@ export function HiveWorkspace({
     });
   }, [currentMember.id, dispatch, repository, teamMembers]);
   const advance = useCallback(() => {
-    const action = stage === "running" && steeringQueue.length > 0
+    const action = canApplySteer
       ? ({ type: "apply-next-steer" } as const)
       : ({ type: "advance-run" } as const);
     void dispatch(action).then((nextSnapshot) => {
       if (nextSnapshot?.session.stage === "review") setTab("diff");
     });
-  }, [dispatch, stage, steeringQueue.length]);
+  }, [canApplySteer, dispatch]);
   const reset = useCallback(() => {
     setPane("chat");
     setTab("diff");
@@ -991,6 +1010,8 @@ export function HiveWorkspace({
   const shared = useMemo<SharedProps>(() => ({
     activeMembers,
     activeSteer,
+    canApplySteer,
+    runActive,
     queued,
     queuedBy: annotation.queuedBy,
     queuePosition: queuePosition || undefined,
@@ -1014,11 +1035,11 @@ export function HiveWorkspace({
     onTyping: setTyping,
     onAdvance: advance,
     onTabChange: setTab,
-  }), [activeMembers, activeSteer, advance, annotate, annotation.queuedBy, annotation.steeredBy, annotation.text, currentMember.id, lifecycle, messages, moveSteer, queuePosition, queued, removeSteer, send, setTyping, stage, steer, steerMessageAnnotation, steered, steeringQueue, tab, teamMembers, typingMembers]);
+  }), [activeMembers, activeSteer, advance, annotate, annotation.queuedBy, annotation.steeredBy, annotation.text, canApplySteer, currentMember.id, lifecycle, messages, moveSteer, queuePosition, queued, removeSteer, runActive, send, setTyping, stage, steer, steerMessageAnnotation, steered, steeringQueue, tab, teamMembers, typingMembers]);
 
   return (
     <main className="flex h-dvh min-h-[560px] flex-col overflow-hidden bg-[#fafafa] text-[#171717]">
-      <ProductHeader activeMembers={activeMembers} copied={copied} currentMember={currentMember} lifecycle={lifecycle} members={teamMembers} onCopyInvite={copyInvite} onSignOut={signOut} onReset={reset} onToggleLifecycle={toggleLifecycle} repository={repository} sessionTitle={sessionTitle} stage={stage} syncing={syncing} syncError={syncError} />
+      <ProductHeader activeMembers={activeMembers} copied={copied} currentMember={currentMember} lifecycle={lifecycle} members={teamMembers} onCopyInvite={copyInvite} onSignOut={signOut} onReset={reset} onToggleLifecycle={toggleLifecycle} repository={repository} sessionTitle={sessionTitle} runActive={runActive} queueCount={steeringQueue.length} syncing={syncing} syncError={syncError} />
       <div className="flex h-10 shrink-0 items-center gap-1 border-b border-[#e8e8e8] bg-[#fafafa] p-1 min-[960px]:hidden">
         <button
           aria-pressed={pane === "chat"}
@@ -1066,7 +1087,7 @@ export function HiveWorkspace({
           <div className="min-h-0 flex-1">
             <Workspace repository={repository} sessionId={sessionId} tab={shared.tab} workspace={workspace} onTabChange={shared.onTabChange} />
           </div>
-          <RunBar activeSteer={activeSteer} completed={lifecycle === "completed"} queueCount={steeringQueue.length} repository={repository} stage={shared.stage} onAdvance={shared.onAdvance} />
+          <RunBar activeSteer={activeSteer} completed={lifecycle === "completed"} runActive={runActive} queueCount={steeringQueue.length} repository={repository} stage={shared.stage} onAdvance={shared.onAdvance} />
         </div>
       </div>
     </main>
