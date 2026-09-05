@@ -31,6 +31,7 @@ import {
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
 import { Message, MessageContent } from "@/components/ai-elements/message";
+import { MentionInput } from "@/components/hive/mention-input";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useSharedSession } from "@/hooks/use-shared-session";
@@ -553,23 +554,16 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
       <div className="border-t border-[#ebebeb] bg-[#fafafa] p-3">
         <div className="rounded-xl border border-[#d9d9d9] bg-white p-2 shadow-[0_1px_2px_rgba(0,0,0,0.03)] focus-within:border-[#999]">
           <div className="flex items-end gap-2">
-          <textarea
-            aria-label="Ask Hive or mention a teammate"
-            className="max-h-24 min-h-8 flex-1 resize-none bg-transparent px-1 py-1.5 text-[13px] leading-5 outline-none placeholder:text-[#aaa]"
+          <MentionInput
+            currentMember={currentMember}
             disabled={disabled || !draft}
-            onChange={(event) => {
-              messageDraft.edit(event.target.value);
-              onTyping(Boolean(event.target.value.trim()));
+            members={members}
+            onChange={(value) => {
+              messageDraft.edit(value);
+              onTyping(Boolean(value.trim()));
             }}
-            onKeyDown={(event) => {
-              if (shouldSubmitMessage(event)) {
-                event.preventDefault();
-                submit();
-              }
-            }}
-            placeholder={disabled ? "This task is complete." : "Ask Hive or @mention a teammate…"}
+            onSubmit={submit}
             readOnly={sending}
-            rows={1}
             value={draft?.body ?? ""}
           />
             <Button
