@@ -1,12 +1,22 @@
 # Hive
 
+One coding agent your whole team can work with.
+
 Hive is a multiplayer coding agent: two or more teammates share one agent conversation, one task, and one execution workspace. Every human contribution is attributed; comments can stay human discussion or be explicitly promoted into instructions that steer Hive.
 
 **Live app:** [hive-roan-mu.vercel.app](https://hive-roan-mu.vercel.app/)
 
+## Try the app
+
+Open the live app with a GitHub account already admitted to Hive, or open a teammate's **Invite** link to join. New accounts cannot join from the homepage alone. Reviewers will need an invitation; making the code repository public does not remove this sign-in boundary.
+
+Create a task, invite a teammate, and start a conversation. Attach one authorized repository when ready to work on code. While Hive runs, new agent-directed messages queue; annotations stay discussion until explicitly promoted. At the end of the run, apply the next steer and review the actual Runs, Files, and Diff.
+
+The [submission packet](docs/SUBMISSION.md) links the overview, summary, and outstanding access checks. Full two-account rehearsal is still pending; the verification section below distinguishes implemented behavior from observed results.
+
 ## The problem
 
-Coding agents are still mostly single-player. One person owns the prompt, context, and running workspace; everyone else sees the result later in Slack, screenshots, or a pull request. By then, important intent has already been flattened or lost.
+The problem we started with: one person owns the prompt, context, and running workspace; everyone else sees the result later in Slack, screenshots, or a pull request. By then, important intent has already been flattened or lost.
 
 Hive moves collaboration into the agent session itself. Teammates can see the same transcript and workspace, speak directly to each other, annotate a specific statement, and deliberately steer the same agent without racing to replace its prompt.
 
@@ -17,7 +27,7 @@ Hive moves collaboration into the agent session itself. Teammates can see the sa
 - A session can begin without code. Hive first helps the team clarify intent; a repository can be attached later.
 - A **message annotation** is discussion-only until a teammate promotes it to a **steer**.
 - Typing `@` suggests actual session teammates. A leading teammate mention stays human discussion; choosing a suggestion does not send the message.
-- A steer created during an active run enters an attributed, ordered queue and waits for a safe boundary.
+- New agent-directed messages and promoted steers created during an active run enter an attributed, ordered queue and wait for a safe boundary.
 - A safe boundary is the end of the current execution, including a failed attempt. Teammates explicitly apply the next steer from the conversation; later directions do not jump the existing queue.
 - Completing a task makes the session read-only; teammates can reopen it if the work genuinely continues.
 - Only a nonempty diff from a successful run, with no pending steer, can be approved. Approval records the team's review; it does not publish code.
@@ -55,15 +65,16 @@ workspace evidence → changed files, command output, and real git diff
 
 - One team for the take-home; the membership model is explicit, but organization administration is out of scope.
 - One repository and one mutating run per task session.
-- Hive can clone, edit, test, and expose a diff. Explicit branch push and PR creation are now in the [completion plan](docs/GOAL.md), but are not implemented yet.
+- Hive can clone, edit, test, and expose a diff. Branch push, PR creation, merging, and multi-team administration are outside the current [completion scope](docs/GOAL.md).
 - Repository access uses the GitHub App directly. The Vercel Connect experiment was removed because its current install flow is intended for connector developers, not this product's end-user onboarding.
 - Production history lives in a durable Neon Free database provisioned through Vercel Marketplace. The previous temporary database is retained only for the short rollback window after migration.
 
 ## Local development
 
+Prerequisites: Node.js with native TypeScript execution (the latest recorded checks used v25.2.1), pnpm 11.19.0, an authenticated Vercel CLI, a development Postgres database, and GitHub App credentials. Configure `.env.local` from `.env.example` before migration. Use development credentials; a local database connection is not proof that you are testing production.
+
 ```bash
 pnpm install
-cp .env.example .env.local
 pnpm db:migrate
 vercel dev
 ```
@@ -97,7 +108,11 @@ pnpm typecheck
 pnpm exec next build --webpack
 ```
 
-The current suite covers invitation-only admission, signed invitation expiry and scope, local OAuth return paths, the multiplayer state machine, attributed prompts, safe-boundary queue execution and recovery, completed-session immutability, nonempty-diff approval, persistent sandbox selection, failure checkpoints, IME-safe submission, teammate autocomplete, retry deduplication, and draft recovery. Two real GitHub accounts have joined the production task; attribution, automatic message queuing, and retained transcript/queue after refresh were observed. A real accessibility change was recovered after earlier failed turns and verified through Runs, Files, and Diff, with the sandbox revision's 27 tests, TypeScript, and diff check passing. Annotation promotion and full two-account recovery remain unverified, and longer model runs have returned 429. Deterministic tests and local fixtures do not replace those production checks; see the evidence log below.
+The 92-test suite covers invitation-only admission, signed invitation expiry and scope, OAuth origin and return-path checks, the multiplayer state machine, attributed prompts, safe-boundary queue execution and recovery, completed-session immutability, nonempty-diff approval, persistent sandbox selection, failure checkpoints, IME-safe submission, teammate autocomplete, retry deduplication, draft recovery, and streaming/reconnect guards.
+
+Historical production checks admitted two real GitHub accounts and observed attribution, automatic message queuing, and retained transcript/queue after refresh. A real accessibility change passed the sandbox revision's 27 tests, TypeScript, and diff check. On the latest inspection that task no longer displayed the earlier diff; do not assume the old artifact is available for a demo. A new real Chinese reply and same-account cross-browser refresh recovery passed on the current release.
+
+Still unverified: actual model-delta timing in the browser, annotation promotion and safe-boundary execution across two accounts, and network-loss recovery during generation. Longer model runs have returned 429. The [dated evidence log](docs/PRESENTATION_NOTES.md#evidence-log) records those limits; deterministic tests and local fixtures do not replace production checks.
 
 `pnpm typecheck` generates Next.js route types before running TypeScript, so it also works in a freshly cloned workspace that has not run a build or development server.
 

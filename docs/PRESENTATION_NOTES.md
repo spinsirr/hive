@@ -17,13 +17,11 @@ Current app: [hive-roan-mu.vercel.app](https://hive-roan-mu.vercel.app/)
 
 ## Summary blurb
 
-Hive is a multiplayer coding agent for small software teams. Instead of one person privately prompting an agent and handing the result to teammates later, everyone shares the same task-scoped conversation and execution workspace. Teammates can talk directly to one another, annotate a specific message, or deliberately promote an annotation into a steer for Hive.
-
-I built a focused Next.js full-stack product around that interaction. GitHub OAuth provides real authorship, signed invites control session membership, Postgres persists and serializes shared state, a GitHub App supplies team repository access, and AI SDK Harness runs Codex inside a persistent Vercel Sandbox. The product exposes actual files, commands, and diffs so teammates can check the result against their shared intent.
+The current two-paragraph draft lives in the [submission packet](SUBMISSION.md#summary-blurb), alongside all four deliverables and the remaining access gates. Spencer should review it in his own words before submission.
 
 ## Problem
 
-Coding agents are still primarily single-player. One person owns the prompt, transcript, and workspace; teammates enter after the agent has already acted. The team copies context across private agent sessions, chat tools, screenshots, and pull requests, losing both intent and clear authorship.
+Start with the workflow that motivated this build: one person owns the prompt, transcript, and workspace; teammates enter after the agent has already acted. The team copies context across private agent sessions, chat tools, screenshots, and pull requests, losing both intent and clear authorship.
 
 The missing primitive is not another team chat. It is a shared agent session where several humans can see the same work, discuss it in context, and control one agent without racing to overwrite one another.
 
@@ -75,11 +73,13 @@ This correction matters: the team is the durable collaboration space; a session 
 
 Use the [formal accessibility task](https://hive-roan-mu.vercel.app/sessions/clarify-annotation-to-steer-inte-o5uwf0) attached to `spinsirr/hive`. The concrete outcome is an author-attributed accessible label on the annotation action: `Steer Hive for <author>` when idle and `Queue steer for <author>` while running or queued. Do not introduce a separate mobile-navigation project for the presentation.
 
+Current preflight: the last inspection no longer showed the earlier diff in this task. Do not start the demo assuming it is still there. Re-establish and retain a genuine successful run during rehearsal; inspect the actual sandbox revision before asking for changes. The current Hive source still has the annotation button and its visible idle/queued states, so this remains a small, concrete interaction to demonstrate rather than a separate feature project.
+
 ### Rehearsal gate — not yet complete
 
 - Sign in as `Spinsirr` and `josephmreb1` in separate browsers; both must open the same task URL and see the current state.
 - Verify discussion-only annotation, explicit promotion, active-run queuing, safe-boundary execution, and cross-browser synchronization before calling the multiplayer demo validated. Account admission and an ordinary queued message alone do not prove this sequence.
-- Keep the real successful result available as evidence, but label it as an earlier run. Do not pass a replay off as a fresh execution. If a live attempt hits the known 429, show the retained request and queue, state the limit, and inspect the earlier result without claiming the failed attempt passed.
+- Keep a current real successful result available as evidence, clearly labeled with its run and checks. If the result is no longer present, the rehearsal gate fails; a dated note is not a substitute for inspectable Runs, Files, and Diff. Do not pass a replay off as fresh execution. If a live attempt hits the known 429, show the retained request and queue and explain the failed attempt accurately.
 - Reconfirm the presentation time and submission deadline. The repository is still private and final access/publication needs the owner's approval.
 
 ### 0–3 min — Problem
@@ -91,8 +91,8 @@ Explain how a coding task currently begins in one person’s private agent conte
 1. Open the shared task in both authenticated browsers. Establish the author and the two accessible-label states; briefly explain that attaching its one repository was a separate step, not a condition of creating the task.
 2. From Spencer's browser, use the actual mention suggestion to send `@josephmreb1 should the queued label retain the author's name?`. Both browsers should show the message without starting a Hive run.
 3. From Joseph's browser, annotate the code-task message: “Please keep the author's name in the queued label too.” First show that this remains discussion only.
-4. For the rehearsed live segment, ask Hive to check the implementation against that requirement. While it is visibly running, promote Joseph's annotation with **Queue steer**; show its author and position without interrupting the current turn. At the safe boundary, explicitly apply the next steer. Do not claim active-run behavior if the turn finished before the click.
-5. Inspect the actual Runs exit status, changed-file snapshot, and HEAD diff in both browsers. A read-only follow-up may have no new change; that is not a new implementation. The 05:22 UTC result documents the existing real change and passing checks on that sandbox revision.
+4. For the rehearsed live segment, ask Hive to inspect the annotation action, implement the missing author-attributed label if needed, and run the relevant checks without committing or pushing. While it is visibly running, promote Joseph's annotation with **Queue steer**; show its author and position without interrupting the current turn. At the safe boundary, explicitly apply the next steer. Do not claim active-run behavior if the turn finished before the click.
+5. Inspect the actual Runs exit status, changed-file snapshot, and HEAD diff in both browsers. A read-only follow-up may have no new change; that is not a new implementation. The 05:22 UTC result is historical evidence for its sandbox revision, not proof of the current run. Use only the newly retained rehearsal artifacts for the current demonstration.
 6. With collaborators' agreement, complete the task, refresh to show persisted read-only state, then reopen it. Preserve the task and its evidence; do not Reset it for a cleaner demo.
 
 The live sequence above remains subject to rehearsal. Production verification currently covers the owner-side lifecycle, real coding artifacts, two-account attribution, an ordinary queued message, and retained history after refresh—not the full annotation-to-steer sequence in two browsers.
@@ -140,10 +140,11 @@ Be explicit: GitHub write-back is not built; organization administration is not 
 
 ## Current boundaries before final submission
 
-- Retire the previous temporary database after the production migration rollback window closes.
-- Verify the migrated production deployment end to end with two GitHub users.
-- Implement and verify explicit branch push and PR creation after shared diff review. This is now in scope; acceptance criteria and remaining work are tracked in [GOAL.md](GOAL.md).
-- Make the GitHub repository public and submit it with the live URL at least 24 hours before presenting.
+- Verify the current production deployment end to end with two GitHub users, including incremental replies, queue execution, recovery, and shared lifecycle state.
+- Retain and rehearse an inspectable real coding result; do not rely on artifacts that are no longer present.
+- Branch push, PR creation, and organization administration are excluded by the current [goal](GOAL.md). Do not spend the remaining work on a separate delivery workflow.
+- Match local credentials to the intended environment before using them as evidence. Previous temporary-database cleanup is a separate owner-controlled infrastructure action, not a reason to delete data during this goal.
+- Obtain explicit owner approval for public repository access and submission, test reviewer invitations, and send all four items at least 24 hours before the scheduled presentation.
 
 ## Evidence log
 
@@ -283,6 +284,31 @@ Be explicit: GitHub write-back is not built; organization administration is not 
 - A temporary page rendered the actual CodeViewer and DiffPane with isolated fixtures. DOM styles and a screenshot verified blue keywords, red strings, green comments, distinct green/red diff backgrounds, neutral `---`/`+++` headers, and read-only editor state. Removed the fixture before the production build. No repository content was altered by this visual check.
 - Reframed the homepage around “Your team. One coding agent. Build together.”, shared tasks, and inviting, annotating, and steering together. No simulated teammates or new team-management features were added.
 - All 92 tests, generated-type checking, full ESLint, the production Webpack build, and diff validation passed. Deployment of this follow-up and production visual verification are recorded separately; the wider multiplayer goal remains incomplete.
+
+### 2026-09-05 — Production follow-up and real reply smoke check
+
+- Commit `30b1727` reached Ready in Vercel (48-second build). Reloading the canonical production homepage in an authenticated Chrome browser confirmed the new team-focused headline, supporting copy, input placeholder, and Shared tasks heading. Deployment-specific URLs remain immutable; use `https://hive-roan-mu.vercel.app/` for the current release.
+- The canonical login endpoint redirected to GitHub with the canonical callback origin and a host-only HttpOnly nonce. An invalid fixture callback redirected to the retry page without issuing a Hive login session. This was not a real second-account OAuth exchange.
+- Before the next agent request, the formal task contained only the repository-connected greeting and had no current diff. This verification did not reset the task. The earlier accessibility change and approved diff are historical evidence, not artifacts currently visible in that task.
+- At approximately 18:11 UTC, sent one text-only request through the production composer as `Spinsirr`, explicitly asking the agent not to use tools or modify files. A real Chinese response arrived and rendered through Streamdown. Refreshing the task and opening it in an independent Chrome browser retained the same complete response without duplication. Both browsers authenticated as `Spinsirr`; this is same-account cross-browser persistence, not the two-account acceptance test.
+- The first browser sample arrived after generation completed, so it cannot establish incremental text cadence. A read-only checkpoint diagnostic found no matching task in the locally configured database; no database data was changed and that diagnostic is not production evidence. Its temporary script was removed.
+- A follow-up text-only request was entered in the composer. The timing observer failed and the computer became locked before its send result could be verified. On resume, inspect the actual transcript/draft before retrying to avoid sending it twice. No incremental-cadence, in-flight reconnect, or two-account steering pass is claimed.
+
+### 2026-09-05 — Submission readiness audit
+
+- Reconciled the README, goal checklist, and demo route with the current user-provided goal: PR creation and multi-team administration are excluded. Kept the earlier scope discussion as historical context rather than a current implementation gate.
+- Added `SUBMISSION.md` with links to all four required items, a two-paragraph draft, reviewer invitation requirements, owner-controlled publication/send approval, and the presentation-relative 24-hour deadline. Consolidated the blurb there to avoid divergent copies. No repository visibility or sharing setting was changed, and nothing was sent externally.
+- Independent unauthenticated HTTP checks returned 200 for the canonical homepage, 401 for the formal task API, and 200 with a JavaScript content type for the same-origin Monaco runtime. GitHub repository metadata returned 404 through the current CLI credentials, so this did not verify repository visibility or reviewer access.
+- Browser rehearsal remains paused because the computer is locked. The preceding unconfirmed send must be inspected before another agent request; a lock is not evidence that the server-side run stopped.
+
+### 2026-09-05 — Resumed real coding and rate-limit evidence
+
+- After the computer was unlocked, inspected the formal task before sending anything. The previously unconfirmed 18:19 UTC text-only request had completed exactly once, so it was not resent. Chrome's debugging connection was unavailable; the in-app browser remained authenticated as `Spinsirr`.
+- At 19:02 UTC, submitted the actual accessible-label task through Hive, limited to the existing message-annotation button and the real `runActive`/queue condition. At 19:02:18 the browser displayed a 282-character public progress message while Complete remained disabled. Vercel logs show the run ended with a 429 at 19:02:28 and the HTTP request finished after 31.8 seconds. Refresh retained the attributed request, partial public reply, and compact error; this attempt did not yield passing checks or review artifacts.
+- The Gateway log shows five successful `openai/gpt-5-mini` calls at 19:02:08, :13, :16, :19, and :22, then a 429 at :28. The rejected call reported no usage and completed in 0.24 seconds; its details did not expose a limit or provider error body. The dashboard still showed Free Credit. This supports a short-window limit but does not prove an exact requests-per-minute or token limit. [Vercel's current rate-limit documentation](https://vercel.com/docs/ai-gateway/rate-limits) separates the free-credit tier from purchased-credit limits and notes that upstream providers can also return 429. No model, billing, key, or permission setting was changed.
+- After several minutes, sent one explicit continuation to use the saved checkpoint and check the existing diff before editing. A 205-character public progress message appeared. Reloaded while Complete was disabled; the same run was still visibly active after reload, with the transcript and partial reply present. The attempt subsequently reported another 429. Stopped model retries; no successful continuation or passing coding check is claimed.
+- This establishes live public text before run completion and same-account refresh during an active execution. It does not establish token-by-token cadence, an offline network outage, two-account coordination, or successful recovery of execution artifacts. Those gates remain open.
+- Re-ran the local 92-test suite and generated-type/TypeScript check successfully. All 18 relative document links and anchors in the README, goal, submission packet, and presentation notes resolved. These local checks do not substitute for the blocked real coding run.
 
 ## Questions to prepare for
 

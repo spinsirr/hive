@@ -2,9 +2,9 @@
 
 Deliver a working, shareable multiplayer coding agent and an evidence-backed take-home presentation.
 
-## Scope update — 2026-09-04
+## Current scope — 2026-09-05
 
-The user added branch push and pull-request creation to the active goal. This supersedes the original goal's exclusion of PR creation. The existing priority order remains: prove real coding and multiplayer collaboration, then complete the review and delivery experience.
+The current user-provided goal explicitly excludes PR creation and multi-team management. Complete one real coding task, shared review, two-account collaboration, recovery, and the take-home materials. The September 4 discussion proposed PR handoff; that proposal is superseded for this goal and is not a completion gate. Normal authorized pushes and Vercel deployments of Hive itself remain part of implementation, not a product PR feature.
 
 ## Completion checklist
 
@@ -14,25 +14,19 @@ The user added branch push and pull-request creation to the active goal. This su
 - [ ] Verify refresh, reconnect, and continuation after a failed run preserve messages and execution context.
 - [x] Add a read-only Monaco file viewer with file navigation and syntax highlighting (production changed-file snapshot rendered for the completed accessibility change).
 - [x] Add and verify teammate autocomplete when typing `@` in the conversation composer (production task, actual teammate `josephmreb1`).
-- [ ] Add explicit PR creation after reviewing the shared diff; verify the real GitHub result.
 - [ ] Finish loading, empty, and error states plus task completion and reopening.
 - [x] Verify the production task's Complete → refresh → Reopen cycle with owner approval (2026-09-05 05:38 UTC): read-only state persisted across refresh; reopening restored collaboration controls without losing the transcript or diff. Cross-account lifecycle synchronization remains unverified.
 - [x] Prevent approval of empty or ineligible diffs in both the state machine and UI; verified with regression tests and the real local component. Production rollout is recorded separately in the evidence log.
-- [ ] Finish the README, one-to-two-paragraph summary, decision log, and AI collaboration evidence.
+- [x] Prepare the README, one-to-two-paragraph summary, decision log, and AI collaboration evidence; the [submission packet](SUBMISSION.md) links the material and explicitly lists unverified claims.
+- [ ] Have the owner review the summary in their own words and update verification results after the remaining live checks.
 - [ ] Rehearse the approximately 20-minute demo and verify the deployed app and submission links.
 - [ ] With the user's approval, make the repository public and send all four submission items at least 24 hours before the presentation.
 
 Record completed checks and their limitations in `PRESENTATION_NOTES.md`. Distinguish implementation from live verification. Two-user testing requires two real authenticated accounts.
 
-## PR handoff acceptance
+## Rehearsal evidence to re-establish
 
-1. A teammate reviews the current diff and explicitly chooses Create PR, with a reviewable title and description.
-2. Hive commits the actual task workspace to a dedicated branch in the attached repository and opens a PR against its base branch. Display snapshots may be truncated and are not the source for publication.
-3. The session persists the real PR URL and shows it to all members, including after refresh.
-4. Concurrent clicks and retries do not create duplicate branches or PRs. A failed request leaves a clear, retryable state.
-5. Publishing coordinates with the shared run state so the agent cannot change the reviewed workspace during publication.
-6. Publication uses repository-scoped GitHub App write permissions. The agent's normal execution credentials remain read-only.
-7. Merging remains a separate GitHub action. Creating a PR does not automatically merge it or complete the Hive task.
+The formal task no longer displayed the earlier successful diff on the latest production inspection. Preserve the current task state and rerun a genuine, bounded coding/review exercise for the rehearsal; do not reinsert old or fixture artifacts. The earlier checks above remain dated historical evidence. Current same-account refresh recovery is not a substitute for the remaining two-account and in-flight reconnect checks.
 
 ## Remaining boundaries
 
