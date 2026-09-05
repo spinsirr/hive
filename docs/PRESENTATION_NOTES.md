@@ -19,7 +19,7 @@ Current app: [hive-roan-mu.vercel.app](https://hive-roan-mu.vercel.app/)
 
 Hive is a multiplayer coding agent for small software teams. Instead of one person privately prompting an agent and handing the result to teammates later, everyone shares the same task-scoped conversation and execution workspace. Teammates can talk directly to one another, annotate a specific message, or deliberately promote an annotation into a steer for Hive.
 
-I built the smallest full-stack version that proves that interaction. GitHub OAuth provides real authorship, signed invites control session membership, Postgres persists and serializes shared state, a GitHub App supplies team repository access, and AI SDK Harness runs Codex inside a persistent Vercel Sandbox. The product exposes real files, commands, and diffs for the team to review together.
+I built a focused Next.js full-stack product around that interaction. GitHub OAuth provides real authorship, signed invites control session membership, Postgres persists and serializes shared state, a GitHub App supplies team repository access, and AI SDK Harness runs Codex inside a persistent Vercel Sandbox. The product exposes actual files, commands, and diffs so teammates can check the result against their shared intent.
 
 ## Problem
 
@@ -67,10 +67,19 @@ This correction matters: the team is the durable collaboration space; a session 
 | Name the human need, not the implementation | Runs is an audit trail for teammates: command, outcome, duration, and expandable output. | Calling a read-only log “Terminal” and implying that humans should operate it. |
 | Neon is canonical history | Native Codex history can disappear with compute; team intent cannot. | Treating sandbox files as the product database. |
 | Quiet error state | A failure should not become a theatrical agent apology. | Large error bubbles that repeat internal details. |
-| Ordinary frontend demo task | A second-level menu exposes intent ambiguity without domain setup. | A deployment workflow that distracts from collaboration. |
+| A small frontend task in Hive itself | An author-specific accessible label makes teammate intent visible in both the conversation and the diff. | A separate demo application or deployment workflow that needs its own setup. |
 | Remove Vercel Connect experiment | The available install flow is developer-dashboard oriented; direct GitHub App onboarding fits users today. | Shipping a connector path users cannot complete. |
 
 ## Demo sequence (20 minutes)
+
+Use the [formal accessibility task](https://hive-roan-mu.vercel.app/sessions/clarify-annotation-to-steer-inte-o5uwf0) attached to `spinsirr/hive`. The concrete outcome is an author-attributed accessible label on the annotation action: `Steer Hive for <author>` when idle and `Queue steer for <author>` while running or queued. Do not introduce a separate mobile-navigation project for the presentation.
+
+### Rehearsal gate — not yet complete
+
+- Sign in as `Spinsirr` and `josephmreb1` in separate browsers; both must open the same task URL and see the current state.
+- Verify discussion-only annotation, explicit promotion, active-run queuing, safe-boundary execution, and cross-browser synchronization before calling the multiplayer demo validated. Account admission and an ordinary queued message alone do not prove this sequence.
+- Keep the real successful result available as evidence, but label it as an earlier run. Do not pass a replay off as a fresh execution. If a live attempt hits the known 429, show the retained request and queue, state the limit, and inspect the earlier result without claiming the failed attempt passed.
+- Reconfirm the presentation time and submission deadline. The repository is still private and final access/publication needs the owner's approval.
 
 ### 0–3 min — Problem
 
@@ -78,15 +87,14 @@ Explain how a coding task currently begins in one person’s private agent conte
 
 ### 3–10 min — Product
 
-1. Create “Polish the mobile navigation” from the task list.
-2. Start talking to Hive before attaching a repository; agree on expected behavior.
-3. Attach `spinsirr/hive` from the team’s authorized repository pool.
-4. Open the signed invite in a second authenticated browser.
-5. Send `@Spencer should the parent remain expanded?`; point out that Hive does not answer.
-6. Add “Keep the parent expanded, highlight only the active child” as an annotation.
-7. Promote it to **Steer Hive** while a run is active; show author and queue position.
-8. Review the same real commands, changed files, and git diff from both browsers.
-9. Complete the task and show that the transcript becomes read-only.
+1. Open the shared task in both authenticated browsers. Establish the author and the two accessible-label states; briefly explain that attaching its one repository was a separate step, not a condition of creating the task.
+2. From Spencer's browser, use the actual mention suggestion to send `@josephmreb1 should the queued label retain the author's name?`. Both browsers should show the message without starting a Hive run.
+3. From Joseph's browser, annotate the code-task message: “Please keep the author's name in the queued label too.” First show that this remains discussion only.
+4. For the rehearsed live segment, ask Hive to check the implementation against that requirement. While it is visibly running, promote Joseph's annotation with **Queue steer**; show its author and position without interrupting the current turn. At the safe boundary, explicitly apply the next steer. Do not claim active-run behavior if the turn finished before the click.
+5. Inspect the actual Runs exit status, changed-file snapshot, and HEAD diff in both browsers. A read-only follow-up may have no new change; that is not a new implementation. The 05:22 UTC result documents the existing real change and passing checks on that sandbox revision.
+6. With collaborators' agreement, complete the task, refresh to show persisted read-only state, then reopen it. Preserve the task and its evidence; do not Reset it for a cleaner demo.
+
+The live sequence above remains subject to rehearsal. Production verification currently covers the owner-side lifecycle, real coding artifacts, two-account attribution, an ordinary queued message, and retained history after refresh—not the full annotation-to-steer sequence in two browsers.
 
 ### 10–15 min — Code
 
@@ -106,6 +114,8 @@ Show the brainstorm as evidence of collaboration rather than a perfect linear pl
 - AI proposed repository-at-provisioning and long-lived rooms; the human clarified late attachment and one-task session lifecycle.
 - AI produced a plausible Codex session plan; the human caught that history would disappear with the sandbox, leading to canonical Postgres history plus resumable checkpoints.
 - AI accelerated UI, code, migrations, and diagnosis; the human owned scope, trust boundaries, product language, and what not to claim.
+- Show one concrete verification moment: the coding agent's summary called the accessible-label ternary incomplete, but the captured diff contained both branches. The supervising AI checked the artifact and avoided an unnecessary rewrite. Credit that check accurately; do not describe it as a manual edit by the human.
+- Show the failed TypeScript check next to the successful continuation: the workspace needed Next.js route-type generation before TypeScript. The final evidence is the command's exit status and output, not merely the agent saying the tests passed.
 
 ### 18–20 min — Boundaries
 
@@ -236,6 +246,13 @@ Be explicit: GitHub write-back is not built; organization administration is not 
 - Added `pnpm typecheck` (`next typegen && tsc --noEmit`) and documented it, so a clean clone does not require a previous build merely to generate route helper types.
 - Production completion/reopening was not performed: safety review required owner confirmation because completing the real shared task makes it read-only for collaborators. The task remains active. Only the local controlled lifecycle check above is complete.
 - All 73 local tests, full ESLint, the generated-type check, and a production Webpack build passed. Commit `ee3c7b9` deployed to production successfully (Vercel deployment `EdQEcTHRR3Y85A8MWXG9wef5h2jd`, Ready). The production alias reloaded with the retained transcript and actual diff, rendered the updated check-mark approval control, and returned no browser warning/error entries in the inspected log. The local empty/changed-diff interaction checks were not repeated as production mutations; the shared task remains active pending owner confirmation for the lifecycle test.
+
+### 2026-09-05 — Authorized production lifecycle check
+
+- After the owner explicitly approved one Complete → refresh → Reopen cycle, performed it on the formal shared accessibility task at approximately 05:38 UTC, with no active run or queued steer.
+- Completing the task disabled the composer, Send, and Reset; removed annotation controls; and showed the read-only explanation and Reopen action. Refresh retained this completed state, both authors' existing messages, and the real code diff.
+- Reopening restored the composer, annotation controls, Complete, and the eligible diff's review action. The task is active again; the transcript and diff remain intact. No reset, diff approval, agent request, repository publication, or data deletion occurred.
+- This is a production lifecycle check from the owner's authenticated account. It does not establish simultaneous visibility in the second account, network-disconnection recovery, or completion of the broader loading/empty/error-state checklist.
 
 ## Questions to prepare for
 

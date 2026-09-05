@@ -16,6 +16,7 @@ The user added branch push and pull-request creation to the active goal. This su
 - [x] Add and verify teammate autocomplete when typing `@` in the conversation composer (production task, actual teammate `josephmreb1`).
 - [ ] Add explicit PR creation after reviewing the shared diff; verify the real GitHub result.
 - [ ] Finish loading, empty, and error states plus task completion and reopening.
+- [x] Verify the production task's Complete → refresh → Reopen cycle with owner approval (2026-09-05 05:38 UTC): read-only state persisted across refresh; reopening restored collaboration controls without losing the transcript or diff. Cross-account lifecycle synchronization remains unverified.
 - [x] Prevent approval of empty or ineligible diffs in both the state machine and UI; verified with regression tests and the real local component. Production rollout is recorded separately in the evidence log.
 - [ ] Finish the README, one-to-two-paragraph summary, decision log, and AI collaboration evidence.
 - [ ] Rehearse the approximately 20-minute demo and verify the deployed app and submission links.
