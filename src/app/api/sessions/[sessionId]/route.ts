@@ -4,6 +4,7 @@ import { getSessionMember, HIVE_SESSION_COOKIE } from "@/lib/auth-session";
 import { HiveAgentError } from "@/lib/hive-agent";
 import { runHiveConversation } from "@/lib/hive-conversation";
 import { hiveErrorCopy } from "@/lib/hive-error-copy";
+import { isClientSubmissionId } from "@/lib/message-draft";
 import { runHiveCodingTask } from "@/lib/hive-runner";
 import {
   resolveMember,
@@ -87,6 +88,13 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
     payload.type !== "reset"
   ) {
     return NextResponse.json({ error: "Unknown session action" }, { status: 400 });
+  }
+
+  if (
+    (payload.type === "send-message" || payload.type === "annotate-message") &&
+    (!("clientId" in payload) || !isClientSubmissionId(payload.clientId))
+  ) {
+    return NextResponse.json({ error: "A valid submission ID is required" }, { status: 400 });
   }
 
   if (

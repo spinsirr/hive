@@ -32,6 +32,66 @@ function connectedSession(): TaskSessionState {
   );
 }
 
+test("retrying the same accepted message does not queue a second run", () => {
+  const action = {
+    type: "send-message" as const,
+    actor: "spencer",
+    body: "Inspect the navigation",
+    clientId: "e7535baf-8d42-4e42-94a6-ce940a72da5f",
+  };
+  const running = reduceTaskSession(connectedSession(), action, 20);
+  const retried = reduceTaskSession(running, action, 30);
+  assert.deepEqual(retried, running);
+  assert.equal(retried.steeringQueue.length, 0);
+  assert.equal(didStartHiveRun(running, retried), false);
+});
+
+test("a lost acknowledgement cannot repeat an already failed run", () => {
+  const action = {
+    type: "send-message" as const,
+    actor: "spencer",
+    body: "Inspect the navigation",
+    clientId: "37ac24d8-2299-490a-93c9-2a66dc963e0e",
+  };
+  const running = reduceTaskSession(connectedSession(), action, 20);
+  const failed = applyHiveRunError(running, "Rate limit reached.", 30);
+  const retried = reduceTaskSession(failed, action, 40);
+  assert.deepEqual(retried, failed);
+  assert.equal(didStartHiveRun(failed, retried), false);
+});
+
+test("retrying the same annotation preserves one attributed comment", () => {
+  const state = reduceTaskSession(connectedSession(), {
+    type: "send-message", actor: "spencer", body: "@maya thoughts?",
+  }, 20);
+  const messageId = state.messages.at(-1)!.id;
+  const action = {
+    type: "annotate-message" as const,
+    actor: "maya",
+    messageId,
+    body: "Preserve the keyboard focus.",
+    clientId: "07d00dd8-e4ab-4c8c-ac3a-6f3066b93cb1",
+  };
+  const annotated = reduceTaskSession(state, action, 30);
+  assert.deepEqual(reduceTaskSession(annotated, action, 40), annotated);
+});
+
+test("identical text from different submissions or members remains independent", () => {
+  const action = {
+    type: "send-message" as const,
+    actor: "spencer",
+    body: "Inspect the navigation",
+    clientId: "e7535baf-8d42-4e42-94a6-ce940a72da5f",
+  };
+  const first = reduceTaskSession(connectedSession(), action, 20);
+  const teammate = reduceTaskSession(first, { ...action, actor: "maya" }, 30);
+  const nextSubmission = reduceTaskSession(teammate, {
+    ...action, clientId: "c48f2f52-d85f-4aaf-bf0b-4816ee18cb08",
+  }, 40);
+  assert.equal(nextSubmission.messages.length, first.messages.length + 2);
+  assert.equal(nextSubmission.steeringQueue.length, 2);
+});
+
 test("team messages stay in discussion while Hive tasks start one shared run", () => {
   const connected = connectedSession();
   const discussion = reduceTaskSession(

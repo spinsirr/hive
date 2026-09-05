@@ -68,6 +68,7 @@ export type ActiveSteer = SteeringQueueItem & { appliedAt: number };
 
 export type MessageAnnotation = {
   id: string;
+  clientId?: string;
   body: string;
   authorId: MemberId;
   createdAt: number;
@@ -80,6 +81,7 @@ export type MessageAnnotation = {
 
 export type ChatMessage = {
   id: string;
+  clientId?: string;
   name: string;
   initials: string;
   body: string;
@@ -183,7 +185,7 @@ export type TaskSessionState = {
 };
 
 export type TaskSessionAction =
-  | { type: "send-message"; actor: MemberId; body: string }
+  | { type: "send-message"; actor: MemberId; body: string; clientId?: string }
   | {
       type: "connect-repository";
       actor: MemberId;
@@ -201,6 +203,7 @@ export type TaskSessionAction =
       actor: MemberId;
       messageId: string;
       body: string;
+      clientId?: string;
     }
   | {
       type: "steer-message-annotation";
@@ -462,6 +465,9 @@ export function reduceTaskSession(
   if (action.type === "send-message") {
     const body = action.body.trim();
     if (!body) return state;
+    if (action.clientId && state.messages.some((message) =>
+      message.role === "human" && message.memberId === action.actor && message.clientId === action.clientId,
+    )) return state;
     const member = actor;
     const messageId = `human-${now}-${state.version + 1}`;
     const addressesHive = !isDirectedAtTeammate(
@@ -516,6 +522,7 @@ export function reduceTaskSession(
         ...state.messages,
         {
           id: messageId,
+          clientId: action.clientId,
           name: member.name,
           initials: member.initials,
           body,
@@ -534,6 +541,9 @@ export function reduceTaskSession(
       (message) => message.id === action.messageId,
     );
     if (!body || !targetMessage || targetMessage.role !== "human") return state;
+    if (action.clientId && targetMessage.annotations?.some((annotation) =>
+      annotation.authorId === action.actor && annotation.clientId === action.clientId,
+    )) return state;
 
     return {
       ...state,
@@ -546,6 +556,7 @@ export function reduceTaskSession(
                 ...(message.annotations ?? []),
                 {
                   id: `annotation-${now}-${state.version + 1}`,
+                  clientId: action.clientId,
                   body,
                   authorId: action.actor,
                   createdAt: now,

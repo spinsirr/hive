@@ -34,6 +34,8 @@ import { Message, MessageContent } from "@/components/ai-elements/message";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useSharedSession } from "@/hooks/use-shared-session";
+import { useMessageDraft } from "@/hooks/use-message-draft";
+import type { MessageSubmission } from "@/lib/message-draft";
 import { displayHiveErrorMessage } from "@/lib/hive-error-copy";
 import {
   type ActiveSteer,
@@ -341,7 +343,58 @@ function annotationTime(createdAt: number) {
   }).format(createdAt);
 }
 
-function SharedSession({ activeMembers, activeSteer, canApplySteer, runActive, queued, queuedBy, queuePosition, steered, steeredBy, steeringQueue, currentMember, disabled, members, messages, onAdvance, onAnnotate, onMoveSteer, onRemoveSteer, onSteer, onSteerMessageAnnotation, onSend, onTyping, stage, typingMembers, workspaceAnnotation, compact = false }: {
+function AnnotationComposer({ sessionId, currentMember, message, onAnnotate, onCancel }: {
+  sessionId: string;
+  currentMember: MemberId;
+  message: ChatMessage;
+  onAnnotate: (messageId: string, submission: MessageSubmission) => Promise<boolean>;
+  onCancel: (messageId: string) => void;
+}) {
+  const deliveredIds = useMemo(() => new Set(
+    (message.annotations ?? []).filter((annotation) => annotation.authorId === currentMember && annotation.clientId).map((annotation) => annotation.clientId!),
+  ), [currentMember, message.annotations]);
+  const send = useCallback(async (submission: MessageSubmission) => {
+    const delivered = await onAnnotate(message.id, submission);
+    if (delivered) onCancel(message.id);
+    return delivered;
+  }, [message.id, onAnnotate, onCancel]);
+  const { draft, edit, clear, submit } = useMessageDraft(
+    `hive-draft:v1:${sessionId}:${currentMember}:annotation:${message.id}`,
+    deliveredIds,
+    send,
+  );
+  const sending = draft?.status === "sending";
+  const cancel = () => { if (!sending) { clear(); onCancel(message.id); } };
+
+  return <>
+    <textarea
+      aria-label={`Annotation for ${message.name}'s message`}
+      autoFocus
+      className="min-h-14 w-full resize-none bg-[#fafafa] px-2 py-1.5 text-[12px] leading-4 outline-none placeholder:text-[#a1a1a1]"
+      disabled={!draft}
+      maxLength={500}
+      onChange={(event) => edit(event.target.value)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && shouldSubmitMessage(event)) {
+          event.preventDefault();
+          void submit();
+        }
+        if (event.key === "Escape") cancel();
+      }}
+      placeholder="Add context, a concern, or a question for the team…"
+      readOnly={sending}
+      value={draft?.body ?? ""}
+    />
+    {draft?.status === "unconfirmed" ? <p className="mt-1 text-[11px] text-[#737373]" role="status">Delivery unconfirmed. Retry when connected.</p> : null}
+    <div className="mt-2 flex justify-end gap-1.5">
+      <Button className="h-7 rounded px-2.5 text-[11px]" disabled={sending} onClick={cancel} size="sm" variant="ghost">Cancel</Button>
+      <Button className="h-7 rounded bg-[#171717] px-2.5 text-[11px] text-white" disabled={!draft?.body.trim() || sending} onClick={() => void submit()} size="sm">{sending ? "Sending…" : draft?.status === "unconfirmed" ? "Retry annotation" : "Add annotation"}</Button>
+    </div>
+  </>;
+}
+
+function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, runActive, queued, queuedBy, queuePosition, steered, steeredBy, steeringQueue, currentMember, disabled, members, messages, onAdvance, onAnnotate, onMoveSteer, onRemoveSteer, onSteer, onSteerMessageAnnotation, onSend, onTyping, stage, typingMembers, workspaceAnnotation, compact = false }: {
+  sessionId: string;
   activeMembers: MemberId[];
   activeSteer?: ActiveSteer;
   canApplySteer: boolean;
@@ -357,45 +410,38 @@ function SharedSession({ activeMembers, activeSteer, canApplySteer, runActive, q
   members: TeamMember[];
   messages: ChatMessage[];
   onAdvance: () => void;
-  onAnnotate: (messageId: string, body: string) => void;
+  onAnnotate: (messageId: string, submission: MessageSubmission) => Promise<boolean>;
   onMoveSteer: (steerId: string, direction: "up" | "down") => void;
   onRemoveSteer: (steerId: string) => void;
   onSteer: () => void;
   onSteerMessageAnnotation: (messageId: string, annotationId: string) => void;
-  onSend: (message: string) => void;
+  onSend: (submission: MessageSubmission) => Promise<boolean>;
   onTyping: (typing: boolean) => void;
   stage: RunStage;
   typingMembers: MemberId[];
   workspaceAnnotation: string;
   compact?: boolean;
 }) {
-  const [draft, setDraft] = useState("");
+  const deliveredIds = useMemo(() => new Set(
+    messages.filter((message) => message.memberId === currentMember && message.clientId).map((message) => message.clientId!),
+  ), [currentMember, messages]);
+  const messageDraft = useMessageDraft(`hive-draft:v1:${sessionId}:${currentMember}:message`, deliveredIds, onSend);
+  const { draft } = messageDraft;
+  const sending = draft?.status === "sending";
   const [annotationTarget, setAnnotationTarget] = useState<string | null>(null);
-  const [annotationDraft, setAnnotationDraft] = useState("");
   const submit = useCallback(() => {
-    const body = draft.trim();
-    if (disabled || !body) return;
-    onSend(body);
+    if (disabled || !draft?.body.trim()) return;
     onTyping(false);
-    setDraft("");
-  }, [disabled, draft, onSend, onTyping]);
+    void messageDraft.submit();
+  }, [disabled, draft, messageDraft, onTyping]);
 
   const beginAnnotation = useCallback((messageId: string) => {
     setAnnotationTarget(messageId);
-    setAnnotationDraft("");
   }, []);
 
-  const cancelAnnotation = useCallback(() => {
-    setAnnotationTarget(null);
-    setAnnotationDraft("");
+  const cancelAnnotation = useCallback((messageId: string) => {
+    setAnnotationTarget((current) => current === messageId ? null : current);
   }, []);
-
-  const submitAnnotation = useCallback(() => {
-    const body = annotationDraft.trim();
-    if (!body || !annotationTarget) return;
-    onAnnotate(annotationTarget, body);
-    cancelAnnotation();
-  }, [annotationDraft, annotationTarget, cancelAnnotation, onAnnotate]);
 
   const otherTyping = typingMembers.filter((memberId) => memberId !== currentMember);
 
@@ -487,31 +533,12 @@ function SharedSession({ activeMembers, activeSteer, canApplySteer, runActive, q
                   </div>
                 ) : null}
 
-                {annotationTarget === message.id ? (
+                {annotationTarget === message.id && !disabled ? (
                   <div className={cn("w-[88%] border border-[#d8d8d8] bg-white p-2 shadow-[0_8px_24px_rgba(0,0,0,0.05)]", isCurrentMember ? "ml-auto mr-0" : "ml-7")}>
                     <div className="mb-1.5">
                       <span className="text-[11px] text-[#737373]">Comment only — you can promote it to a steer later.</span>
                     </div>
-                    <textarea
-                      aria-label={`Annotation for ${message.name}'s message`}
-                      autoFocus
-                      className="min-h-14 w-full resize-none bg-[#fafafa] px-2 py-1.5 text-[12px] leading-4 outline-none placeholder:text-[#a1a1a1]"
-                      maxLength={500}
-                      onChange={(event) => setAnnotationDraft(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-                          event.preventDefault();
-                          submitAnnotation();
-                        }
-                        if (event.key === "Escape") cancelAnnotation();
-                      }}
-                      placeholder="Add context, a concern, or a question for the team…"
-                      value={annotationDraft}
-                    />
-                    <div className="mt-2 flex justify-end gap-1.5">
-                      <Button className="h-7 rounded px-2.5 text-[11px]" onClick={cancelAnnotation} size="sm" variant="ghost">Cancel</Button>
-                      <Button className="h-7 rounded bg-[#171717] px-2.5 text-[11px] text-white" disabled={!annotationDraft.trim()} onClick={submitAnnotation} size="sm">Add annotation</Button>
-                    </div>
+                    <AnnotationComposer currentMember={currentMember} key={message.id} message={message} onAnnotate={onAnnotate} onCancel={cancelAnnotation} sessionId={sessionId} />
                   </div>
                 ) : null}
               </Message>
@@ -529,9 +556,9 @@ function SharedSession({ activeMembers, activeSteer, canApplySteer, runActive, q
           <textarea
             aria-label="Ask Hive or mention a teammate"
             className="max-h-24 min-h-8 flex-1 resize-none bg-transparent px-1 py-1.5 text-[13px] leading-5 outline-none placeholder:text-[#aaa]"
-            disabled={disabled}
+            disabled={disabled || !draft}
             onChange={(event) => {
-              setDraft(event.target.value);
+              messageDraft.edit(event.target.value);
               onTyping(Boolean(event.target.value.trim()));
             }}
             onKeyDown={(event) => {
@@ -541,20 +568,22 @@ function SharedSession({ activeMembers, activeSteer, canApplySteer, runActive, q
               }
             }}
             placeholder={disabled ? "This task is complete." : "Ask Hive or @mention a teammate…"}
+            readOnly={sending}
             rows={1}
-            value={draft}
+            value={draft?.body ?? ""}
           />
             <Button
-              aria-label="Send message"
+              aria-label={sending ? "Sending message" : draft?.status === "unconfirmed" ? "Retry message" : "Send message"}
               className="size-8 rounded-lg"
-              disabled={disabled || !draft.trim()}
+              disabled={disabled || !draft?.body.trim() || sending}
               onClick={submit}
               size="icon"
             >
-              <Send className="size-3.5" />
+              {sending ? <LoaderCircle className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
             </Button>
           </div>
         </div>
+        {draft?.status === "unconfirmed" ? <p className="mt-1.5 px-1 text-[11px] text-[#737373]" role="status">Delivery unconfirmed. Retry when connected.</p> : null}
       </div>
     </section>
   );
@@ -888,33 +917,8 @@ function RunBar({ activeSteer, completed, runActive, queueCount, repository, sta
   );
 }
 
-type SharedProps = {
-  activeMembers: MemberId[];
-  activeSteer?: ActiveSteer;
-  canApplySteer: boolean;
-  runActive: boolean;
-  queued: boolean;
-  queuedBy?: MemberId;
-  queuePosition?: number;
-  steered: boolean;
-  steeredBy?: MemberId;
-  currentMember: MemberId;
-  disabled: boolean;
-  members: TeamMember[];
-  messages: ChatMessage[];
-  stage: RunStage;
+type SharedProps = Parameters<typeof SharedSession>[0] & {
   tab: WorkspaceTab;
-  typingMembers: MemberId[];
-  steeringQueue: SteeringQueueItem[];
-  workspaceAnnotation: string;
-  onAnnotate: (messageId: string, body: string) => void;
-  onMoveSteer: (steerId: string, direction: "up" | "down") => void;
-  onRemoveSteer: (steerId: string) => void;
-  onSteer: () => void;
-  onSteerMessageAnnotation: (messageId: string, annotationId: string) => void;
-  onSend: (message: string) => void;
-  onTyping: (typing: boolean) => void;
-  onAdvance: () => void;
   onTabChange: (tab: WorkspaceTab) => void;
 };
 
@@ -964,9 +968,12 @@ export function HiveWorkspace({
       window.location.reload();
     });
   }, []);
-  const annotate = useCallback((messageId: string, body: string) => {
-    void dispatch({ type: "annotate-message", messageId, body });
-  }, [dispatch]);
+  const annotate = useCallback(async (messageId: string, { body, clientId }: MessageSubmission) => {
+    const nextSnapshot = await dispatch({ type: "annotate-message", messageId, body, clientId });
+    return nextSnapshot?.session.messages.find((message) => message.id === messageId)?.annotations?.some(
+      (annotation) => annotation.authorId === currentMember.id && annotation.clientId === clientId && annotation.body === body,
+    ) ?? false;
+  }, [currentMember.id, dispatch]);
   const steer = useCallback(() => { void dispatch({ type: "steer-agent" }); }, [dispatch]);
   const steerMessageAnnotation = useCallback((messageId: string, annotationId: string) => {
     void dispatch({ type: "steer-message-annotation", messageId, annotationId });
@@ -977,16 +984,18 @@ export function HiveWorkspace({
   const removeSteer = useCallback((steerId: string) => {
     void dispatch({ type: "remove-queued-steer", steerId });
   }, [dispatch]);
-  const send = useCallback((body: string) => {
+  const send = useCallback(async ({ body, clientId }: MessageSubmission) => {
     if (
       repository &&
       !isDirectedAtTeammate(body, currentMember.id, teamMembers)
     ) {
       setTab("runs");
     }
-    void dispatch({ type: "send-message", body }).then((nextSnapshot) => {
-      if (nextSnapshot?.session.stage === "review") setTab("diff");
-    });
+    const nextSnapshot = await dispatch({ type: "send-message", body, clientId });
+    if (nextSnapshot?.session.stage === "review") setTab("diff");
+    return nextSnapshot?.session.messages.some(
+      (message) => message.memberId === currentMember.id && message.clientId === clientId && message.body === body,
+    ) ?? false;
   }, [currentMember.id, dispatch, repository, teamMembers]);
   const advance = useCallback(() => {
     const action = canApplySteer
@@ -1008,6 +1017,7 @@ export function HiveWorkspace({
   }, [dispatch, lifecycle]);
 
   const shared = useMemo<SharedProps>(() => ({
+    sessionId,
     activeMembers,
     activeSteer,
     canApplySteer,
@@ -1035,7 +1045,7 @@ export function HiveWorkspace({
     onTyping: setTyping,
     onAdvance: advance,
     onTabChange: setTab,
-  }), [activeMembers, activeSteer, advance, annotate, annotation.queuedBy, annotation.steeredBy, annotation.text, canApplySteer, currentMember.id, lifecycle, messages, moveSteer, queuePosition, queued, removeSteer, runActive, send, setTyping, stage, steer, steerMessageAnnotation, steered, steeringQueue, tab, teamMembers, typingMembers]);
+  }), [activeMembers, activeSteer, advance, annotate, annotation.queuedBy, annotation.steeredBy, annotation.text, canApplySteer, currentMember.id, lifecycle, messages, moveSteer, queuePosition, queued, removeSteer, runActive, send, sessionId, setTyping, stage, steer, steerMessageAnnotation, steered, steeringQueue, tab, teamMembers, typingMembers]);
 
   return (
     <main className="flex h-dvh min-h-[560px] flex-col overflow-hidden bg-[#fafafa] text-[#171717]">

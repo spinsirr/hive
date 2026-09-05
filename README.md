@@ -39,6 +39,8 @@ workspace evidence → changed files, command output, and real git diff
 - GitHub identity alone cannot create a Hive account. The login boundary admits existing members, the verified GitHub App owner, or a valid seven-day invitation to an existing task; account/session writes happen only after admission. Task access still requires explicit task membership.
 - Postgres row locks serialize simultaneous teammate input.
 - The same locked state transition grants the right to start a run; matching request timestamps do not grant execution.
+- Messages and annotations carry a client submission ID. Retrying an unconfirmed submission reuses that ID; the locked transition does not duplicate an already accepted message or start another run. Acknowledgement means the contribution was saved, not that the agent succeeded.
+- Unsent drafts survive refresh within the current browser tab, isolated by task and member. Failed delivery keeps the draft for explicit retry; background synchronization can confirm an accepted contribution, but never automatically resends it. If browser storage is unavailable, drafts remain in memory only.
 - Browser snapshots never expose the opaque Codex resume checkpoint.
 - Each repository-backed task maps to a persistent named Vercel Sandbox and Codex session; Neon remains the canonical team history if compute disappears.
 - GitHub App credentials stay server-side. Sandbox receives a fresh installation token limited to the selected repository.
@@ -87,7 +89,7 @@ pnpm exec tsc --noEmit
 pnpm exec next build --webpack
 ```
 
-The current suite covers invitation-only admission, signed invitation expiry and scope, local OAuth return paths, the multiplayer state machine, attributed prompts, safe-boundary queue execution and recovery, completed-session immutability, persistent sandbox selection, failure checkpoints, and IME-safe message submission. Deterministic tests and local UI fixtures do not replace the still-pending two-account production test; see the evidence log below.
+The current suite covers invitation-only admission, signed invitation expiry and scope, local OAuth return paths, the multiplayer state machine, attributed prompts, safe-boundary queue execution and recovery, completed-session immutability, persistent sandbox selection, failure checkpoints, IME-safe submission, retry deduplication, and draft recovery. Deterministic tests and local UI fixtures do not replace the still-pending two-account production test; see the evidence log below.
 
 ## Key decisions
 
@@ -98,6 +100,7 @@ The current suite covers invitation-only admission, signed invitation expiry and
 - **Reuse the harness.** AI SDK Harness, Codex, and Vercel Sandbox are infrastructure; multiplayer control is the product.
 - **Artifacts over summaries.** Workspace navigation exposes the verifiable diff, bounded changed-file snapshots, and the latest run's command output; repository setup stands on its own before a run. Each artifact is the workspace surface itself, without decorative cards or duplicated panel chrome.
 - **Quiet failures.** Errors appear as compact system state while the human prompt and resumable checkpoint remain intact.
+- **Delivery is not execution.** Preserve an unconfirmed draft without repeating accepted work. Retry identity is scoped to a task and author; an explicit task reset also clears the transcript used for deduplication.
 
 ## AI collaboration
 
