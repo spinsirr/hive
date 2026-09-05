@@ -104,36 +104,35 @@ function HiveMark({ className, light = false }: { className?: string; light?: bo
   );
 }
 
-function MemberStack({
+function OnlineMembers({
   activeMembers,
   members,
 }: {
   activeMembers: MemberId[];
   members: TeamMember[];
 }) {
+  const onlineMembers = members.filter((member) => activeMembers.includes(member.id));
+
+  if (onlineMembers.length === 0) return null;
+
   return (
-    <div className="flex items-center">
-      {members.map((member, index) => {
-        const active = activeMembers.includes(member.id);
-        return (
-          <span
-            className={cn(
-              "relative grid size-7 place-items-center rounded-full border border-[#d8d8d8] bg-white text-[9px] font-semibold",
-              index > 0 && "-ml-1.5",
-              index === 0 && "bg-[#171717] text-white",
-            )}
-            key={member.id}
-            title={`${member.name}${active ? " · online" : " · away"}`}
-          >
-            {member.initials}
-            <span className={cn("absolute -bottom-0.5 -right-0.5 size-2 rounded-full border border-white", active ? "bg-[#171717]" : "bg-[#cfcfcf]")} />
-          </span>
-        );
-      })}
-      <span className="relative -ml-1.5" title="Hive · active">
-        <HiveMark className="size-7 rounded-full border border-[#d8d8d8]" light />
-        <span className="absolute -bottom-0.5 -right-0.5 size-2 rounded-full border border-white bg-[#171717]" />
-      </span>
+    <div aria-label="Online in this task" className="flex items-center" role="group">
+      {onlineMembers.map((member, index) => (
+        <span
+          aria-label={`${member.name} · online`}
+          className={cn(
+            "relative grid size-7 place-items-center rounded-full border border-[#d8d8d8] bg-white text-[9px] font-semibold",
+            index > 0 && "-ml-1.5",
+            index === 0 && "bg-[#171717] text-white",
+          )}
+          key={member.id}
+          role="img"
+          title={`${member.name} · online`}
+        >
+          {member.initials}
+          <span aria-hidden="true" className="absolute -bottom-0.5 -right-0.5 size-2 rounded-full border border-white bg-[#171717]" />
+        </span>
+      ))}
     </div>
   );
 }
@@ -236,7 +235,7 @@ function ProductHeader({
           <span className="hidden sm:inline">{currentMember.shortName}</span>
         </Button>
         <div className="hidden sm:block">
-          <MemberStack activeMembers={activeMembers} members={members} />
+          <OnlineMembers activeMembers={syncError ? [] : activeMembers} members={members} />
         </div>
         <Button
           aria-label="Reset session"

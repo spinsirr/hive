@@ -320,6 +320,12 @@ Be explicit: GitHub write-back is not built; organization administration is not 
 - All 92 existing tests plus the seven runner regressions, generated-type/TypeScript checking, ESLint, and diff validation passed. The default local Turbopack build was blocked first by font download access and then by its local port-binding requirement; the supported production Webpack build passed after permitting font access. No production build configuration or billing setting was changed.
 - Functional commit `414b2b9` reached Ready / Production Current in deployment `B5ZNbF9PZgKbRLuZKVzKz1prHHVN` (33 seconds), with the canonical domain assigned. Independent unauthenticated checks returned 200 for the homepage, 401 for the formal task API, and 404 for the removed local fixture route. On reinspection the formal task was already Completed with its composer disabled; this turn did not complete or reopen it. Requested permission to reopen before sending any new agent request. No model calls or two-account pass are claimed for this verification.
 
+### 2026-09-05 — Human presence is not agent status
+
+- The header previously rendered every admitted teammate and an always-active Hive avatar, even when the task reported only one person online. It now derives avatars from the existing presence snapshot, omits offline people, and hides the stale strip when the client reports a connection error. Hive's execution state remains in the conversation and run UI; admission and mention suggestions still use the full member roster.
+- Direct rendering of the actual avatar component verified one and two online people, departure, empty presence, unknown and duplicate IDs, accessible names, and no agent avatar. The temporary local browser fixture could not load because the existing development server stopped responding; it was removed without restarting that server. These controlled checks are not a real two-account presence test.
+- All 92 tests plus the seven runner regressions, generated-type/TypeScript checking, ESLint, the production Webpack build, and diff validation passed before release.
+
 ## Questions to prepare for
 
 - How is Hive different from tagging Claude in a shared channel?
