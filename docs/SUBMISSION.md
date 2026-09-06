@@ -19,9 +19,9 @@ I built Hive as a focused Next.js full-stack product. GitHub sign-in establishes
 
 ## Readiness gates
 
-- Complete the two-real-account annotation → steer → queue → execution sequence and inspect the same result in both browsers.
-- Verify actual incremental text delivery, reconnect during generation, and continuation after failure. Do not describe fixture tests as production evidence.
-- Preserve and recheck the real coding result before the demo. The accessibility diff and file snapshot remain; the combined checks passed on September 6, but later text-only turns leave the latest-turn Runs view empty. Run one fresh bounded combined check before rehearsal and inspect its real output. Do not Reset the task for a cleaner transcript.
+- The two-real-account annotation → steer → queue → execution sequence passed on September 6 at 07:09 UTC, including the corrected attribution case. Cross-account completion/reopening also passed; retain these results for rehearsal.
+- Measure actual incremental character delivery before claiming the typing effect has been visually verified. Failed-run continuation, offline-page reload recovery, and no-reload recovery of a missed teammate message have passed. The latter does not measure interrupted model deltas. Do not describe fixture tests as production evidence.
+- Preserve and recheck the real coding result before the demo. The accessibility diff and file snapshot remain; the fresh 07:33 UTC combined check passed and is inspectable in Runs. A later text-only turn would replace that latest-turn command view, so inspect command evidence before applying a text-only steer. Do not Reset the task for a cleaner transcript.
 - Rehearse the [20-minute route](PRESENTATION_NOTES.md#demo-sequence-20-minutes) with a timer, including problem → solution → code → AI journey.
 - Confirm the presentation date and time. Send all four items at least 24 hours beforehand; do not invent a calendar deadline before the presentation is scheduled.
 - Obtain the owner's explicit approval before changing repository visibility or sending materials. No invite token, credential, or private participant information belongs in the public README.
