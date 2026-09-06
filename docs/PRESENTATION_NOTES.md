@@ -83,29 +83,43 @@ Current preflight: the actual accessible-label diff and changed-file snapshot re
 - Keep a current real successful result available as evidence, clearly labeled with its run and checks. If the result is no longer present, the rehearsal gate fails; a dated note is not a substitute for inspectable Runs, Files, and Diff. Do not pass a replay off as fresh execution. If a live attempt hits the known 429, show the retained request and queue and explain the failed attempt accurately.
 - Reconfirm the presentation time and submission deadline. The repository is still private and final access/publication needs the owner's approval.
 
+Read-only route preflight passed on September 6: the owner navigated from the homepage back to the formal task, loaded the actual read-only file, inspected the retained diff and expanded successful command, then returned to the correctly attributed response. That sequence took 170 seconds including tool round-trips. Joseph's separate browser still showed the same task, real identity, latest answer, and corrected annotation attribution. This is a navigation/evidence check, **not** a 20-minute narrated rehearsal or a new live queue execution.
+
 ### 0–3 min — Problem
 
 Explain how a coding task currently begins in one person’s private agent context and becomes collaborative only after work is produced. Emphasize lost intent, delayed review, and unclear authorship.
 
 ### 3–10 min — Product
 
-1. Open the shared task in both authenticated browsers. Establish the author and the two accessible-label states; briefly explain that attaching its one repository was a separate step, not a condition of creating the task.
-2. From Spencer's browser, use the actual mention suggestion to send `@josephmreb1 should the queued label retain the author's name?`. Both browsers should show the message without starting a Hive run.
-3. From Joseph's browser, annotate the code-task message: “Please keep the author's name in the queued label too.” First show that this remains discussion only.
-4. The code change already exists: show its real diff, then use a bounded read-only check for the live coordination segment. While it is visibly running, promote Joseph's annotation with **Queue steer**; show its author and position without interrupting the current turn. Do not claim active-run behavior if the turn finished before the click.
-5. At the safe boundary, inspect the actual Runs result and output in both browsers before explicitly applying the next steer. Confirm the annotation author's identity in the shared answer, then inspect the retained file and diff. A text-only follow-up has no commands of its own, so explain that Runs is latest-turn evidence. Do not present the read-only check as a fresh implementation. If another run is needed before the demo, use one bounded combined check, not repeated speculative retries.
-6. With collaborators' agreement, complete the task, refresh to show persisted read-only state, then reopen it. Preserve the task and its evidence; do not Reset it for a cleaner demo.
+1. Open the formal task in both authenticated browsers. Point out the two human identities; Hive is not counted as an online person. Briefly explain that the attached repository was selected after the task began.
+2. Show the actual Diff, Files, and expanded Runs **before** starting anything. State that this code change already exists. Read the test count from the recorded command, not from memory or the agent's summary.
+3. From Spencer's browser, type `@`, choose the real Joseph suggestion, and send `@josephmreb1 should the queued label retain the author's name?`. Both browsers should show it without an agent run. Keep the browser's Find control available to locate the original code-task message beginning `请在当前连接的 spinsirr/hive 仓库里完成这一个小修改`; do not clear the historical transcript.
+4. Joseph annotates that code-task message with the exact read-only wording below and saves it. Show that saving alone does not start Hive. Pre-position Joseph's browser on the new annotation before Spencer starts the one combined check below.
+5. While the check is visibly running, Joseph clicks **Queue steer** once. Both browsers must show one Joseph-attributed queue item with Apply disabled. If the run already finished, identify that honestly as an immediate steer case; do not keep rerunning checks to manufacture the timing window.
+6. Once the run actually ends, inspect the real Runs command and output before the owner clicks Apply. Then confirm that Hive identifies Joseph as the annotation author, despite the owner applying it. Show the retained Diff and Files. The text-only follow-up has no commands of its own; explain the latest-turn Runs boundary.
+7. If the run is finished and the queue empty, complete the task with the collaborators' agreement, refresh its read-only state, then reopen. Do not Reset or approve changes just to advance the demo.
+
+**Joseph's annotation — discussion first, then explicit steer:**
+
+> 排队时的 accessible label 也要体现 Queue steer，并保留批注作者名。现有改动已完成；请只读核对这个条件，回复时说明提出这条批注的人是谁，不要改文件或重复运行测试。
+
+**Spencer's check — one command against the existing change:**
+
+> 请只读复核现有的无障碍标签改动。本轮只调用一次 bash，原样执行 pnpm test && pnpm typecheck && git diff --check，等命令完成后简短报告真实结果与退出码。不要改文件、安装依赖、提交、推送、部署、读取凭据或吞掉失败退出码。队友的待处理批注由我们在本轮结束后的安全边界另行 Apply，不要提前处理。
+
+**If execution is slow or fails:** At minute 9, move to the code explanation with the real state still visible. A 429 is a failed attempt, not a pass; inspect what was actually retained and do not automatically retry, clear the queue, or substitute old command results for this turn. If the fresh live segment cannot finish, explicitly distinguish the previously verified two-account sequence from what happened today. Do not describe the current complete-message updates as token streaming.
 
 The live sequence above remains subject to a timed rehearsal. The original attribution failure is now reproduced, fixed with regressions, and retested successfully in the same two-account path. Keep that honest failure-to-fix story; do not rewrite the earlier failed run as a pass.
 
 ### 10–15 min — Code
 
-- [`src/lib/task-session.ts`](../src/lib/task-session.ts): pure multiplayer state machine and wake-up boundaries.
-- [`src/lib/task-session-store.ts`](../src/lib/task-session-store.ts): Postgres membership, row locking, and durable snapshots.
-- [`src/app/api/sessions/[sessionId]/route.ts`](../src/app/api/sessions/[sessionId]/route.ts): authenticated mutation boundary and planning-vs-coding routing.
-- [`src/lib/hive-runner.ts`](../src/lib/hive-runner.ts): Harness/Codex lifecycle, persistent Sandbox, checkpointing, and artifact collection.
-- [`src/app/api/github/repositories/route.ts`](../src/app/api/github/repositories/route.ts): server-validated repository attachment.
-- [`src/hooks/use-shared-session.ts`](../src/hooks/use-shared-session.ts): authenticated WebSocket subscription, presence heartbeat, reconnect snapshots, and offline state.
+Keep the walkthrough to three questions, with the actual functions open:
+
+- **Who may start the next run?** `reduceTaskSession` / `canApplyNextSteer` in [`task-session.ts`](../src/lib/task-session.ts): discussion does not execute, new agent-directed work queues, and Apply waits for the current turn.
+- **What if both people click?** `applyTaskSessionAction` in [`task-session-store.ts`](../src/lib/task-session-store.ts): the row lock covers the transition and grants execution once; a browser's timestamp is not a lock.
+- **Whose instruction is this?** `buildHiveRunInput` in [`hive-prompt.ts`](../src/lib/hive-prompt.ts): annotation author, parent-message author, promoter, and execution starter remain distinct. Use the observed attribution bug and its regression as evidence.
+
+For Q&A, keep [`hive-runner.ts`](../src/lib/hive-runner.ts) ready for Codex/Sandbox checkpoints and failed-run artifacts, the [session route](../src/app/api/sessions/[sessionId]/route.ts) for authenticated mutations, the [repository route](../src/app/api/github/repositories/route.ts) for validated attachment, and [`use-shared-session.ts`](../src/hooks/use-shared-session.ts) for WebSocket recovery. Do not attempt a tour of every module in five minutes.
 
 ### 15–18 min — AI journey
 
@@ -390,6 +404,14 @@ Be explicit: GitHub write-back is not built; organization administration is not 
 - Official source for the pinned Codex 0.149.1 SDK/JSONL processor shows the missing event boundary: public message starts/deltas are not forwarded, while completed messages are. The currently published harness adapter 1.0.104 still uses this SDK path; it was inspected, not installed. OpenAI Docs identifies app-server's separate public-text delta events. See the [full diagnosis and sources](STREAMING_DIAGNOSIS.md).
 - The existing run's actual combined command remained Passed, with 92 passing tests and successful type generation/TypeScript. The actual accessible-label diff remained. Corrected the current README/submission claims rather than presenting the controlled stream test as production proof. No production implementation, dependency, model, credential, billing setting, history, or workspace artifact changed. A native-event transport change versus explicit deferral is an owner scope decision; neither is silently assumed.
 - Local validation passed: 98 unit tests, seven failed-run scenarios, the pre-repository input regression, ESLint, diff validation, and 23 relative documentation links/anchors. The differential diagnostic passed with incremental source events and intentionally failed the same assertion with completed-only source events. No production fix or successful native-delta retest is claimed.
+
+### 2026-09-06 — Submission and route preflight
+
+- Verified commit `0c9ffec` has a successful Vercel status for deployment `Gic5HmK1shE3hY5haysYtQQZHf5r`. The GitHub API still reports the repository as private. No repository-visibility change or external submission was made.
+- Revisited the live homepage, its formal-task link, loaded read-only Files, retained real Diff, expanded successful Runs, and the corrected Joseph-authored answer. The owner-side read-only walk took 170 seconds including tool round-trips. The separate native Chrome window was confirmed as Joseph on the same task, with the corrected author response and latest transcript visible. No message, annotation, steer, model run, approval, or lifecycle mutation was made for this check; the owner still had 18 agent replies and an enabled Complete control.
+- Tightened the presentation's live segment to use the already verified read-only annotation wording, one combined check, explicit per-step evidence, and an honest slow/failure path. Reduced the five-minute code walkthrough to execution gating, row-lock ownership, and authorship, keeping runtime details for Q&A. These preparation changes do not establish a completed narrated rehearsal.
+- A read-only content-pattern scan covered all 55 commits reachable from local refs for common GitHub/OpenAI token formats, private-key markers, and password-bearing Postgres URLs. Its only candidate path was `.env.example`; all 108 URL passwords across its 54 historical versions were recognized placeholders. No matching credential value was printed. This is a bounded pattern check, not a complete secret audit, a scan of inaccessible remote refs, or permission to publish.
+- Still needed: the owner's Codex streaming scope decision, summary review, presentation date/time, full narrated rehearsal, and explicit authorization for repository publication and sending the four items. Reviewer invitation/sign-in must be checked with the eventual reviewer access; an existing signed-in owner is not that test.
 
 ## Questions to prepare for
 

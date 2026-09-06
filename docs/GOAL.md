@@ -20,6 +20,7 @@ The current user-provided goal explicitly excludes PR creation and multi-team ma
 - [x] Prepare the README, one-to-two-paragraph summary, decision log, and AI collaboration evidence; the [submission packet](SUBMISSION.md) links the material and explicitly lists unverified claims.
 - [ ] Have the owner review the summary in their own words and update verification results after the remaining live checks.
 - [ ] Resolve the failed incremental-text acceptance check: the current Codex event source sends completed messages only. Implement and retest native deltas, or obtain an explicit scope decision to defer them. See [diagnosis](STREAMING_DIAGNOSIS.md).
+- [x] Check the read-only presentation navigation and retained artifacts on production; the 170-second owner-side preflight and separate Joseph identity/response check are recorded in the evidence log. This is not the full narrated rehearsal below.
 - [ ] Rehearse the approximately 20-minute demo and verify the deployed app and submission links.
 - [ ] With the user's approval, make the repository public and send all four submission items at least 24 hours before the presentation.
 
