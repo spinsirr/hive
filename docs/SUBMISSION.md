@@ -21,7 +21,7 @@ I built Hive as a focused Next.js full-stack product. GitHub sign-in establishes
 
 - Complete the two-real-account annotation → steer → queue → execution sequence and inspect the same result in both browsers.
 - Verify actual incremental text delivery, reconnect during generation, and continuation after failure. Do not describe fixture tests as production evidence.
-- Retain a current real coding result for the demo; the prior successful accessibility diff is historical evidence and is not visible in the latest inspected task state.
+- Preserve and recheck the current real coding result before the demo: the September 6 continuation retained the accessibility diff, file snapshot, and passing combined check in Runs across refresh. Do not Reset the task for a cleaner transcript.
 - Rehearse the [20-minute route](PRESENTATION_NOTES.md#demo-sequence-20-minutes) with a timer, including problem → solution → code → AI journey.
 - Confirm the presentation date and time. Send all four items at least 24 hours beforehand; do not invent a calendar deadline before the presentation is scheduled.
 - Obtain the owner's explicit approval before changing repository visibility or sending materials. No invite token, credential, or private participant information belongs in the public README.

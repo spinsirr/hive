@@ -8,7 +8,7 @@ The current user-provided goal explicitly excludes PR creation and multi-team ma
 
 ## Completion checklist
 
-- [x] Complete a small change in a real attached repository; verify the checks, Runs, Files, and Diff (formal task, 2026-09-05 05:22 UTC; 27 sandbox-revision tests, TypeScript, and diff check passed after continuation).
+- [x] Complete a small change in a real attached repository; verify the checks, Runs, Files, and Diff (latest: formal task, 2026-09-06 05:22 UTC; 92 sandbox-revision tests, TypeScript, and diff check passed in one recorded command after continuation; artifacts survived refresh).
 - [x] Make Invite and Complete accessible at narrow viewport widths (375px local interaction fixture; production controls verified at 737px).
 - [ ] Verify two real GitHub users sharing a task: attribution, annotations, steering during a run, queue ordering, and synchronization.
 - [ ] Verify refresh, reconnect, and continuation after a failed run preserve messages and execution context.
@@ -24,9 +24,9 @@ The current user-provided goal explicitly excludes PR creation and multi-team ma
 
 Record completed checks and their limitations in `PRESENTATION_NOTES.md`. Distinguish implementation from live verification. Two-user testing requires two real authenticated accounts.
 
-## Rehearsal evidence to re-establish
+## Current rehearsal evidence
 
-The formal task no longer displayed the earlier successful diff on the latest production inspection. Preserve the current task state and rerun a genuine, bounded coding/review exercise for the rehearsal; do not reinsert old or fixture artifacts. The earlier checks above remain dated historical evidence. Current same-account refresh recovery is not a substitute for the remaining two-account and in-flight reconnect checks.
+The formal task now retains a genuine accessible-label change, its changed-file snapshot, and a passing `pnpm test && pnpm typecheck && git diff --check` record from September 6. The change made before a 429 survived the failed run and subsequent successful continuation. Production Files rendered colored, read-only Monaco; the added Diff row was green. Preserve these artifacts and inspect them again before rehearsal; do not Reset the task or substitute fixture artifacts. This same-account verification does not complete the remaining two-account and network-loss checks.
 
 ## Remaining boundaries
 
