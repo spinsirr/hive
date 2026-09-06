@@ -14,6 +14,7 @@ export async function runHiveConversation(
   actor: MemberId,
   actorName?: string,
   onText: (body: string) => void = () => undefined,
+  steer?: string,
 ) {
   try {
     const result = streamText({
@@ -28,7 +29,7 @@ export async function runHiveConversation(
       prompt: buildHivePrompt(
         session,
         actor,
-        undefined,
+        steer,
         actorName,
         "planning",
       ),

@@ -28,6 +28,8 @@ Record completed checks and their limitations in `PRESENTATION_NOTES.md`. Distin
 
 The formal task now retains a genuine accessible-label change, its changed-file snapshot, and a passing `pnpm test && pnpm typecheck && git diff --check` record from September 6. The change made before a 429 survived the failed run and subsequent successful continuation. Production Files rendered colored, read-only Monaco; the added Diff row was green. Preserve these artifacts and inspect them again before rehearsal; do not Reset the task or substitute fixture artifacts. This same-account verification does not complete the remaining two-account and network-loss checks.
 
+The subsequent two-account check verified Joseph's discussion-only annotation, explicit promotion during a real check, disabled Apply until a safe boundary, and a new Joseph message queuing behind the active steer. The agent then misidentified the annotation author as the parent message author. Explicit authorship metadata and pre-repository steer forwarding are now covered by regressions, but the original live case must be repeated after release. Preserve the pending Joseph message; inspect its status before applying or sending anything again. The two-account completion gate remains open.
+
 ## Remaining boundaries
 
 One team, one task per session, at most one repository attached at any time after creation. Agent conversation remains primary and annotations require explicit promotion to steer. Multi-team administration remains outside scope. Keep the repository private until the user approves publication; do not send submission messages without authorization.

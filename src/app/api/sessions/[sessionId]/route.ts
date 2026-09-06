@@ -7,10 +7,8 @@ import { runHiveConversation } from "@/lib/hive-conversation";
 import { hiveErrorCopy } from "@/lib/hive-error-copy";
 import { isClientSubmissionId } from "@/lib/message-draft";
 import { runHiveCodingTask } from "@/lib/hive-runner";
-import {
-  resolveMember,
-  type TaskSessionAction,
-} from "@/lib/task-session";
+import { buildHiveRunInput } from "@/lib/hive-prompt";
+import type { TaskSessionAction } from "@/lib/task-session";
 import { isTaskSessionId } from "@/lib/task-session-id";
 import { publicTaskSessionSnapshot } from "@/lib/task-session-snapshot";
 import {
@@ -169,12 +167,6 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
           steeredAt: actionAt,
         }
       : undefined;
-  const annotatedMessage =
-    action.type === "steer-message-annotation"
-      ? snapshot.session.messages.find(
-          (message) => message.id === action.messageId,
-        )
-      : undefined;
   const activeSteer =
     action.type === "apply-next-steer"
       ? snapshot.session.activeSteer
@@ -186,39 +178,18 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
   );
 
   try {
-    const steer =
-      action.type === "steer-agent"
-        ? snapshot.session.annotation.text
-        : action.type === "steer-message-annotation" && messageAnnotation
-          ? [
-              messageAnnotation.body,
-              annotatedMessage?.body
-                ? `Attached to teammate message: ${annotatedMessage.body}`
-                : null,
-            ]
-              .filter(Boolean)
-              .join("\n")
-          : action.type === "apply-next-steer" && activeSteer
-            ? [
-                activeSteer.body,
-                activeSteer.sourceLabel
-                  ? `Source: ${activeSteer.sourceLabel}`
-                  : null,
-              ]
-                .filter(Boolean)
-                .join("\n")
-            : undefined;
-    const runActor =
-      action.type === "apply-next-steer" && activeSteer
-        ? activeSteer.authorId
-        : action.actor;
-    const actorName = resolveMember(runActor, snapshot.members).name;
+    const { actor: runActor, actorName, steer } = buildHiveRunInput(
+      snapshot.session,
+      action,
+      snapshot.members,
+    );
     if (!snapshot.session.repository) {
       const reply = await runHiveConversation(
         snapshot.session,
         runActor,
         actorName,
         writer.push,
+        steer,
       );
       await writer.close();
       return sessionResponse(
