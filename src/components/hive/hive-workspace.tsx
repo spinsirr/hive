@@ -768,10 +768,7 @@ function RunsPane({ commands }: { commands: WorkspaceState["commands"] }) {
       <div className="grid h-full place-items-center bg-[#fafafa] p-8 text-center">
         <div>
           <ListChecks className="mx-auto size-6 text-[#737373]" />
-          <p className="mt-3 text-sm font-medium">No runs yet</p>
-          <p className="mt-1 text-xs text-[#8f8f8f]">
-            Commands executed by Hive will appear here for the team to review.
-          </p>
+          <p className="mt-3 text-sm font-medium">No commands in this turn</p>
         </div>
       </div>
     );
