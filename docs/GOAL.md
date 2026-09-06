@@ -30,6 +30,8 @@ The formal task now retains a genuine accessible-label change, its changed-file 
 
 The subsequent two-account check verified Joseph's discussion-only annotation, explicit promotion during a real check, disabled Apply until a safe boundary, and a new Joseph message queuing behind the active steer. The agent then misidentified the annotation author as the parent message author. Explicit authorship metadata and pre-repository steer forwarding are now covered by regressions, but the original live case must be repeated after release. Preserve the pending Joseph message; inspect its status before applying or sending anything again. The two-account completion gate remains open.
 
+GitHub reports a successful Vercel deployment for the fix in `df83d15`. Verify the canonical alias is serving that version or a newer descendant before the live retest; deployment success alone does not prove the corrected behavior. The GitHub connector also confirmed the repository remains private.
+
 ## Remaining boundaries
 
 One team, one task per session, at most one repository attached at any time after creation. Agent conversation remains primary and annotations require explicit promotion to steer. Multi-team administration remains outside scope. Keep the repository private until the user approves publication; do not send submission messages without authorization.
