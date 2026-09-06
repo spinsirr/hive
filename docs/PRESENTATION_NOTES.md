@@ -74,7 +74,7 @@ This correction matters: the team is the durable collaboration space; a session 
 
 Use the [formal accessibility task](https://hive-roan-mu.vercel.app/sessions/clarify-annotation-to-steer-inte-o5uwf0) attached to `spinsirr/hive`. The concrete outcome is an author-attributed accessible label on the annotation action: `Steer Hive for <author>` when idle and `Queue steer for <author>` while running or queued. Do not introduce a separate mobile-navigation project for the presentation.
 
-Current preflight: the actual accessible-label diff and changed-file snapshot remain. The latest combined check started at 07:33 UTC on September 6 and passed; the owner expanded its actual 92-test/typecheck output at 07:35. Both accounts also inspected the preceding successful check and workspace. Recheck those artifacts before rehearsal. Runs contains only the latest turn's commands: inspect the command before applying a text-only steer, and do not treat a dated note or chat summary as a current Runs artifact. Do not Reset the task or describe a read-only follow-up as a new implementation.
+Current preflight: the actual accessible-label diff and changed-file snapshot remain. The latest combined check started at 07:40 UTC on September 6 and passed; the owner expanded its actual 92-test/typecheck output after the streaming diagnosis. Both accounts also inspected the preceding successful check and workspace. Recheck those artifacts before rehearsal. Runs contains only the latest turn's commands: inspect the command before applying a text-only steer, and do not treat a dated note or chat summary as a current Runs artifact. Do not Reset the task or describe a read-only follow-up as a new implementation.
 
 ### Rehearsal gate — not yet complete
 
@@ -123,7 +123,7 @@ Show the brainstorm as evidence of collaboration rather than a perfect linear pl
 
 ### 18–20 min — Boundaries
 
-Be explicit: GitHub write-back is not built; organization administration is not built; sandbox disaster recovery from the canonical transcript is a next layer. Two people collaborating with and steering one real coding agent has now passed the bounded production acceptance sequence. No-reload recovery of a missed human message also passed; interrupted model-delta recovery, measured character cadence, and the timed rehearsal remain separate unverified claims.
+Be explicit: GitHub write-back is not built; organization administration is not built; sandbox disaster recovery from the canonical transcript is a next layer. Two people collaborating with and steering one real coding agent has now passed the bounded production acceptance sequence. No-reload recovery of a missed human message also passed. Character streaming failed its continuous observation: the current Codex SDK event source only supplies completed agent messages. It is a diagnosed limitation, not an unobserved pass. Interrupted model-delta recovery and the timed rehearsal remain unverified.
 
 ## What is real today
 
@@ -143,7 +143,7 @@ Be explicit: GitHub write-back is not built; organization administration is not 
 
 ## Current boundaries before final submission
 
-- Complete the incremental-delivery timing check and timed rehearsal. Two-account queue execution, attribution, shared lifecycle, failed-run continuation, offline-page reload recovery, and automatic recovery of a missed human message have dated production evidence below.
+- Resolve the [Codex incremental-delivery limitation](STREAMING_DIAGNOSIS.md) with the owner and complete the timed rehearsal. Two-account queue execution, attribution, shared lifecycle, failed-run continuation, offline-page reload recovery, and automatic recovery of a missed human message have dated production evidence below.
 - Retain and rehearse an inspectable real coding result; do not rely on artifacts that are no longer present.
 - Branch push, PR creation, and organization administration are excluded by the current [goal](GOAL.md). Do not spend the remaining work on a separate delivery workflow.
 - Match local credentials to the intended environment before using them as evidence. Previous temporary-database cleanup is a separate owner-controlled infrastructure action, not a reason to delete data during this goal.
@@ -382,6 +382,14 @@ Be explicit: GitHub write-back is not built; organization administration is not 
 - Restored No throttling without reloading the page. At 07:28:47 UTC Joseph displayed the previously missing message once and retained the draft. The Network panel showed a new `wss://.../live` request with status 101 and an open connection; filtering the panel later exposed the additional live-connection attempts from the test interval. This verifies automatic recovery of a human contribution without waking or resending agent work. It does not measure recovery of a partially delivered model reply.
 - Cleared only the test draft without sending it, restored the empty Network filter and normal network setting, and closed DevTools. A final explanation-plus-check request started at 07:33. The real combined command passed with `tests 92 / pass 92 / fail 0`, successful route-type generation/TypeScript, and final exit code 0; its output was expanded at 07:35 and left inspectable in Runs. The stream observation missed intermediate character counts, so no typing-cadence pass is claimed and no additional model retries were made merely to obtain one.
 - The documentation-only acceptance update passed all 98 local unit tests, seven failed-run scenarios, the real pre-repository input regression, ESLint, diff validation, and all 19 relative documentation links/anchors. Repository metadata/history filename checks found only the tracked `.env.example` and no committed `.pem`, `.key`, or local/production environment files; this limited check is not a complete secret audit or authorization to publish. The repository remains private and the materials remain unsent.
+
+### 2026-09-06 — Continuous text observation and upstream boundary
+
+- One continuous browser observation followed the existing 07:40:50 UTC request. Its first visible reply at 07:41:20.941 already contained 1,249 characters including the final check summary; Complete was still disabled. At 07:41:27.417 the finished rendering was 1,257 characters. The assertion requiring substantive incremental updates failed. No further model requests were made to retry this observation.
+- Following `diagnosing-bugs`, a controlled differential test used the installed Codex event adapter, step tracker, real HarnessAgent, and Hive text writer. Genuine cumulative updates produce checkpoints before completion; completed-only events cannot satisfy that assertion. The test does not use a model, credentials, database, or live sandbox and is clearly kept under `scripts/diagnostics`.
+- Official source for the pinned Codex 0.149.1 SDK/JSONL processor shows the missing event boundary: public message starts/deltas are not forwarded, while completed messages are. The currently published harness adapter 1.0.104 still uses this SDK path; it was inspected, not installed. OpenAI Docs identifies app-server's separate public-text delta events. See the [full diagnosis and sources](STREAMING_DIAGNOSIS.md).
+- The existing run's actual combined command remained Passed, with 92 passing tests and successful type generation/TypeScript. The actual accessible-label diff remained. Corrected the current README/submission claims rather than presenting the controlled stream test as production proof. No production implementation, dependency, model, credential, billing setting, history, or workspace artifact changed. A native-event transport change versus explicit deferral is an owner scope decision; neither is silently assumed.
+- Local validation passed: 98 unit tests, seven failed-run scenarios, the pre-repository input regression, ESLint, diff validation, and 23 relative documentation links/anchors. The differential diagnostic passed with incremental source events and intentionally failed the same assertion with completed-only source events. No production fix or successful native-delta retest is claimed.
 
 ## Questions to prepare for
 
