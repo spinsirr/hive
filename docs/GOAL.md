@@ -18,7 +18,8 @@ The current user-provided goal explicitly excludes PR creation and multi-team ma
 - [x] Verify the production task's Complete → refresh → Reopen cycle with owner approval (latest: 2026-09-06 07:13–07:14 UTC): owner completion reached both browsers; Joseph refreshed the read-only task and reopened it; the owner's controls recovered and the transcript/diff remained.
 - [x] Prevent approval of empty or ineligible diffs in both the state machine and UI; verified with regression tests and the real local component. Production rollout is recorded separately in the evidence log.
 - [x] Prepare the README, one-to-two-paragraph summary, decision log, and AI collaboration evidence; the [submission packet](SUBMISSION.md) links the material and explicitly lists unverified claims.
-- [ ] Release the Thread/whole-thread steering, paired rollback, dashboard and UI-demo changes, and verify them on the final deployment. Owner authorization to push and deploy was received on September 7. Earlier production acceptance applies to its dated versions, not to these additions.
+- [x] Release the Thread/whole-thread steering, paired rollback, dashboard and UI-demo changes with owner authorization. `fec2484` received a successful Vercel status on September 7; the canonical dashboard/demo, Thread rendering and retained workspace passed the bounded live UI check.
+- [ ] Verify a new two-account Thread/whole-thread execution and a real paired checkpoint restore before presenting those additions as production-verified. Their deterministic regressions and read-only live checks do not replace execution acceptance.
 - [ ] Have the owner review the summary in their own words and update verification results after the remaining live checks.
 - [x] Resolve the failed incremental-text acceptance check: native app-server deltas deployed in `4a1abb3`. Production observation at 2026-09-07 00:19 UTC recorded 25 growing updates before completion, one final reply and successful real checks. A fresh page restored the identical reply. See [diagnosis and acceptance](STREAMING_DIAGNOSIS.md).
 - [x] Check the read-only presentation navigation and retained artifacts on production; the 170-second owner-side preflight and separate Joseph identity/response check are recorded in the evidence log. This is not the full narrated rehearsal below.
@@ -28,6 +29,8 @@ The current user-provided goal explicitly excludes PR creation and multi-team ma
 Record completed checks and their limitations in `PRESENTATION_NOTES.md`. Distinguish implementation from live verification. Two-user testing requires two real authenticated accounts.
 
 ## Current rehearsal evidence
+
+The September 7 release check at **18:04 UTC** confirmed the new dashboard and Thread UI on the canonical production site. Existing authored replies, the original Diff, full Files tree and successful 92-test sandbox command were preserved. No model execution, task mutation, or restore was performed; only page-local sample data was created/reset in the public `/demo`. Detailed observations are in the evidence log.
 
 Read-only revalidation on **2026-09-07 17:43 UTC** confirmed the canonical task after an owner-page refresh: the original accessibility Diff, the successful combined command with 92 passing sandbox-revision tests, and both changed/unchanged files in the full tree remain inspectable. No new run or two-account action was performed. The homepage returns 200; unauthenticated task API access returns 401; GitHub still reports the repository private. These checks do not close the pending local release or timed rehearsal gates.
 

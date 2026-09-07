@@ -6,7 +6,7 @@ Hive is a multiplayer coding agent: two or more teammates share one agent conver
 
 **Live app:** [hive-roan-mu.vercel.app](https://hive-roan-mu.vercel.app/)
 
-**Release boundary — September 7:** The owner has authorized release of Thread / whole-thread steering, paired checkpoint rollback, the simplified dashboard, and `/demo`. These additions have local regression coverage; deployment and live verification are recorded separately in the [presentation evidence](docs/PRESENTATION_NOTES.md#evidence-log). Earlier production checks apply to their dated revisions, not automatically to this release.
+**Release boundary — September 7:** `fec2484` deployed successfully. The simplified dashboard, `/demo`, Thread UI and retained workspace were checked on the canonical live site. Whole-thread execution and paired rollback have local regression coverage, but a new two-account production steer and real restore have not been performed. See the dated [presentation evidence](docs/PRESENTATION_NOTES.md#evidence-log); earlier acceptance does not automatically verify these additions.
 
 ## Try the app
 
@@ -20,9 +20,9 @@ The [submission packet](docs/SUBMISSION.md) links the overview, summary, and out
 
 ### UI demo
 
-Run `pnpm dev --webpack --hostname 127.0.0.1` and open [the dashboard UI demo](http://127.0.0.1:3000/demo). This retained `/demo` route reuses the real dashboard component, without requiring GitHub, a database, or an agent. It is a design-review surface, not an end-to-end execution demo.
+Open [the live dashboard UI demo](https://hive-roan-mu.vercel.app/demo), or run `pnpm dev --webpack --hostname 127.0.0.1` and visit `/demo` locally. This retained route reuses the real dashboard component, without requiring GitHub, a database, or an agent. It is a design-review surface, not an end-to-end execution demo.
 
-Try Active / Completed, New task, a task's sample details, and Empty state. New tasks exist only in the current page; **Reset demo** or a refresh restores the invented sample data. All demo navigation stays in `/demo`; no task creation action, session API, repository access, or model is called. The banner explicitly labels the preview. The same route is available at `/demo` after this release is deployed.
+Try Active / Completed, New task, a task's sample details, and Empty state. New tasks exist only in the current page; **Reset demo** or a refresh restores the invented sample data. All demo navigation stays in `/demo`; no task creation action, session API, repository access, or model is called. The banner explicitly labels the preview.
 
 ## The problem
 

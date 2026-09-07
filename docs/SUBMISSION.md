@@ -2,7 +2,7 @@
 
 Draft prepared for owner review. Not yet submitted; the remaining live acceptance checks and reviewer access are not complete.
 
-Release note: the owner authorized pushing and deploying the new dashboard/UI demo, Thread/whole-thread steering and paired rollback on September 7. Reconcile this packet with the exact deployment and live checks recorded in the evidence log before sending; the earlier multiplayer acceptance does not verify these additions. This release authorization does not authorize repository publication or external submission.
+Release note: owner-authorized release `fec2484` deployed successfully on September 7. The canonical dashboard, public [UI demo](https://hive-roan-mu.vercel.app/demo), Thread rendering and retained workspace passed a bounded live check. A new two-account whole-thread steer and real paired restore remain unverified; the earlier multiplayer acceptance does not establish those results. Deployment authorization does not authorize repository publication or external submission.
 
 ## Four submission items
 
