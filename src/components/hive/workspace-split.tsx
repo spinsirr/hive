@@ -43,9 +43,9 @@ export function WorkspaceSplit({
       <ResizablePanel
         className="h-full min-h-0 min-w-0 overflow-hidden!"
         data-pane="chat"
-        defaultSize={420}
-        minSize={desktop ? 360 : 0}
-        groupResizeBehavior="preserve-pixel-size"
+        defaultSize="50%"
+        minSize={desktop ? 400 : 0}
+        groupResizeBehavior="preserve-relative-size"
       >
         {conversation}
       </ResizablePanel>

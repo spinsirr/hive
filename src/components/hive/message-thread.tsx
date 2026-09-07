@@ -59,10 +59,10 @@ export function MessageThread({ sessionId, message, members, currentMember, disa
         <Button aria-label="Close thread" className="size-7" onClick={onClose} size="icon" variant="ghost"><X className="size-3.5" /></Button>
       </header>
       <Conversation className="min-h-0 flex-1">
-        <ConversationContent className="gap-5 px-5 py-5">
+        <ConversationContent className="gap-5 px-3 py-5 sm:px-5">
           <article className="border-b border-[#ebebeb] pb-5">
             <div className="mb-2 flex items-center gap-2 text-xs"><span className="grid size-6 shrink-0 place-items-center rounded-full border border-[#dedede] bg-[#fafafa] text-[9px] font-medium">{message.initials}</span><span className="font-medium">{message.name}</span><span className="text-[#999]">{message.time}</span></div>
-            <div className="min-w-0 break-words text-[13px] leading-6">
+            <div className="min-w-0 break-words text-sm leading-6">
               {message.role === "agent" ? <AgentResponse>{message.body}</AgentResponse> : message.codeReference ? <><p className="break-all font-mono text-xs text-[#737373]">{codeReferenceLabel(message.codeReference)}</p><pre className="mt-2 max-h-52 overflow-auto font-mono text-xs leading-5">{message.codeReference.quote}</pre></> : <p className="whitespace-pre-wrap">{message.body}</p>}
             </div>
           </article>
@@ -70,7 +70,7 @@ export function MessageThread({ sessionId, message, members, currentMember, disa
         </ConversationContent>
         <ConversationScrollButton />
       </Conversation>
-      <footer className="shrink-0 border-t border-[#ebebeb] bg-[#fafafa] p-3">
+      <footer className="shrink-0 border-t border-[#ebebeb] bg-[#fafafa] p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:p-3">
         {lastReply ? <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <p className="text-xs text-[#737373]">{previous ? `${previous.replyCount} ${previous.replyCount === 1 ? "reply" : "replies"} ${previous.status === "queued" ? "queued" : "steered"} by ${resolveMember(previous.requestedBy, members).shortName}` : `${replies!.length} ${replies!.length === 1 ? "reply" : "replies"}`}</p>
           <Button aria-label={`${queueing ? "Queue" : "Steer"} entire thread with ${replies!.length} replies`} className="h-8 text-xs" disabled={disabled || alreadySteered || steering} onClick={() => void steerAll()} size="sm" variant="outline">{steering ? <LoaderCircle className="size-3.5 animate-spin" /> : null}{alreadySteered ? previous?.status === "queued" ? "Thread queued" : "Thread steered" : queueing ? "Queue thread" : "Steer thread"}</Button>
@@ -78,7 +78,7 @@ export function MessageThread({ sessionId, message, members, currentMember, disa
         {error ? <p className="mb-2 text-xs text-[#737373]" role="status">{error}</p> : null}
         <div className="flex items-end gap-2 rounded-xl border border-[#d9d9d9] bg-white p-2 focus-within:border-[#999]">
           <MentionInput autoFocus currentMember={currentMember} disabled={disabled || !draft} label="Reply in thread" maxLength={4000} members={members} onChange={edit} onSubmit={() => { if (!disabled) void submit(); }} placeholder={disabled ? "Replies are paused." : "Reply or @mention a teammate…"} readOnly={sending} value={draft?.body ?? ""} />
-          <Button aria-label={sending ? "Sending reply" : draft?.status === "unconfirmed" ? "Retry reply" : "Send reply"} className="size-8 shrink-0 rounded-lg" disabled={disabled || !draft?.body.trim() || sending} onClick={() => void submit()} size="icon">{sending ? <LoaderCircle className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}</Button>
+          <Button aria-label={sending ? "Sending reply" : draft?.status === "unconfirmed" ? "Retry reply" : "Send reply"} className="size-10 shrink-0 rounded-lg sm:size-9" disabled={disabled || !draft?.body.trim() || sending} onClick={() => void submit()} size="icon">{sending ? <LoaderCircle className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}</Button>
         </div>
         <p className="mt-2 px-1 text-[11px] text-[#737373]" role="status">{draft?.status === "unconfirmed" ? "Delivery unconfirmed. Your reply is saved; retry when connected." : "Replies stay in the thread until you steer Hive."}</p>
       </footer>

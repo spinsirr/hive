@@ -68,7 +68,7 @@ export function MentionInput({ value, onChange, onSubmit, members, currentMember
       <Autocomplete.Input
         aria-label={label}
         aria-multiline="true"
-        className="max-h-24 min-h-8 min-w-0 flex-1 resize-none bg-transparent px-1 py-1.5 text-[13px] leading-5 outline-none placeholder:text-[#aaa]"
+        className="field-sizing-content max-h-[min(12rem,30dvh)] min-h-[5.25rem] min-w-0 flex-1 resize-none bg-transparent px-2 py-2 text-base leading-6 outline-none placeholder:text-[#999] sm:text-sm"
         onBlur={() => setFocused(false)}
         onCompositionEnd={() => setComposing(false)}
         onCompositionStart={() => setComposing(true)}
@@ -107,7 +107,7 @@ export function MentionInput({ value, onChange, onSubmit, members, currentMember
         onSelect={(event) => setSelection({ start: event.currentTarget.selectionStart ?? 0, end: event.currentTarget.selectionEnd ?? 0 })}
         placeholder={placeholder ?? (disabled ? "Messaging is paused." : "Ask Hive or @mention a teammate…")}
         maxLength={maxLength}
-        render={<textarea ref={textarea} rows={1} />}
+        render={<textarea ref={textarea} rows={3} />}
       />
       <Autocomplete.Portal>
         <Autocomplete.Positioner align="start" className="z-50" side="top" sideOffset={10}>

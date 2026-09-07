@@ -397,7 +397,7 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
       </div>
       <SteeringQueue activeSteer={activeSteer} canApply={canApplySteer} items={steeringQueue} members={members} onApply={onAdvance} onMove={onMoveSteer} onRemove={onRemoveSteer} />
       <Conversation className="min-h-0 flex-1">
-        <ConversationContent className={cn("gap-5 px-5 py-6", compact && "gap-4")}>
+        <ConversationContent className={cn("gap-5 px-3 py-5 sm:px-5 sm:py-6", compact && "gap-4")}>
           {messages.map((message) => {
             const isCurrentMember = message.memberId === currentMember;
             const hasReplies = Boolean(message.annotations?.length);
@@ -417,7 +417,7 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
               );
             }
             return (
-              <Message className={cn("max-w-full gap-2 rounded-lg", hasReplies && "w-fit min-w-0 max-w-[94%]", selectedThreadId === message.id && "outline-1 outline-offset-8 outline-[#e0e0e0]")} from={message.role === "agent" || !isCurrentMember ? "assistant" : "user"} key={message.id}>
+              <Message className={cn("max-w-full gap-2 rounded-lg", hasReplies && "w-fit min-w-0 sm:max-w-[94%]", selectedThreadId === message.id && "outline-1 outline-offset-8 outline-[#e0e0e0]")} from={message.role === "agent" || !isCurrentMember ? "assistant" : "user"} key={message.id}>
                 <div className={cn("flex items-center gap-2", isCurrentMember && "justify-end")}>
                   {message.role === "agent" ? <HiveMark className="size-5 rounded-full border border-[#dedede]" light /> : <span className="grid size-5 place-items-center rounded-full border border-[#dedede] bg-[#fafafa] text-[8px] font-semibold">{message.initials}</span>}
                   <span className="text-[12px] font-medium">{message.name}</span>
@@ -433,7 +433,7 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
                     </button>
                   ) : null}
                 </div>
-                <MessageContent className={cn("w-fit max-w-[94%] rounded-lg border border-[#e8e8e8] px-3 py-2.5 text-[13px] leading-5 shadow-none", hasReplies && "w-full max-w-full", message.role === "agent" ? "bg-[#fafafa] text-[#4d4d4d]" : isCurrentMember ? "ml-auto bg-white" : "bg-white")}>
+                <MessageContent className={cn("w-fit max-w-full rounded-lg border border-[#e8e8e8] px-3 py-2.5 text-sm leading-6 shadow-none sm:max-w-[94%]", hasReplies && "w-full sm:max-w-full", message.role === "agent" ? "bg-[#fafafa] text-[#4d4d4d]" : isCurrentMember ? "ml-auto bg-white" : "bg-white")}>
                   {message.role === "agent" ? <AgentResponse streaming={message.status === "streaming"}>{message.body}</AgentResponse> : message.codeReference ? <div><p className="break-all font-mono text-[11px] text-[#737373]">{codeReferenceLabel(message.codeReference)}</p><pre className="mt-2 max-h-40 overflow-auto whitespace-pre font-mono text-[11px] leading-5">{message.codeReference.quote}</pre></div> : message.body}
                 </MessageContent>
 
@@ -447,7 +447,7 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
         <ConversationScrollButton />
       </Conversation>
       {workspaceAnnotation ? <AnnotationCard members={members} onSteer={onSteer} queuePosition={queuePosition} queued={queued} queuedBy={queuedBy} stage={stage} steered={steered} steeredBy={steeredBy} /> : null}
-      <div className="border-t border-[#ebebeb] bg-[#fafafa] p-3">
+      <div className="shrink-0 border-t border-[#ebebeb] bg-[#fafafa] p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:p-3">
         <div className="rounded-xl border border-[#d9d9d9] bg-white p-2 shadow-[0_1px_2px_rgba(0,0,0,0.03)] focus-within:border-[#999]">
           <div className="flex items-end gap-2">
           <MentionInput
@@ -464,7 +464,7 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
           />
             <Button
               aria-label={sending ? "Sending message" : draft?.status === "unconfirmed" ? "Retry message" : "Send message"}
-              className="size-8 rounded-lg"
+              className="size-10 shrink-0 rounded-lg sm:size-9"
               disabled={disabled || !draft?.body.trim() || sending}
               onClick={submit}
               size="icon"
@@ -916,7 +916,7 @@ export function HiveWorkspace({
   }), [activeMembers, activeSteer, advance, openThread, steerMessageAnnotation, threadMessage?.id, annotation.queuedBy, annotation.steeredBy, annotation.text, canApplySteer, currentMember.id, lifecycle, workspaceLocked, messages, moveSteer, queuePosition, queued, removeSteer, runActive, send, sessionId, setTyping, stage, steer, steered, steeringQueue, tab, teamMembers, typingMembers]);
 
   return (
-    <main className="flex h-dvh min-h-[560px] flex-col overflow-hidden bg-[#fafafa] text-[#171717]">
+    <main className="flex h-dvh min-h-0 flex-col overflow-hidden bg-[#fafafa] text-[#171717]">
       <ProductHeader activeMembers={activeMembers} copied={copied} currentMember={currentMember} lifecycle={lifecycle} members={teamMembers} onCopyInvite={copyInvite} onSignOut={signOut} onReset={reset} onToggleLifecycle={toggleLifecycle} repository={repository} sessionTitle={sessionTitle} runActive={runActive} workspaceLocked={workspaceLocked} queueCount={steeringQueue.length} syncing={syncing} syncError={syncError} />
       {workspace.restore ? <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[#e8e8e8] px-4 py-2 text-xs text-[#737373]" role="status">
         <span>{workspace.restore.status === "unconfirmed" ? "Restore needs confirmation. The workspace is paused." : "Restoring workspace and agent context…"}</span>
