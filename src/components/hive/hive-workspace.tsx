@@ -417,7 +417,7 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
               );
             }
             return (
-              <Message className={cn("max-w-full gap-2 rounded-lg", hasReplies && "w-fit min-w-0 sm:max-w-[94%]", selectedThreadId === message.id && "outline-1 outline-offset-8 outline-[#e0e0e0]")} from={message.role === "agent" || !isCurrentMember ? "assistant" : "user"} key={message.id}>
+              <Message className={cn("min-w-0 max-w-full gap-2 rounded-lg", selectedThreadId === message.id && "outline-1 outline-offset-8 outline-[#e0e0e0]")} from={message.role === "agent" || !isCurrentMember ? "assistant" : "user"} key={message.id}>
                 <div className={cn("flex items-center gap-2", isCurrentMember && "justify-end")}>
                   {message.role === "agent" ? <HiveMark className="size-5 rounded-full border border-[#dedede]" light /> : <span className="grid size-5 place-items-center rounded-full border border-[#dedede] bg-[#fafafa] text-[8px] font-semibold">{message.initials}</span>}
                   <span className="text-[12px] font-medium">{message.name}</span>
