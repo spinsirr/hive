@@ -45,6 +45,7 @@ import { useMessageDraft } from "@/hooks/use-message-draft";
 import type { MessageSubmission } from "@/lib/message-draft";
 import { codeReferenceLabel } from "@/lib/code-reference";
 import { displayHiveErrorMessage } from "@/lib/hive-error-copy";
+import { workspaceReadRevision } from "@/lib/workspace-files";
 import {
   type ActiveSteer,
   type ChatMessage,
@@ -677,10 +678,10 @@ function RunsPane({ commands }: { commands: WorkspaceState["commands"] }) {
   );
 }
 
-function Workspace({ repository, sessionId, tab, workspace, onTabChange, fileCollaboration, checkpointRevision, onRestored }: {
+function Workspace({ repository, sessionId, tab, workspace, onTabChange, fileCollaboration, checkpointRevision, onRestored, active }: {
   repository?: RepositoryState; sessionId: string; tab: WorkspaceTab; workspace: WorkspaceState; onTabChange: (tab: WorkspaceTab) => void;
   fileCollaboration: { memberId: string; deliveredIds: ReadonlySet<string>; disabled: boolean; onAnnotate: AnnotateCode };
-  checkpointRevision: number; onRestored: (snapshot: TaskSessionSnapshot) => void;
+  checkpointRevision: number; onRestored: (snapshot: TaskSessionSnapshot) => void; active: boolean;
 }) {
   if (!repository) {
     return (
@@ -715,9 +716,9 @@ function Workspace({ repository, sessionId, tab, workspace, onTabChange, fileCol
       </div>
       <div className="min-h-0 flex-1">
         {tab === "diff" ? <DiffPane diff={workspace.diff} /> : null}
-        {tab === "files" ? <WorkspaceFiles key={sessionId} sessionId={sessionId} initialPath={workspace.files[0]?.path} revision={`${workspace.agentSession?.id ?? ""}:${workspace.completedAt ?? ""}`} {...fileCollaboration} /> : null}
+        <WorkspaceFiles key={JSON.stringify([sessionId, fileCollaboration.memberId])} sessionId={sessionId} initialPath={workspace.files[0]?.path} revision={workspaceReadRevision(workspace)} active={active && tab === "files"} locked={Boolean(workspace.restore)} {...fileCollaboration} />
         {tab === "runs" ? <RunsPane commands={workspace.commands} /> : null}
-        {tab === "checkpoints" ? <WorkspaceCheckpoints sessionId={sessionId} revision={checkpointRevision} onRestored={onRestored} /> : null}
+        {active && tab === "checkpoints" ? <WorkspaceCheckpoints sessionId={sessionId} revision={checkpointRevision} onRestored={onRestored} /> : null}
       </div>
     </section>
   );
@@ -953,16 +954,15 @@ export function HiveWorkspace({
       <WorkspaceSplit
         activePane={pane}
         conversation={<SharedSession {...shared} compact />}
-        workspace={threadMessage ? (
-          <MessageThread currentMember={currentMember.id} disabled={lifecycle === "completed" || workspaceLocked} key={threadMessage.id} members={teamMembers} message={threadMessage} onClose={closeThread} onReply={annotate} onSteerReply={steerMessageAnnotation} onSteerThread={steerThread} queue={steeringQueue} runActive={runActive} sessionId={sessionId} />
-        ) : (
+        workspace={
           <>
-            <div className="min-h-0 flex-1">
-              <Workspace repository={repository} sessionId={sessionId} tab={shared.tab} workspace={workspace} checkpointRevision={session.version} onRestored={receiveSnapshot} onTabChange={shared.onTabChange} fileCollaboration={{ memberId: currentMember.id, deliveredIds: codeAnnotationIds, disabled: lifecycle === "completed" || workspaceLocked, onAnnotate: annotateCode }} />
+            <div className={cn("min-h-0 flex-1", threadMessage && "hidden")}>
+              <Workspace active={!threadMessage} repository={repository} sessionId={sessionId} tab={shared.tab} workspace={workspace} checkpointRevision={session.version} onRestored={receiveSnapshot} onTabChange={shared.onTabChange} fileCollaboration={{ memberId: currentMember.id, deliveredIds: codeAnnotationIds, disabled: lifecycle === "completed" || workspaceLocked, onAnnotate: annotateCode }} />
             </div>
-            <RunBar activeSteer={activeSteer} completed={lifecycle === "completed"} reviewReady={canApproveChanges(session)} runActive={runActive} queueCount={steeringQueue.length} repository={repository} stage={shared.stage} onAdvance={shared.onAdvance} />
+            {!threadMessage ? <RunBar activeSteer={activeSteer} completed={lifecycle === "completed"} reviewReady={canApproveChanges(session)} runActive={runActive} queueCount={steeringQueue.length} repository={repository} stage={shared.stage} onAdvance={shared.onAdvance} /> : null}
+            {threadMessage ? <MessageThread currentMember={currentMember.id} disabled={lifecycle === "completed" || workspaceLocked} key={threadMessage.id} members={teamMembers} message={threadMessage} onClose={closeThread} onReply={annotate} onSteerReply={steerMessageAnnotation} onSteerThread={steerThread} queue={steeringQueue} runActive={runActive} sessionId={sessionId} /> : null}
           </>
-        )}
+        }
       />
     </main>
   );

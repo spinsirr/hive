@@ -1,4 +1,13 @@
 import { z } from "zod";
+import type { WorkspaceState } from "./task-session.ts";
+
+export function workspaceReadRevision(workspace: WorkspaceState) {
+  return JSON.stringify([
+    workspace.sandboxName, workspace.agentSession?.id,
+    workspace.startedAt, workspace.completedAt,
+    workspace.restore?.id, workspace.lastRestore?.id,
+  ]);
+}
 
 export const workspaceReadRequest = z.object({
   kind: z.enum(["directory", "file"]),

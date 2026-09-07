@@ -1,15 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useMemo, useRef } from "react";
+import useSWRInfinite from "swr/infinite";
 
 import { workspaceReadResponse, type WorkspaceReadResponse } from "@/lib/workspace-files";
 
-type ReadState = {
-  key: string;
-  data?: WorkspaceReadResponse;
-  error?: string;
-  loadingMore?: boolean;
-};
+type ReadKey = readonly [sessionId: string, kind: "directory" | "file", path: string, revision: string, offset: number];
 
 export function useWorkspaceRead({ sessionId, kind, path, revision, enabled = true }: {
   sessionId: string;
@@ -18,50 +14,45 @@ export function useWorkspaceRead({ sessionId, kind, path, revision, enabled = tr
   revision: string;
   enabled?: boolean;
 }) {
-  const key = JSON.stringify([sessionId, kind, path, revision, enabled]);
-  const [state, setState] = useState<ReadState>();
-  const controller = useRef<AbortController | null>(null);
-  const loadingMore = useRef(false);
+  const key = JSON.stringify([sessionId, kind, path, revision]);
+  const loadingRequest = useRef<string | null>(null);
+  const { data: pages, error, isValidating, setSize } = useSWRInfinite<WorkspaceReadResponse, Error>(
+    (index, previous): ReadKey | null => {
+      if (!enabled) return null;
+      if (index === 0) return [sessionId, kind, path, revision, 0];
+      if (previous?.kind !== "directory" || previous.nextOffset === null) return null;
+      return [sessionId, kind, path, revision, previous.nextOffset];
+    },
+    readPath,
+    { revalidateFirstPage: false, keepPreviousData: false },
+  );
+  const data = useMemo(() => {
+    if (!pages) return undefined;
+    const first = pages[0];
+    if (first?.kind !== "directory") return first;
+    const directories = pages.filter((page) => page.kind === "directory");
+    const entries = new Map(directories.flatMap((page) => page.entries).map((entry) => [entry.path, entry]));
+    return { ...first, entries: [...entries.values()], nextOffset: directories.at(-1)!.nextOffset };
+  }, [pages]);
 
-  useEffect(() => {
-    if (!enabled) return;
-    const abort = new AbortController();
-    controller.current = abort;
-    loadingMore.current = false;
-    readPath(sessionId, kind, path, 0, abort.signal).then(
-      (data) => { if (!abort.signal.aborted) setState({ key, data }); },
-      (error: Error) => { if (!abort.signal.aborted) setState({ key, error: error.message }); },
-    );
-    return () => { abort.abort(); };
-  }, [enabled, key, kind, path, sessionId]);
-
-  // A response for the previous file must never appear under the new filename.
-  const current = state?.key === key ? state : undefined;
   const loadMore = async () => {
-    const signal = controller.current?.signal;
-    const previous = current?.data;
-    if (!signal || signal.aborted || loadingMore.current || previous?.kind !== "directory" || previous.nextOffset === null) return;
-    loadingMore.current = true;
-    setState({ ...current, key, error: undefined, loadingMore: true });
+    if (!enabled || isValidating || loadingRequest.current === key || data?.kind !== "directory" || data.nextOffset === null) return;
+    loadingRequest.current = key;
     try {
-      const next = await readPath(sessionId, kind, path, previous.nextOffset, signal);
-      if (!signal.aborted && next.kind === "directory") {
-        const entries = new Map([...previous.entries, ...next.entries].map((entry) => [entry.path, entry]));
-        setState({ key, data: { ...next, entries: [...entries.values()] } });
-      }
-    } catch (error) {
-      if (!signal.aborted) setState({ ...current, key, error: error instanceof Error ? error.message : "Couldn’t load more files." });
+      await setSize((pages?.length ?? 0) + 1);
+    } catch {
+      // SWR exposes the failed page through `error`; loaded pages remain visible.
     } finally {
-      if (!signal.aborted) loadingMore.current = false;
+      if (loadingRequest.current === key) loadingRequest.current = null;
     }
   };
 
-  return { data: current?.data, error: current?.error, pending: enabled && !current, loadingMore: current?.loadingMore, loadMore };
+  return { data, error: error?.message, pending: enabled && !data && !error, loadingMore: Boolean(data && isValidating), loadMore };
 }
 
-async function readPath(sessionId: string, kind: "directory" | "file", path: string, offset: number, signal: AbortSignal) {
+async function readPath([sessionId, kind, path, , offset]: ReadKey) {
   const query = new URLSearchParams({ kind, path, offset: String(offset) });
-  const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/files?${query}`, { cache: "no-store", signal });
+  const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/files?${query}`, { cache: "no-store", signal: AbortSignal.timeout(50_000) });
   const body = await response.json();
   if (!response.ok) throw new Error(typeof body.error === "string" ? body.error : "Workspace could not be read. Try again.");
   const result = workspaceReadResponse.safeParse(body);

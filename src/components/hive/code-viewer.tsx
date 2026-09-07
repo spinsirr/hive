@@ -58,6 +58,7 @@ export default function CodeViewer({ path, content, onSelectionChange }: { path:
       loading={<span className="text-xs text-[#737373]" role="status">Loading code viewer…</span>}
       onMount={(editor) => {
         if (!onSelectionChange) return;
+        onSelectionChange(null);
         editor.onDidChangeCursorSelection(({ selection }) => {
           const model = editor.getModel();
           if (!model || selection.isEmpty()) { onSelectionChange(null); return; }

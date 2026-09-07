@@ -503,6 +503,13 @@ Be explicit: GitHub write-back is not built; organization administration is not 
 - Added a real-component rendering regression for visible text/authorship, safe text escaping, idle/busy/disabled steering controls, distinct promoter attribution, empty threads and chronological older-reply disclosure. The check uses invented display data and never writes to a task or runs a model.
 - Follow-up visual review exposed a grouping error: a short right-aligned parent still had replies starting at the conversation's far left. Threaded messages now size and align as one parent-and-replies group, with a small inset reply rail. Messages without replies keep their existing layout. This is a layout-only correction; it does not alter discussion or steering semantics.
 
+### September 7 — Cache Files without hiding workspace changes
+
+- The owner asked to remove repeated loading when revisiting Files. Added SWR's in-memory request cache and cursor pagination, scoped to the task, member and current workspace version. Reopening files or folders reuses successful reads, and concurrent consumers share the pending request. No repository content is written to localStorage, IndexedDB, a shared server cache or a CDN; the authenticated file route remains private/no-store.
+- Files retains its selected path and expanded folders across Diff/Files/Thread switches. React Activity suspends the hidden read consumers while the cache provider stays mounted outside it. A never-opened Files pane does not prefetch the repository. The first actual visit to an uncached path still reads the sandbox.
+- Run start/completion, sandbox or native-session replacement, restore and manual refresh discard the previous cache scope. Restore hides cached code and blocks reads until it finishes; late responses from a previous file or scope cannot populate the current editor. Unrelated chat and presence updates do not invalidate file contents. Cache lifetime ends on a new workspace version, refresh, task departure or page reload.
+- Added actual Files-component, hook and SWR tests with a local DOM, React Strict Mode and a mocked read endpoint/Monaco surface: immediate cache hits, in-flight deduplication, directory paging and retry, view-state retention, hidden-pane behavior, version/member/task isolation, restore fencing, mismatched response rejection and stale-response races. These are UI/cache regressions, not a new live agent run or production rollback.
+
 ## Questions to prepare for
 
 - How is Hive different from tagging Claude in a shared channel?

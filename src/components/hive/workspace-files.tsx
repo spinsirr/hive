@@ -2,7 +2,7 @@
 
 import { ChevronRight, MessageSquarePlus, PanelLeft, RotateCw } from "lucide-react";
 import dynamic from "next/dynamic";
-import { useState } from "react";
+import { Activity, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { useWorkspaceRead } from "@/hooks/use-workspace-read";
@@ -11,6 +11,7 @@ import type { WorkspaceEntry } from "@/lib/workspace-files";
 import type { CodeReference } from "@/lib/code-reference";
 import { CodeAnnotationComposer, type AnnotateCode } from "./code-annotation-composer";
 import { WorkspaceFileIcon } from "./workspace-file-icon";
+import { WorkspaceReadCache } from "./workspace-read-cache";
 
 import styles from "./workspace-files.module.css";
 
@@ -85,9 +86,20 @@ function Notice({ children }: { children: React.ReactNode }) {
   return <div className="grid h-full place-items-center p-6 text-center text-xs leading-5 text-[#737373]" role="status">{children}</div>;
 }
 
-export function WorkspaceFiles({ sessionId, revision, initialPath = "", memberId, deliveredIds, disabled, onAnnotate }: {
+function SelectedFile({ sessionId, path, revision, onSelectionChange, onRefresh }: {
+  sessionId: string; path: string; revision: string;
+  onSelectionChange: (reference: CodeReference | null) => void; onRefresh: () => void;
+}) {
+  const { data, error, pending } = useWorkspaceRead({ sessionId, kind: "file", path, revision, enabled: Boolean(path) });
+  if (!path) return <Notice>Select a file to view its contents.</Notice>;
+  if (pending) return <Notice>Loading file…</Notice>;
+  if (error) return <Notice><div><p>{error}</p><button className="mt-2 underline underline-offset-4" onClick={onRefresh} type="button">Try again</button></div></Notice>;
+  return data?.kind === "file" ? <CodeViewer key={data.path} path={data.path} content={data.content} onSelectionChange={onSelectionChange} /> : null;
+}
+
+export function WorkspaceFiles({ sessionId, revision, initialPath = "", memberId, deliveredIds, disabled, active = true, locked = false, onAnnotate }: {
   sessionId: string; revision: string; initialPath?: string;
-  memberId: string; deliveredIds: ReadonlySet<string>; disabled: boolean; onAnnotate: AnnotateCode;
+  memberId: string; deliveredIds: ReadonlySet<string>; disabled: boolean; active?: boolean; locked?: boolean; onAnnotate: AnnotateCode;
 }) {
   const [selected, setSelected] = useState(initialPath);
   const [explorerOpen, setExplorerOpen] = useState(true);
@@ -97,7 +109,6 @@ export function WorkspaceFiles({ sessionId, revision, initialPath = "", memberId
   const [expanded, setExpanded] = useState(() => new Set(initialPath.split("/").slice(0, -1).map((_, index, parts) => parts.slice(0, index + 1).join("/"))));
   const readRevision = `${revision}:${refresh}`;
   const selectedReference = selection?.revision === readRevision ? selection.reference : null;
-  const { data, error, pending } = useWorkspaceRead({ sessionId, kind: "file", path: selected, revision: readRevision, enabled: Boolean(selected) });
   const onRefresh = () => { setSelection(null); setRefresh((value) => value + 1); };
   const selectFile = (path: string) => { setSelection(null); setSelected(path); };
   const onToggle = (path: string) => setExpanded((previous) => {
@@ -106,22 +117,27 @@ export function WorkspaceFiles({ sessionId, revision, initialPath = "", memberId
     return next;
   });
 
+  // The provider must remain mounted while Activity hides its read consumers.
   return (
-    <div className={styles.browser}>
-      <div className="flex h-9 shrink-0 items-center gap-2 border-b border-[#ebebeb] px-2 text-[11px] text-[#737373]">
-        <Button aria-label={explorerOpen ? "Hide file explorer" : "Show file explorer"} aria-pressed={explorerOpen} className="size-7 shrink-0" onClick={() => setExplorerOpen(!explorerOpen)} size="icon" title={explorerOpen ? "Hide file explorer" : "Show file explorer"} variant="ghost"><PanelLeft className="size-3.5" /></Button>
-        {selected ? <WorkspaceFileIcon path={selected} /> : null}
-        <span className="min-w-0 flex-1 truncate font-mono" title={selected || "Workspace"}>{selected || "Workspace"}</span>
-        <Button aria-label="Annotate selected code" className="h-7 shrink-0 px-2 text-[11px]" disabled={disabled || !selectedReference || selectedReference.path !== selected || pending} onClick={() => setAnnotation(selectedReference)} size="sm" title="Select up to 100 lines to annotate" variant="ghost"><MessageSquarePlus className="size-3.5" /> Annotate</Button>
-        <Button aria-label="Refresh workspace files" className="size-7 shrink-0" onClick={onRefresh} size="icon" title="Refresh workspace files" variant="ghost"><RotateCw className="size-3.5" /></Button>
-      </div>
-      <div className={styles.body}>
-        {explorerOpen ? <nav aria-label="Workspace files" className={styles.explorer}><Directory sessionId={sessionId} revision={readRevision} path="" expanded={expanded} selected={selected} onSelect={selectFile} onToggle={onToggle} onRefresh={onRefresh} /></nav> : null}
-        <div className={styles.editor}>
-          {!selected ? <Notice>Select a file to view its contents.</Notice> : pending ? <Notice>Loading file…</Notice> : error ? <Notice><div><p>{error}</p><button className="mt-2 underline underline-offset-4" onClick={onRefresh} type="button">Try again</button></div></Notice> : data?.kind === "file" ? <CodeViewer key={data.path} path={data.path} content={data.content} onSelectionChange={(reference) => setSelection(reference ? { reference, revision: readRevision } : null)} /> : null}
+    <WorkspaceReadCache scope={JSON.stringify([sessionId, memberId, readRevision, locked])}>
+      <Activity mode={active ? "visible" : "hidden"}>
+        <div className={styles.browser}>
+          <div className="flex h-9 shrink-0 items-center gap-2 border-b border-[#ebebeb] px-2 text-[11px] text-[#737373]">
+            <Button aria-label={explorerOpen ? "Hide file explorer" : "Show file explorer"} aria-pressed={explorerOpen} className="size-7 shrink-0" onClick={() => setExplorerOpen(!explorerOpen)} size="icon" title={explorerOpen ? "Hide file explorer" : "Show file explorer"} variant="ghost"><PanelLeft className="size-3.5" /></Button>
+            {selected ? <WorkspaceFileIcon path={selected} /> : null}
+            <span className="min-w-0 flex-1 truncate font-mono" title={selected || "Workspace"}>{selected || "Workspace"}</span>
+            <Button aria-label="Annotate selected code" className="h-7 shrink-0 px-2 text-[11px]" disabled={disabled || locked || !selectedReference || selectedReference.path !== selected} onClick={() => setAnnotation(selectedReference)} size="sm" title="Select up to 100 lines to annotate" variant="ghost"><MessageSquarePlus className="size-3.5" /> Annotate</Button>
+            <Button aria-label="Refresh workspace files" className="size-7 shrink-0" disabled={locked} onClick={onRefresh} size="icon" title="Refresh workspace files" variant="ghost"><RotateCw className="size-3.5" /></Button>
+          </div>
+          {locked ? <Notice>The workspace is being restored.</Notice> : <div className={styles.body}>
+            {explorerOpen ? <nav aria-label="Workspace files" className={styles.explorer}><Directory sessionId={sessionId} revision={readRevision} path="" expanded={expanded} selected={selected} onSelect={selectFile} onToggle={onToggle} onRefresh={onRefresh} /></nav> : null}
+            <div className={styles.editor}>
+              <SelectedFile sessionId={sessionId} path={selected} revision={readRevision} onRefresh={onRefresh} onSelectionChange={(reference) => setSelection(reference ? { reference, revision: readRevision } : null)} />
+            </div>
+          </div>}
+          {annotation && !disabled && !locked ? <CodeAnnotationComposer reference={annotation} sessionId={sessionId} memberId={memberId} deliveredIds={deliveredIds} onSubmit={onAnnotate} onClose={() => setAnnotation(null)} /> : null}
         </div>
-      </div>
-      {annotation && !disabled ? <CodeAnnotationComposer reference={annotation} sessionId={sessionId} memberId={memberId} deliveredIds={deliveredIds} onSubmit={onAnnotate} onClose={() => setAnnotation(null)} /> : null}
-    </div>
+      </Activity>
+    </WorkspaceReadCache>
   );
 }
