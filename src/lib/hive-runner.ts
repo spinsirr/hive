@@ -4,13 +4,13 @@ import {
   HarnessAgent,
   type HarnessAgentResumeSessionState,
 } from "@ai-sdk/harness/agent";
-import { createCodex } from "@ai-sdk/harness-codex";
 import { createVercelSandbox } from "@ai-sdk/sandbox-vercel";
 import { Sandbox } from "@vercel/sandbox";
 import type { Experimental_SandboxSession } from "ai";
 
 import { hiveAgentFailureMessage, HiveAgentError } from "@/lib/hive-agent";
 import { consumeAgentText } from "@/lib/agent-stream";
+import { createHiveCodex } from "@/lib/codex-harness";
 import { getRepositoryCloneCredentials } from "@/lib/github-app";
 import { buildHivePrompt } from "@/lib/hive-prompt";
 import {
@@ -329,7 +329,7 @@ export async function runHiveCodingTask(
     const sandbox = createVercelSandbox({ sandbox: persistentSandbox });
     const agent = new HarnessAgent({
       id: "hive-coding-agent",
-      harness: createCodex({
+      harness: createHiveCodex({
         auth: codexAuth,
         reasoningEffort: "low",
         webSearch: false,
@@ -393,7 +393,7 @@ export async function runHiveCodingTask(
           auth?.actorName,
         ),
       });
-      await consumeAgentText(
+      const publicReply = await consumeAgentText(
         result.fullStream,
         (body) => auth?.onText?.(body),
         (part) => {
@@ -424,7 +424,7 @@ export async function runHiveCodingTask(
           resumeFrom: nextResumeFrom,
         },
         summary:
-          (await result.text).trim() ||
+          publicReply.trim() ||
           (artifacts.changedFiles.length > 0
             ? `Changed ${artifacts.changedFiles.join(", ")}. Review the real diff in the shared workspace.`
             : "I inspected the repository and did not make a code change."),

@@ -1,6 +1,6 @@
-# Codex text streaming — known limitation
+# Codex text streaming — diagnosis and native transport
 
-Status: diagnosed, not fixed. Checked September 6, 2026.
+Status: native transport implemented and locally verified; production acceptance pending. September 6, 2026. The failed observation below is retained as the before-fix evidence.
 
 ## Production observation
 
@@ -32,8 +32,18 @@ node scripts/diagnostics/check-harness-stream.mjs --completed-only
 
 This is a differential diagnostic of the event boundary, not a production SDK trace or an end-to-end regression. It deliberately reads installed adapter internals and is not part of the normal test suite. It excludes buffering inside HarnessAgent/the Hive writer as an explanation when genuine updates are provided. Separate transport tests do not establish model-token cadence.
 
-## Scope decision still required
+## Native transport implementation
 
-Do not add a fake typing animation or claim character streaming is finished. Supporting native deltas requires changing the Codex event transport, while preserving the existing harness lifecycle, saved thread identity, Gateway authentication, tool results, and failure checkpoints. That change needs a focused implementation and recovery retest, not a CSS adjustment.
+The owner authorized implementation. `createHiveCodex` keeps the installed Vercel harness adapter's lifecycle, authentication and saved thread identity; only its public bootstrap recipe's sandbox driver changes. The public `@ai-sdk/harness/bridge` runtime still owns authenticated WebSockets, sequence/replay and lifecycle files. A build-time asset copy avoids importing sandbox code into Next's bundle. No dependencies, Codex/model versions, credentials, billing settings or task data are changed.
 
-No production runtime, dependency, model, authentication, billing, saved history, or repository artifact was changed during this diagnosis. Decide with the owner whether to make that transport change now or explicitly defer the typing effect while finishing the bounded multiplayer demo.
+The driver uses Codex app-server's **stdio** protocol, not an exposed app-server WebSocket. It initializes, starts/resumes the existing native thread, and starts one turn. Public `item/agentMessage/delta` events pass through immediately; the completed item contributes only its missing suffix. Reasoning and unrelated-thread events never become chat text. Commands retain their actual output and exit code; unfinished commands keep partial output with an unknown exit code on failure. EOF and a bounded shutdown precede the sandbox snapshot. Unexpected interactive requests fail rather than silently gaining approval. Hive does not currently supply host-executed tools; unsupported ones are rejected explicitly.
+
+The protocol is checked against [Codex 0.149.1's request schemas](https://github.com/openai/codex/tree/rust-v0.149.1/codex-rs/app-server-protocol/schema/typescript/v2). Native usage notifications expose cumulative thread totals and the last model call, so they are retained as raw counters rather than mislabeled as an exact total for a multi-call turn.
+
+Validation:
+
+- `node scripts/check-native-stream.mjs`: controlled external stdio process, real HarnessAgent and Hive checkpoint writer. Two increments arrive before completion; no duplicate suffix, reasoning or other-thread text; fresh-process resume and failed-command evidence pass. Included in `pnpm test`.
+- `node scripts/diagnostics/check-codex-process.mjs <isolated-sdk-install>`: opt-in real CLI **0.149.1** against a loopback-only Responses fixture. Native deltas passed; a second process resumed the on-disk thread and sent its original marker in the next model request; one actual `printf native-check` returned exit 0 and its output reached the next model call. No account credentials or paid model were used.
+- Existing 98 unit tests, seven failed-run scenarios, pre-repository input regression, TypeScript and ESLint pass. The supported webpack production build passes and includes all three sandbox assets in the session route's deployment trace. Default local Turbopack still fails on its port-binding permission; its configuration is unchanged.
+
+These tests do not substitute for observing growing text in the deployed browser. Record that production result before marking native streaming accepted.

@@ -1,0 +1,118 @@
+// Opt-in integration: the pinned real Codex process against a loopback-only
+// Responses fixture. No account credentials or paid model are used.
+// node scripts/diagnostics/check-codex-process.mjs /path/to/isolated/sdk-install
+import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { createRequire } from "node:module";
+import { createServer } from "node:http";
+import { mkdtemp, mkdir, realpath } from "node:fs/promises";
+import path from "node:path";
+import os from "node:os";
+import { runCodexAppServerTurn } from "../../src/lib/codex-bridge/app-server.mjs";
+
+const installation = process.argv[2];
+assert.ok(installation, "Pass an isolated installation of @openai/codex-sdk@0.149.1");
+const sdkEntry = await realpath(path.join(installation, "node_modules/@openai/codex-sdk/package.json"));
+const require = createRequire(sdkEntry);
+const cliPackage = require.resolve("@openai/codex/package.json");
+assert.equal(require(cliPackage).version, "0.149.1");
+const cli = path.join(path.dirname(cliPackage), require(cliPackage).bin.codex);
+const fixtureDirectory = await mkdtemp(path.join(os.tmpdir(), "hive-native-process-"));
+const codexHome = path.join(fixtureDirectory, "codex-home");
+await mkdir(codexHome);
+let requestNumber = 0;
+let requestFailure;
+const requests = [];
+const firstDelta = Promise.withResolvers();
+const secondDelta = Promise.withResolvers();
+let responseFinished = false;
+const provider = createServer(async (request, response) => {
+  try {
+    assert.equal(request.url, "/v1/responses");
+    const chunks = [];
+    for await (const chunk of request) chunks.push(chunk);
+    const body = JSON.parse(Buffer.concat(chunks));
+    requests.push(body);
+    requestNumber++;
+    response.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" });
+    const send = (data) => response.write(`event: ${data.type}\ndata: ${JSON.stringify(data)}\n\n`);
+    send({ type: "response.created", response: { id: `fixture-${requestNumber}` } });
+    if (requestNumber === 2) {
+      assert.match(JSON.stringify(body.input), /HIVE-NATIVE-MEMORY-27/, "The resumed native history must contain the first turn");
+      const tools = body.tools.flatMap((tool) => tool.type === "namespace"
+        ? tool.tools.map((nested) => ({ ...nested, namespace: tool.name })) : [tool]);
+      const shell = tools.find((tool) => ["exec_command", "shell_command", "shell"].includes(tool.name));
+      assert.ok(shell, `No shell tool in ${tools.map((tool) => tool.name).join(", ")}`);
+      const args = shell.name === "exec_command" ? { cmd: "printf native-check", yield_time_ms: 1000 }
+        : shell.name === "shell" ? { command: ["/bin/sh", "-c", "printf native-check"] }
+          : { command: "printf native-check" };
+      send({ type: "response.output_item.done", item: {
+        type: "function_call", call_id: "native-command", name: shell.name,
+        ...(shell.namespace ? { namespace: shell.namespace } : {}), arguments: JSON.stringify(args),
+      } });
+    } else {
+      if (requestNumber === 3) assert.match(JSON.stringify(body.input), /native-check/, "Real command output must reach the next model call");
+      const item = { type: "message", role: "assistant", id: `reply-${requestNumber}`, content: [] };
+      send({ type: "response.output_item.added", item });
+      send({ type: "response.output_text.delta", delta: "第一段" });
+      if (requestNumber === 1) await firstDelta.promise;
+      send({ type: "response.output_text.delta", delta: "，继续" });
+      if (requestNumber === 1) await secondDelta.promise;
+      send({ type: "response.output_item.done", item: { ...item, content: [{ type: "output_text", text: "第一段，继续。" }] } });
+    }
+    responseFinished = true;
+    send({ type: "response.completed", response: { id: `fixture-${requestNumber}`, usage: {
+      input_tokens: 10, output_tokens: 5, total_tokens: 15,
+    } } });
+    response.end();
+  } catch (error) {
+    requestFailure = error;
+    response.destroy(error);
+  }
+});
+await new Promise((resolve, reject) => { provider.once("error", reject); provider.listen(0, "127.0.0.1", resolve); });
+// Process-local routing to a controlled loopback fixture, never a real provider.
+process.env.OPENAI_BASE_URL = `http://127.0.0.1:${provider.address().port}/v1`;
+delete process.env.AI_GATEWAY_BASE_URL;
+delete process.env.AI_GATEWAY_API_KEY;
+let threadId;
+const allEvents = [];
+try {
+  for (let turnNumber = 0; turnNumber < 2; turnNumber++) {
+    const events = [];
+    const started = Date.now();
+    await runCodexAppServerTurn({
+      start: { model: "gpt-5-mini", prompt: turnNumber === 0 ? "Remember HIVE-NATIVE-MEMORY-27." : "Run the check.", webSearch: false },
+      workdir: fixtureDirectory, threadId,
+      onThread(id) { if (threadId) assert.equal(id, threadId); threadId = id; },
+      launch(workdir) {
+        return spawn(process.execPath, [cli, "app-server"], {
+          cwd: workdir, stdio: ["pipe", "pipe", "pipe"], detached: true,
+          env: { PATH: process.env.PATH, CODEX_HOME: codexHome, CODEX_API_KEY: "controlled-loopback-fixture" },
+        });
+      },
+      turn: { abortSignal: AbortSignal.timeout(25_000), emit(event) {
+        events.push(event);
+        if (event.type === "text-delta") {
+          if (turnNumber === 0 && event.delta !== "." && event.delta !== "。") assert.equal(responseFinished, false, "Codex must emit text before the provider finishes");
+          if (event.delta === "第一段") firstDelta.resolve();
+          if (event.delta === "，继续") secondDelta.resolve();
+        }
+      } },
+    });
+    allEvents.push(...events);
+    assert.equal(events.filter((event) => event.type === "text-delta").map((event) => event.delta).join(""), "第一段，继续。");
+    console.log(`PASS: real Codex ${turnNumber ? "fresh-process resume and command" : "native public deltas"} (${Date.now() - started} ms)`);
+  }
+  assert.equal(requestFailure, undefined);
+  assert.equal(requestNumber, 3);
+  const command = allEvents.find((event) => event.type === "tool-result" && event.toolName === "bash");
+  assert.equal(command.result.exitCode, 0);
+  assert.match(command.result.output, /native-check/);
+  console.log("PASS: persisted native history and actual command exit/output survive the transport change");
+} finally {
+  firstDelta.resolve(); secondDelta.resolve();
+  provider.closeAllConnections();
+  await new Promise((resolve) => provider.close(resolve));
+  console.log(`Isolated test data: ${fixtureDirectory}`);
+}
