@@ -2,7 +2,7 @@
 
 Draft prepared for owner review. Not yet submitted; the remaining live acceptance checks and reviewer access are not complete.
 
-Release note: owner-authorized release `fec2484` deployed successfully on September 7. The canonical dashboard, public [UI demo](https://hive-roan-mu.vercel.app/demo), Thread rendering and retained workspace passed a bounded live check. A new two-account whole-thread steer and real paired restore remain unverified; the earlier multiplayer acceptance does not establish those results. Deployment authorization does not authorize repository publication or external submission.
+Release note: latest application release `396d80f` deployed successfully on September 7. The canonical dashboard, public [UI demo](https://hive-roan-mu.vercel.app/demo), Thread rendering, file navigation/cache and conversation entry have bounded UI verification. A new two-account whole-thread steer and real paired restore remain unverified; the earlier multiplayer acceptance does not establish those results. Current command evidence also needs refreshing after a later text-only turn. Deployment authorization does not authorize repository publication or external submission.
 
 ## Four submission items
 
@@ -15,7 +15,7 @@ Release note: owner-authorized release `fec2484` deployed successfully on Septem
 
 ## Summary blurb
 
-Hive is a multiplayer coding agent for small software teams. Instead of one person privately prompting an agent and handing the result to teammates later, everyone shares the same task-scoped conversation and execution workspace. Teammates can talk directly to one another, annotate a specific message, or deliberately promote an annotation into a steer for Hive. The point is to keep the team's intent present while the code is being made, not just when it is reviewed afterward.
+Hive is a multiplayer coding agent for small software teams. Instead of one person privately prompting an agent and handing the result to teammates later, everyone shares the same task-scoped conversation and execution workspace. Teammates can discuss a specific message in a thread and explicitly steer Hive with one reply or the discussion so far, preserving who said what. The point is to keep the team's intent present while the code is being made, not just when it is reviewed afterward.
 
 I built Hive as a focused Next.js full-stack product. GitHub sign-in establishes authorship, invitations admit teammates, and Postgres preserves the shared conversation and serializes their input. An existing Codex harness runs inside Vercel Sandbox; teammates inspect actual commands, changed files, and diffs. I concentrated on the multiplayer interaction—discussion versus direction, explicit queue boundaries, and shared review—rather than building another agent runtime or adding PR automation and organization management.
 
@@ -23,7 +23,8 @@ I built Hive as a focused Next.js full-stack product. GitHub sign-in establishes
 
 - The two-real-account annotation → steer → queue → execution sequence passed on September 6 at 07:09 UTC, including the corrected attribution case. Cross-account completion/reopening also passed; retain these results for rehearsal.
 - Native text streaming is now [deployed and verified](STREAMING_DIAGNOSIS.md): the 2026-09-07 00:19 UTC run showed 25 growing updates before completion and one final reply, restored identically by a fresh page. Failed-run continuation, offline-page reload recovery, and no-reload recovery of a missed teammate message passed separately. The latter is not an offline-mid-model-delta test; do not describe fixture tests as production evidence.
-- Preserve and recheck the real coding result before the demo. A fresh owner-page inspection at **2026-09-07 17:43 UTC** found the original accessibility Diff, the full Files tree (including the unchanged README), and the original successful combined command with 92 sandbox-revision tests in Runs. This was read-only navigation, not a new run or two-account check. A later text-only turn would replace that latest-turn command view, so inspect command evidence before applying a text-only steer. Do not Reset the task for a cleaner transcript.
+- Obtain fresh, inspectable command evidence before the demo. At **2026-09-07 23:23 UTC**, the formal task showed **No commands in this turn** after a later text-only steer and its workspace was **Approved**. The 92-test command seen at 17:43 and 18:04 is historical evidence, not the current Runs view. Do not Reset or restore the approved task for a cleaner demonstration.
+- Finish the new two-account whole-thread check and a real paired restore. Both inspected browsers currently use the owner account; a separate Joseph login is needed. A paired Restore control is enabled, but no restore was attempted. Creating a separate production acceptance task was denied by the safety review and needs explicit owner authorization; no new task was created.
 - Rehearse the [20-minute route](PRESENTATION_NOTES.md#demo-sequence-20-minutes) with a timer, including problem → solution → code → AI journey.
 - The read-only technical route has been checked in production; the script includes the exact annotation/check prompts and a slow/failure path. Its 170-second navigation preflight is not proof of a 20-minute narrated rehearsal. The bounded local-history credential-pattern check is also not a complete publication audit.
 - Confirm the presentation date and time. Send all four items at least 24 hours beforehand; do not invent a calendar deadline before the presentation is scheduled.
