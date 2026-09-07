@@ -24,12 +24,16 @@ _Avoid_: Connector, repository binding
 The single repository selected from Repository Access for a task session. It may be attached after the conversation begins and cannot be replaced within that session.
 _Avoid_: Project, default repository
 
-**Annotation**:
-A human comment attached to a teammate’s message or a quoted file-and-line selection. It remains discussion until someone promotes it.
-_Avoid_: Prompt, agent response
+**Thread**:
+Discussion attached to one human or completed agent message. Replies retain their authors and stay human-only until explicitly steered. Existing message annotations are displayed as replies, not a separate comment system.
+_Avoid_: New task session, agent history
+
+**Code Annotation**:
+A quoted file-and-line selection with a teammate's comment, shared as a discussion thread. It does not edit the file or wake the agent by itself.
+_Avoid_: File save, prompt, agent response
 
 **Steer**:
-An annotation or teammate message explicitly promoted into agent direction. During a run, steers wait in an ordered queue for a safe boundary.
+One reply, an entire thread, or a teammate message explicitly promoted into agent direction. A whole-thread steer freezes the parent, replies through the selected boundary, and each author's identity. During a run, steers wait in an ordered queue for a safe boundary.
 _Avoid_: Comment, hidden prompt
 
 **Run**:
@@ -39,3 +43,7 @@ _Avoid_: Session, task
 **Workspace**:
 The task session’s real repository working copy and evidence of agent execution: a complete, on-demand file browser, diff, commands, and available sandbox checkpoints. File annotations quote what a teammate reviewed; they do not silently edit the repository.
 _Avoid_: Team space, chat history
+
+**Checkpoint**:
+A saved sandbox filesystem paired with its native agent context and execution evidence. Restoring requires confirmation and an idle task, resets approval, and preserves the team conversation and pending queue without rerunning them. It does not undo GitHub commits or pull requests.
+_Avoid_: Conversation rewind, automatic retry

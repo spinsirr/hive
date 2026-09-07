@@ -20,6 +20,7 @@ import {
 } from "@/lib/hive-sandbox";
 import {
   createAgentSessionId,
+  WORKSPACE_CHECKPOINT_LIMIT,
   type HiveSessionCheckpoint,
   type MemberId,
   type TaskSessionState,
@@ -257,6 +258,7 @@ export async function runHiveCodingTask(
   steer?: string,
   auth?: { actorName?: string; vercelOidcToken?: string; onText?: (body: string) => void },
 ) {
+  if (taskSession.workspace.restore) throw new HiveAgentError("Finish restoring the workspace before starting Hive.", new Error("Workspace restore in progress."));
   if (!taskSession.repository) {
     throw new HiveAgentError(
       "Connect a GitHub repository before asking Hive to execute code.",
@@ -297,7 +299,7 @@ export async function runHiveCodingTask(
     const cloneCredentials = await getRepositoryCloneCredentials(
       taskSession.repository,
     );
-    persistentSandbox = await Sandbox.getOrCreate({
+    persistentSandbox = resumeFrom ? await Sandbox.get({ name: sandboxName }) : await Sandbox.getOrCreate({
       name: sandboxName,
       runtime: "node24",
       ports: [CODEX_BRIDGE_PORT],
@@ -310,7 +312,7 @@ export async function runHiveCodingTask(
       timeout: 10 * 60 * 1000,
       persistent: true,
       snapshotExpiration: 0,
-      keepLastSnapshots: { count: 1, expiration: 0 },
+      keepLastSnapshots: { count: WORKSPACE_CHECKPOINT_LIMIT, expiration: 0 },
       resources: { vcpus: 1 },
       tags: {
         app: "hive",
@@ -318,6 +320,9 @@ export async function runHiveCodingTask(
         runtime: "codex",
       },
     });
+    if (persistentSandbox.keepLastSnapshots?.count !== WORKSPACE_CHECKPOINT_LIMIT) {
+      await persistentSandbox.update({ keepLastSnapshots: { count: WORKSPACE_CHECKPOINT_LIMIT, expiration: 0 } });
+    }
     const sandbox = createVercelSandbox({ sandbox: persistentSandbox });
     const agent = new HarnessAgent({
       id: "hive-coding-agent",
@@ -404,11 +409,10 @@ export async function runHiveCodingTask(
       );
       const nextResumeFrom = await agentSession.stop();
       sessionEnded = true;
-      await persistentSandbox.stop().catch((error) => {
-        console.error("Hive sandbox snapshot failed", error);
-      });
+      const snapshot = await saveSandboxCheckpoint(persistentSandbox);
 
       return {
+        snapshot,
         sandboxName,
         agentSession: {
           id: sessionId,
@@ -453,9 +457,7 @@ export async function runHiveCodingTask(
           console.error("Hive could not capture failed-run artifacts", artifactError);
         }
       }
-      await persistentSandbox.stop().catch((stopError) => {
-        console.error("Hive sandbox snapshot failed", stopError);
-      });
+      checkpoint.snapshot = await saveSandboxCheckpoint(persistentSandbox);
       throw new HiveAgentError(
         hiveAgentFailureMessage(error),
         error,
@@ -470,4 +472,14 @@ export async function runHiveCodingTask(
     if (error instanceof HiveAgentError) throw error;
     throw new HiveAgentError(hiveAgentFailureMessage(error), error);
   }
+}
+
+async function saveSandboxCheckpoint(sandbox: Sandbox) {
+  try {
+    const { snapshot } = await sandbox.stop();
+    if (snapshot?.status === "created") return { id: snapshot.id, createdAt: snapshot.createdAt };
+  } catch (error) {
+    console.error("Hive sandbox snapshot failed", error);
+  }
+  return undefined;
 }

@@ -10,6 +10,9 @@ export function publicTaskSessionSnapshot(snapshot: TaskSessionSnapshot): TaskSe
       ...snapshot.session,
       workspace: {
         ...snapshot.session.workspace,
+        // Saved snapshots include private native-harness recovery data. The
+        // checkpoint endpoint exposes only task-scoped display metadata.
+        checkpoints: undefined,
         agentSession: session
           ? { id: session.id, runtime: session.runtime }
           : undefined,

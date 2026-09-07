@@ -6,6 +6,7 @@ import { repositoryDirectory, resolvePersistentSandboxName } from "./hive-sandbo
 import type { TaskSessionState } from "./task-session.ts";
 import { workspaceReadRequest, workspaceReadResponse, type WorkspaceReadRequest, type WorkspaceCheckpointsResponse } from "./workspace-files.ts";
 import { workspaceReadScript } from "./workspace-read-script.ts";
+import { workspaceRestoreBlockReason } from "./workspace-restore-state.ts";
 
 export class WorkspaceReadError extends Error {
   readonly status: number;
@@ -39,19 +40,23 @@ export async function readWorkspace(session: TaskSessionState, input: WorkspaceR
 }
 
 export async function readWorkspaceCheckpoints(session: TaskSessionState, signal: AbortSignal): Promise<WorkspaceCheckpointsResponse> {
-  if (!session.workspace.agentSession || (!session.workspace.startedAt && !session.workspace.completedAt)) return { checkpoints: [], retentionCount: null };
+  const context = { version: session.version, blockedReason: workspaceRestoreBlockReason(session), restore: session.workspace.restore ? { id: session.workspace.restore.id, snapshotId: session.workspace.restore.snapshotId, status: session.workspace.restore.status, retryAfter: session.workspace.restore.retryAfter } : null };
+  if (!session.workspace.agentSession || (!session.workspace.startedAt && !session.workspace.completedAt)) return { ...context, checkpoints: [], retentionCount: null };
   // Metadata-only lookup: opening Checkpoints does not resume or stop the VM.
   const sandbox = await existingWorkspace(session, false, signal);
   const result = await sandbox.listSnapshots({ limit: 10, sortOrder: "desc", signal });
   return {
+    ...context,
     checkpoints: result.snapshots.filter((snapshot) => snapshot.status === "created" && (!snapshot.expiresAt || snapshot.expiresAt > Date.now())).map((snapshot) => ({
       id: snapshot.id, createdAt: snapshot.createdAt, sizeBytes: snapshot.sizeBytes, current: snapshot.id === sandbox.currentSnapshotId,
+      restorable: session.workspace.checkpoints?.some((saved) => saved.id === snapshot.id && Boolean(saved.result.agentSession.resumeFrom)) ?? false,
     })),
     retentionCount: sandbox.keepLastSnapshots?.count ?? null,
   };
 }
 
-async function existingWorkspace(session: TaskSessionState, resume: boolean, signal: AbortSignal) {
+export async function existingWorkspace(session: TaskSessionState, resume: boolean, signal: AbortSignal) {
+  if (resume && session.workspace.restore) throw new WorkspaceReadError(409, "The workspace is being restored. Refresh Checkpoints to see its status.");
   const agentId = session.workspace.agentSession?.id;
   if (!session.repository || !agentId || (!session.workspace.startedAt && !session.workspace.completedAt && !session.workspace.sandboxName)) {
     throw new WorkspaceReadError(409, "The workspace will be available after Hive starts working on the repository.");

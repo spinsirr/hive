@@ -12,6 +12,7 @@ import { buildHiveRunInput } from "@/lib/hive-prompt";
 import type { TaskSessionAction } from "@/lib/task-session";
 import { isTaskSessionId } from "@/lib/task-session-id";
 import { publicTaskSessionSnapshot } from "@/lib/task-session-snapshot";
+import { WorkspaceRestoreError } from "@/lib/workspace-restore-state";
 import {
   appendHiveReply,
   applyTaskSessionAction,
@@ -81,6 +82,7 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
     payload.type !== "annotate-message" &&
     payload.type !== "annotate-code" &&
     payload.type !== "steer-message-annotation" &&
+    payload.type !== "steer-thread" &&
     payload.type !== "apply-next-steer" &&
     payload.type !== "remove-queued-steer" &&
     payload.type !== "reorder-queued-steer" &&
@@ -109,10 +111,17 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
 
   if (
     (payload.type === "annotate-message" ||
-      payload.type === "steer-message-annotation") &&
+      payload.type === "steer-message-annotation" || payload.type === "steer-thread") &&
     (!("messageId" in payload) || typeof payload.messageId !== "string")
   ) {
     return NextResponse.json({ error: "Message ID is required" }, { status: 400 });
+  }
+
+  if (payload.type === "steer-thread" && (!("throughReplyId" in payload) || typeof payload.throughReplyId !== "string")) {
+    return NextResponse.json({ error: "Select the replies to include in this steer." }, { status: 400 });
+  }
+  if (payload.type === "annotate-message" && "body" in payload && typeof payload.body === "string" && payload.body.trim().length > 4000) {
+    return NextResponse.json({ error: "Thread replies can contain up to 4,000 characters." }, { status: 400 });
   }
 
   if (
@@ -145,7 +154,13 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
 
   const action = { ...payload, actor: member.id } as TaskSessionAction;
   const actionAt = Date.now();
-  const { snapshot, startedRun } = await applyTaskSessionAction(sessionId, action, member, actionAt);
+  let applied;
+  try { applied = await applyTaskSessionAction(sessionId, action, member, actionAt); }
+  catch (error) {
+    if (error instanceof WorkspaceRestoreError) return NextResponse.json({ error: error.message }, { status: error.status });
+    throw error;
+  }
+  const { snapshot, startedRun } = applied;
   if (!startedRun) return sessionResponse(snapshot);
 
   const messageAnnotation =
@@ -175,7 +190,7 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
         }
       : undefined;
   const activeSteer =
-    action.type === "apply-next-steer"
+    action.type === "apply-next-steer" || action.type === "steer-thread"
       ? snapshot.session.activeSteer
       : undefined;
 

@@ -30,8 +30,11 @@ export type WorkspaceEntry = z.infer<typeof workspaceEntrySchema>;
 export type WorkspaceReadResponse = z.infer<typeof workspaceReadResponse>;
 
 export const workspaceCheckpointsResponse = z.object({
-  checkpoints: z.array(z.object({ id: z.string(), createdAt: z.number(), sizeBytes: z.number(), current: z.boolean() })),
+  checkpoints: z.array(z.object({ id: z.string(), createdAt: z.number(), sizeBytes: z.number(), current: z.boolean(), restorable: z.boolean() })),
   retentionCount: z.number().nullable(),
+  version: z.number(),
+  blockedReason: z.string().nullable(),
+  restore: z.object({ id: z.string(), snapshotId: z.string(), status: z.enum(["restoring", "unconfirmed"]), retryAfter: z.number() }).nullable(),
 });
 
 export type WorkspaceCheckpointsResponse = z.infer<typeof workspaceCheckpointsResponse>;

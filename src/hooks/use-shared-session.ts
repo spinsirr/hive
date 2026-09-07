@@ -165,5 +165,5 @@ export function useSharedSession(sessionId: string, initialSnapshot: TaskSession
     void heartbeat();
   }, [heartbeat]);
 
-  return { snapshot, syncing, syncError, dispatch, setTyping };
+  return { snapshot, syncing, syncError, dispatch, setTyping, receiveSnapshot: publish };
 }

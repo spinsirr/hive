@@ -2,6 +2,8 @@
 
 Draft prepared for owner review. Not yet submitted; the remaining live acceptance checks and reviewer access are not complete.
 
+Release note: the owner authorized pushing and deploying the new dashboard/UI demo, Thread/whole-thread steering and paired rollback on September 7. Reconcile this packet with the exact deployment and live checks recorded in the evidence log before sending; the earlier multiplayer acceptance does not verify these additions. This release authorization does not authorize repository publication or external submission.
+
 ## Four submission items
 
 | Item | Location | Before sending |
@@ -21,7 +23,7 @@ I built Hive as a focused Next.js full-stack product. GitHub sign-in establishes
 
 - The two-real-account annotation → steer → queue → execution sequence passed on September 6 at 07:09 UTC, including the corrected attribution case. Cross-account completion/reopening also passed; retain these results for rehearsal.
 - Native text streaming is now [deployed and verified](STREAMING_DIAGNOSIS.md): the 2026-09-07 00:19 UTC run showed 25 growing updates before completion and one final reply, restored identically by a fresh page. Failed-run continuation, offline-page reload recovery, and no-reload recovery of a missed teammate message passed separately. The latter is not an offline-mid-model-delta test; do not describe fixture tests as production evidence.
-- Preserve and recheck the real coding result before the demo. The accessibility diff and file snapshot remain; the latest **2026-09-07 00:19 UTC** combined check passed and is inspectable in Runs. A later text-only turn would replace that latest-turn command view, so inspect command evidence before applying a text-only steer. Do not Reset the task for a cleaner transcript.
+- Preserve and recheck the real coding result before the demo. A fresh owner-page inspection at **2026-09-07 17:43 UTC** found the original accessibility Diff, the full Files tree (including the unchanged README), and the original successful combined command with 92 sandbox-revision tests in Runs. This was read-only navigation, not a new run or two-account check. A later text-only turn would replace that latest-turn command view, so inspect command evidence before applying a text-only steer. Do not Reset the task for a cleaner transcript.
 - Rehearse the [20-minute route](PRESENTATION_NOTES.md#demo-sequence-20-minutes) with a timer, including problem → solution → code → AI journey.
 - The read-only technical route has been checked in production; the script includes the exact annotation/check prompts and a slow/failure path. Its 170-second navigation preflight is not proof of a 20-minute narrated rehearsal. The bounded local-history credential-pattern check is also not a complete publication audit.
 - Confirm the presentation date and time. Send all four items at least 24 hours beforehand; do not invent a calendar deadline before the presentation is scheduled.

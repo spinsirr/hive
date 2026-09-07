@@ -26,10 +26,14 @@ let corrupt = false;
 let session;
 let reducer;
 let codeRunInput;
+let codeRuns = 0;
 mock.module(new URL("../src/lib/auth-session.ts", import.meta.url).href, { namedExports: {
   HIVE_SESSION_COOKIE: "hive_session", getSessionMember: async () => member,
 } });
 mock.module(new URL("../src/lib/task-session-store.ts", import.meta.url).href, { namedExports: {
+  withTaskWorkspaceRead: async (_id, read) => read(session),
+  startTaskWorkspaceRestore: async () => { throw new Error("Restore is outside this read-only check"); },
+  finishTaskWorkspaceRestore: async () => { throw new Error("Restore is outside this read-only check"); },
   isTaskSessionMember: async () => admitted,
   getTaskSessionSnapshot: async () => ({ session }),
   heartbeat: async () => {},
@@ -48,6 +52,7 @@ mock.module(new URL("../src/lib/task-session-store.ts", import.meta.url).href, {
 } });
 mock.module(new URL("../src/lib/hive-runner.ts", import.meta.url).href, { namedExports: {
   runHiveCodingTask: async (state, actor, steer) => {
+    codeRuns += 1;
     codeRunInput = { actor, steer };
     return { sandboxName: "sandbox-qa", agentSession: state.workspace.agentSession, summary: "Observed the code annotation", diff: "", files: [], commands: [], changedFiles: [] };
   },
@@ -147,7 +152,7 @@ try {
   const saved = await checkpointRequest();
   assert.equal(saved.status, 200);
   assert.equal(saved.headers.get("cache-control"), "private, no-store");
-  assert.deepEqual(await saved.json(), { checkpoints: [{ id: "snap-current", createdAt: 1000, sizeBytes: 512, current: true }], retentionCount: 1 });
+  assert.deepEqual(await saved.json(), { checkpoints: [{ id: "snap-current", createdAt: 1000, sizeBytes: 512, current: true, restorable: false }], retentionCount: 1, version: session.version, blockedReason: null, restore: null });
   assert.deepEqual(calls.map(([kind]) => kind), ["get", "list-snapshots"]);
   assert.equal(calls[0][1].resume, false);
   console.log("PASS: workspace route checks membership, reads the existing worktree, rejects unsafe paths, and never creates a sandbox or starts an agent");
@@ -178,6 +183,28 @@ try {
   assert.match(codeRunInput.steer, /Preserve keyboard focus/);
   assert.doesNotMatch(codeRunInput.steer, /forged-author/);
   console.log("PASS: real session POST validates code anchors, derives the author from login, deduplicates retries, and gives the code context to the runner only on explicit steer");
+
+  const agentMessage = session.messages.at(-1);
+  const reply = { type: "annotate-message", actor: "forged-author", messageId: agentMessage.id, clientId: "311d0669-566f-4080-b8c0-10725e4dc605", body: "Also preserve the visible labels." };
+  const runsBeforeReply = codeRuns;
+  assert.equal((await post(reply)).status, 200);
+  const throughReplyId = session.messages.find((message) => message.id === agentMessage.id).annotations.at(-1).id;
+  assert.equal(codeRuns, runsBeforeReply, "A thread reply never wakes the agent");
+  assert.equal((await post({ type: "steer-thread", messageId: agentMessage.id })).status, 400);
+  const steerThread = { type: "steer-thread", actor: "forged-author", messageId: agentMessage.id, throughReplyId };
+  admitted = false;
+  assert.equal((await post(steerThread)).status, 401);
+  admitted = true;
+  assert.equal((await post(steerThread)).status, 200);
+  assert.equal(codeRuns, runsBeforeReply + 1);
+  assert.equal(codeRunInput.actor, member.id);
+  assert.match(codeRunInput.steer, /Steer requested by: QA User/);
+  assert.match(codeRunInput.steer, /Observed the code annotation/);
+  assert.match(codeRunInput.steer, /Also preserve the visible labels/);
+  assert.doesNotMatch(codeRunInput.steer, /forged-author/);
+  assert.equal((await post(steerThread)).status, 200);
+  assert.equal(codeRuns, runsBeforeReply + 1, "A retry never executes the same thread twice");
+  console.log("PASS: real thread POST keeps replies human-only, requires a reply boundary, enforces membership and server authorship, and executes the frozen thread once");
 } finally {
   mock.restoreAll();
   await rm(fixture, { recursive: true, force: true });

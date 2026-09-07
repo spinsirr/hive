@@ -6,13 +6,23 @@ Hive is a multiplayer coding agent: two or more teammates share one agent conver
 
 **Live app:** [hive-roan-mu.vercel.app](https://hive-roan-mu.vercel.app/)
 
+**Release boundary — September 7:** The owner has authorized release of Thread / whole-thread steering, paired checkpoint rollback, the simplified dashboard, and `/demo`. These additions have local regression coverage; deployment and live verification are recorded separately in the [presentation evidence](docs/PRESENTATION_NOTES.md#evidence-log). Earlier production checks apply to their dated revisions, not automatically to this release.
+
 ## Try the app
+
+After sign-in, the homepage is a small task dashboard: Active / Completed lists, repository names, update times, and a New task dialog. It shows only sessions the signed-in member can access; it is not a live activity or presence dashboard.
 
 Open the live app with a GitHub account already admitted to Hive, or open a teammate's **Invite** link to join. New accounts cannot join from the homepage alone. Reviewers will need an invitation; making the code repository public does not remove this sign-in boundary.
 
-Create a task, invite a teammate, and start a conversation. Attach one authorized repository when ready to work on code. While Hive runs, new agent-directed messages queue; annotations stay discussion until explicitly promoted. At the end of the run, apply the next steer and review the actual Runs, Files, and Diff.
+Create a task, invite a teammate, and start a conversation. Attach one authorized repository when ready to work on code. Use **Reply** to discuss a human or completed agent message in a thread. Replies stay discussion until someone chooses **Steer Hive** for one reply or **Steer thread** for the whole discussion. While Hive runs, new agent-directed messages and promoted threads queue. At the end of the run, apply the next steer and review the actual Runs, Files, and Diff.
 
-The [submission packet](docs/SUBMISSION.md) links the overview, summary, and outstanding access checks. Full two-account rehearsal is still pending; the verification section below distinguishes implemented behavior from observed results.
+The [submission packet](docs/SUBMISSION.md) links the overview, summary, and outstanding access checks. The earlier two-account acceptance sequence passed; a full timed rehearsal and production checks of the pending additions are still required. The verification section below distinguishes implemented behavior from observed results.
+
+### UI demo
+
+Run `pnpm dev --webpack --hostname 127.0.0.1` and open [the dashboard UI demo](http://127.0.0.1:3000/demo). This retained `/demo` route reuses the real dashboard component, without requiring GitHub, a database, or an agent. It is a design-review surface, not an end-to-end execution demo.
+
+Try Active / Completed, New task, a task's sample details, and Empty state. New tasks exist only in the current page; **Reset demo** or a refresh restores the invented sample data. All demo navigation stays in `/demo`; no task creation action, session API, repository access, or model is called. The banner explicitly labels the preview. The same route is available at `/demo` after this release is deployed.
 
 ## The problem
 
@@ -25,7 +35,8 @@ Hive moves collaboration into the agent session itself. Teammates can see the sa
 - A **team** is long-lived and owns GitHub repository access. New members need a valid task invitation; joining grants access to the team's authorized repository pool, not just the invited task's repository.
 - A **task session** exists for one intended outcome. It has one shared transcript and at most one attached repository; seven-day signed links admit teammates explicitly.
 - A session can begin without code. Hive first helps the team clarify intent; a repository can be attached later.
-- A **message annotation** is discussion-only until a teammate promotes it to a **steer**.
+- A **thread** groups replies under one human or completed agent message. Existing annotations remain as replies; their authors, delivery IDs and drafts are preserved.
+- **Steer thread** freezes the parent and replies through the last reply visible at the click, with each author's identity. Later replies are not included silently; conflicting requirements are a reason to ask, not to assume the latest speaker won.
 - Typing `@` suggests actual session teammates. A leading teammate mention stays human discussion; choosing a suggestion does not send the message.
 - New agent-directed messages and promoted steers created during an active run enter an attributed, ordered queue and wait for a safe boundary.
 - A safe boundary is the end of the current execution, including a failed attempt. Teammates explicitly apply the next steer from the conversation; later directions do not jump the existing queue.
@@ -61,13 +72,15 @@ workspace evidence → changed files, command output, and real git diff
 - AI Gateway uses Vercel OIDC in production. `openai/gpt-5-mini` is the low-cost default for both planning and coding turns and can be overridden.
 - Files browses the complete existing sandbox worktree on demand, including unchanged, untracked, and hidden files; Diff and Runs retain the runner’s actual evidence. There are no hardcoded execution artifacts.
 - Select code in Monaco and share a file-and-line annotation with the team. It remains discussion until **Steer Hive** promotes it, retaining the author and quoted code. Busy runs queue the steer through the same existing path.
-- Checkpoints displays the real sandbox’s available saved recovery points without resuming or stopping it. The current retention policy keeps one recovery point. This view does not implement manual snapshot creation or rollback.
+- Checkpoints lists available sandbox recovery points without resuming or stopping it. New run-end snapshots are paired with their exact private Codex context and workspace evidence; normal retention is three recovery points. **Restore** requires confirmation and an idle, active task. It restores the files and agent context together, keeps discussion and pending steers, invalidates approval, and does not execute queued work or change GitHub commits/PRs. Unpaired legacy snapshots cannot be restored safely and stay disabled.
+- Restore is fenced durably against new runs and file reads. An uncertain provider response leaves the task paused until the same operation can be retried after its worker expires; it does not silently continue with mismatched files and history. Private recovery data is excluded from browser snapshots.
 
 ## Deliberate boundaries
 
 - One team for the take-home; the membership model is explicit, but organization administration is out of scope.
 - One repository and one mutating run per task session.
-- File browsing can resume the existing sandbox, but never creates one or starts an agent. Text previews are capped at 512 KB; credential files, Git internals, symlinks, and binary files are not opened. Monaco supports selection and collaborative annotations, not direct file saves. Restoring a checkpoint together with its matching agent history is not implemented.
+- File browsing can resume the existing sandbox, but never creates one or starts an agent. Text previews are capped at 512 KB; credential files, Git internals, symlinks, and binary files are not opened. Monaco supports selection and collaborative annotations, not direct file saves. Checkpoints are saved at run boundaries, not arbitrary points during execution.
+- Image/file uploads are not implemented yet. They require private storage and actual agent ingestion; no placeholder upload control is presented.
 - Hive can clone, edit, test, and expose a diff. Branch push, PR creation, merging, and multi-team administration are outside the current [completion scope](docs/GOAL.md).
 - Repository access uses the GitHub App directly. The Vercel Connect experiment was removed because its current install flow is intended for connector developers, not this product's end-user onboarding.
 - Production history lives in a durable Neon Free database provisioned through Vercel Marketplace. The previous temporary database is retained only for the short rollback window after migration.
@@ -111,7 +124,7 @@ pnpm typecheck
 pnpm exec next build --webpack
 ```
 
-The 108-test suite covers invitation-only admission, signed invitation expiry and scope, OAuth origin and return-path checks, the multiplayer state machine, attributed prompts, safe-boundary queue execution and recovery, completed-session immutability, nonempty-diff approval, persistent sandbox selection, failure checkpoints, IME-safe submission, teammate autocomplete, retry deduplication, draft recovery, streaming/reconnect guards, full file-tree pagination, bounded safe reads, and attributed code annotations. `pnpm test` also runs seven controlled regressions through the real coding runner and task transition, a pre-repository input regression, and the actual file/checkpoint/session HTTP handlers with doubled external boundaries. These check authorization, no hidden sandbox creation or agent execution, comment deduplication, and the code context delivered on explicit steer.
+The 122-test suite covers invitation-only admission, signed invitation expiry and scope, OAuth origin and return-path checks, the multiplayer state machine, attributed prompts, safe-boundary queue execution and recovery, completed-session immutability, nonempty-diff approval, persistent sandbox selection, failure checkpoints, IME-safe submission, teammate autocomplete, retry deduplication, draft recovery, streaming/reconnect guards, full file-tree pagination, bounded safe reads, attributed code annotations, frozen whole-thread steering, paired rollback, dashboard filtering/timestamps, and demo fixtures/title validation. `pnpm test` also runs controlled regressions through the real coding runner and HTTP handlers with doubled external boundaries. These verify server-derived authorship, discussion without execution, one-time thread steering, restore authorization and ordering, uncertain-provider fencing, and private-checkpoint redaction. These are deterministic local checks, not evidence of a production rollback.
 
 Historical production checks admitted two real GitHub accounts and observed attribution, automatic message queuing, and retained transcript/queue after refresh. On September 6, a real accessible-label change survived a rate-limited run, then passed the sandbox revision's 92 tests, TypeScript, and diff check in one recorded command. Runs, the actual diff, colored read-only Files, and the transcript survived a same-account production reload. The sandbox revision does not include the seven newer runner regressions; those are local regression evidence, not part of that live run.
 
@@ -138,7 +151,8 @@ It uses transient notifications and isolated in-memory task fixtures, not task-t
 ## Key decisions
 
 - **Agent conversation first.** This is not a chat room with a bot attached.
-- **Annotate is not steer.** Humans need room to discuss before directing execution.
+- **Discussion is not execution.** Threads give humans room to discuss. Steering a thread is an explicit, attributed snapshot of that discussion, not a subscription to future replies.
+- **Rollback the work, not the team.** Files and native agent context move together; discussion remains an audit trail and queued requests are not replayed.
 - **Attach code when intent is ready.** Repository selection is not a provisioning prerequisite.
 - **One task per session.** The team is durable; a session is intentionally disposable and bounded.
 - **Reuse the harness.** AI SDK Harness, Codex, and Vercel Sandbox are infrastructure; multiplayer control is the product.

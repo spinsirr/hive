@@ -13,7 +13,6 @@ import {
   ListChecks,
   LoaderCircle,
   MessageSquare,
-  MessageSquarePlus,
   Play,
   RotateCcw,
   Search,
@@ -33,6 +32,7 @@ import { Message, MessageContent } from "@/components/ai-elements/message";
 import { AgentResponse } from "@/components/hive/agent-response";
 import { DiffPane } from "@/components/hive/diff-pane";
 import { MentionInput } from "@/components/hive/mention-input";
+import { MessageThread } from "@/components/hive/message-thread";
 import { WorkspaceSplit } from "@/components/hive/workspace-split";
 import { WorkspaceFiles } from "@/components/hive/workspace-files";
 import { WorkspaceCheckpoints } from "@/components/hive/workspace-checkpoints";
@@ -60,7 +60,6 @@ import {
   type TeamMember,
   type WorkspaceState,
 } from "@/lib/task-session";
-import { shouldSubmitMessage } from "@/lib/message-keyboard";
 import type { TaskSessionSnapshot } from "@/lib/task-session-store";
 import { cn } from "@/lib/utils";
 
@@ -147,6 +146,7 @@ function ProductHeader({
   repository,
   sessionTitle,
   runActive,
+  workspaceLocked,
   queueCount,
   syncing,
   syncError,
@@ -163,6 +163,7 @@ function ProductHeader({
   repository?: RepositoryState;
   sessionTitle: string;
   runActive: boolean;
+  workspaceLocked: boolean;
   queueCount: number;
   syncing: boolean;
   syncError: boolean;
@@ -203,7 +204,7 @@ function ProductHeader({
         <Button
           aria-label={lifecycle === "completed" ? "Reopen task" : "Complete task"}
           className="h-8 rounded-md bg-white px-2 text-xs text-[#333] sm:px-2.5"
-          disabled={runActive || queueCount > 0}
+          disabled={runActive || workspaceLocked || queueCount > 0}
           onClick={onToggleLifecycle}
           size="sm"
           title={lifecycle === "completed" ? "Reopen task" : "Complete task"}
@@ -241,7 +242,7 @@ function ProductHeader({
         <Button
           aria-label="Reset session"
           className="size-8 rounded-md text-[#777]"
-          disabled={lifecycle === "completed"}
+          disabled={lifecycle === "completed" || workspaceLocked}
           onClick={onReset}
           size="icon"
           title="Reset shared session"
@@ -323,7 +324,7 @@ function SteeringQueue({ activeSteer, canApply, items, members, onApply, onMove,
             <div className="group/queue flex items-center gap-2 border border-[#e3e3e3] bg-white px-2 py-1.5" key={item.id}>
               <span className="grid size-5 shrink-0 place-items-center rounded-sm bg-[#171717] text-[9px] text-white">{index + 1}</span>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-[12px] font-medium">{item.body}</p>
+                <p className="truncate text-[12px] font-medium">{item.source.kind === "message-thread" ? item.sourceLabel : item.body}</p>
                 <p className="mt-0.5 truncate text-[11px] text-[#8a8a8a]">{member.shortName}</p>
               </div>
               <div className="flex items-center opacity-0 transition group-hover/queue:opacity-100 group-focus-within/queue:opacity-100">
@@ -339,65 +340,7 @@ function SteeringQueue({ activeSteer, canApply, items, members, onApply, onMove,
   );
 }
 
-function annotationTime(createdAt: number) {
-  return new Intl.DateTimeFormat("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: "America/New_York",
-  }).format(createdAt);
-}
-
-function AnnotationComposer({ sessionId, currentMember, message, onAnnotate, onCancel }: {
-  sessionId: string;
-  currentMember: MemberId;
-  message: ChatMessage;
-  onAnnotate: (messageId: string, submission: MessageSubmission) => Promise<boolean>;
-  onCancel: (messageId: string) => void;
-}) {
-  const deliveredIds = useMemo(() => new Set(
-    (message.annotations ?? []).filter((annotation) => annotation.authorId === currentMember && annotation.clientId).map((annotation) => annotation.clientId!),
-  ), [currentMember, message.annotations]);
-  const send = useCallback(async (submission: MessageSubmission) => {
-    const delivered = await onAnnotate(message.id, submission);
-    if (delivered) onCancel(message.id);
-    return delivered;
-  }, [message.id, onAnnotate, onCancel]);
-  const { draft, edit, clear, submit } = useMessageDraft(
-    `hive-draft:v1:${sessionId}:${currentMember}:annotation:${message.id}`,
-    deliveredIds,
-    send,
-  );
-  const sending = draft?.status === "sending";
-  const cancel = () => { if (!sending) { clear(); onCancel(message.id); } };
-
-  return <>
-    <textarea
-      aria-label={`Annotation for ${message.name}'s message`}
-      autoFocus
-      className="min-h-14 w-full resize-none bg-[#fafafa] px-2 py-1.5 text-[12px] leading-4 outline-none placeholder:text-[#a1a1a1]"
-      disabled={!draft}
-      maxLength={500}
-      onChange={(event) => edit(event.target.value)}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && shouldSubmitMessage(event)) {
-          event.preventDefault();
-          void submit();
-        }
-        if (event.key === "Escape") cancel();
-      }}
-      placeholder="Add context, a concern, or a question for the team…"
-      readOnly={sending}
-      value={draft?.body ?? ""}
-    />
-    {draft?.status === "unconfirmed" ? <p className="mt-1 text-[11px] text-[#737373]" role="status">Delivery unconfirmed. Retry when connected.</p> : null}
-    <div className="mt-2 flex justify-end gap-1.5">
-      <Button className="h-7 rounded px-2.5 text-[11px]" disabled={sending} onClick={cancel} size="sm" variant="ghost">Cancel</Button>
-      <Button className="h-7 rounded bg-[#171717] px-2.5 text-[11px] text-white" disabled={!draft?.body.trim() || sending} onClick={() => void submit()} size="sm">{sending ? "Sending…" : draft?.status === "unconfirmed" ? "Retry annotation" : "Add annotation"}</Button>
-    </div>
-  </>;
-}
-
-function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, runActive, queued, queuedBy, queuePosition, steered, steeredBy, steeringQueue, currentMember, disabled, members, messages, onAdvance, onAnnotate, onMoveSteer, onRemoveSteer, onSteer, onSteerMessageAnnotation, onSend, onTyping, stage, typingMembers, workspaceAnnotation, compact = false }: {
+function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, runActive, queued, queuedBy, queuePosition, steered, steeredBy, steeringQueue, currentMember, disabled, members, messages, onAdvance, onOpenThread, selectedThreadId, onMoveSteer, onRemoveSteer, onSteer, onSend, onTyping, stage, typingMembers, workspaceAnnotation, compact = false }: {
   sessionId: string;
   activeMembers: MemberId[];
   activeSteer?: ActiveSteer;
@@ -414,11 +357,11 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
   members: TeamMember[];
   messages: ChatMessage[];
   onAdvance: () => void;
-  onAnnotate: (messageId: string, submission: MessageSubmission) => Promise<boolean>;
+  onOpenThread: (messageId: string) => void;
+  selectedThreadId: string | null;
   onMoveSteer: (steerId: string, direction: "up" | "down") => void;
   onRemoveSteer: (steerId: string) => void;
   onSteer: () => void;
-  onSteerMessageAnnotation: (messageId: string, annotationId: string) => void;
   onSend: (submission: MessageSubmission) => Promise<boolean>;
   onTyping: (typing: boolean) => void;
   stage: RunStage;
@@ -432,20 +375,11 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
   const messageDraft = useMessageDraft(`hive-draft:v1:${sessionId}:${currentMember}:message`, deliveredIds, onSend);
   const { draft } = messageDraft;
   const sending = draft?.status === "sending";
-  const [annotationTarget, setAnnotationTarget] = useState<string | null>(null);
   const submit = useCallback(() => {
     if (disabled || !draft?.body.trim()) return;
     onTyping(false);
     void messageDraft.submit();
   }, [disabled, draft, messageDraft, onTyping]);
-
-  const beginAnnotation = useCallback((messageId: string) => {
-    setAnnotationTarget(messageId);
-  }, []);
-
-  const cancelAnnotation = useCallback((messageId: string) => {
-    setAnnotationTarget((current) => current === messageId ? null : current);
-  }, []);
 
   const otherTyping = typingMembers.filter((memberId) => memberId !== currentMember);
 
@@ -480,19 +414,19 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
               );
             }
             return (
-              <Message className="max-w-full gap-2" from={message.role === "agent" || !isCurrentMember ? "assistant" : "user"} key={message.id}>
+              <Message className={cn("max-w-full gap-2 rounded-lg", selectedThreadId === message.id && "outline-1 outline-offset-8 outline-[#e0e0e0]")} from={message.role === "agent" || !isCurrentMember ? "assistant" : "user"} key={message.id}>
                 <div className={cn("flex items-center gap-2", isCurrentMember && "justify-end")}>
                   {message.role === "agent" ? <HiveMark className="size-5 rounded-full border border-[#dedede]" light /> : <span className="grid size-5 place-items-center rounded-full border border-[#dedede] bg-[#fafafa] text-[8px] font-semibold">{message.initials}</span>}
                   <span className="text-[12px] font-medium">{message.name}</span>
                   <span className="text-[10px] text-[#999]">{message.time}</span>
-                  {message.role === "human" && !disabled ? (
+                  {!disabled && message.status !== "streaming" ? (
                     <button
-                      aria-label={`Annotate ${message.name}'s message`}
-                      className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-[#8f8f8f] opacity-0 transition hover:bg-[#f2f2f2] hover:text-[#171717] focus:opacity-100 group-hover:opacity-100"
-                      onClick={() => beginAnnotation(message.id)}
+                      aria-label={`Reply in thread to ${message.name}'s message`}
+                      className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-[#8f8f8f] transition hover:bg-[#f2f2f2] hover:text-[#171717] focus:opacity-100 group-hover:opacity-100 sm:opacity-0"
+                      onClick={() => onOpenThread(message.id)}
                       type="button"
                     >
-                      <MessageSquarePlus className="size-3" /> Annotate
+                      <MessageSquare className="size-3" /> Reply
                     </button>
                   ) : null}
                 </div>
@@ -501,50 +435,11 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
                 </MessageContent>
 
                 {messageAnnotations.length > 0 ? (
-                  <div className={cn("w-[88%] space-y-2 border-l border-[#cfcfcf] pl-3", isCurrentMember ? "ml-auto border-l-0 border-r pr-3 text-right" : "ml-7")}>
-                    {messageAnnotations.map((annotation) => {
-                      const author = resolveMember(annotation.authorId, members);
-                      return (
-                        <div className="bg-[#fafafa] px-2.5 py-2 text-left" key={annotation.id}>
-                          <div className="flex items-center gap-1.5">
-                            <span className="grid size-4 place-items-center rounded-full bg-[#171717] text-[6px] font-semibold text-white">{author.initials}</span>
-                            <span className="text-[11px] font-medium">{author.shortName}</span>
-                            <span className="text-[10px] text-[#999]">{annotationTime(annotation.createdAt)}</span>
-                          </div>
-                          <p className="mt-1.5 text-[12px] leading-4 text-[#4d4d4d]">{annotation.body}</p>
-                          <div className="mt-2 flex items-center justify-between gap-2 border-t border-[#ebebeb] pt-1.5">
-                            {annotation.status === "steered" ? (
-                              <span className="flex items-center gap-1 text-[11px] text-[#666]"><Check className="size-3" /> Steered by {annotation.steeredBy ? resolveMember(annotation.steeredBy, members).shortName : "team"}</span>
-                            ) : annotation.status === "queued" ? (
-                              <span className="flex items-center gap-1 text-[11px] text-[#666]"><span className="grid size-4 place-items-center rounded-sm bg-[#171717] text-[9px] text-white">{steeringQueue.findIndex((item) => item.source.kind === "message-annotation" && item.source.annotationId === annotation.id) + 1}</span> Queued by {annotation.queuedBy ? resolveMember(annotation.queuedBy, members).shortName : "team"}</span>
-                            ) : (
-                              <div className="ml-auto">
-                                <Button
-                                  className="h-7 rounded px-2.5 text-[11px]"
-                                  disabled={disabled}
-                                  onClick={() => onSteerMessageAnnotation(message.id, annotation.id)}
-                                  size="sm"
-                                  title={runActive || steeringQueue.length > 0 ? "Queue this steer for Hive's next safe boundary" : "Promote this annotation into a follow-up turn"}
-                                  variant="ghost"
-                                >
-                                  {runActive || steeringQueue.length > 0 ? "Queue steer" : "Steer Hive"}
-                                </Button>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : null}
-
-                {annotationTarget === message.id && !disabled ? (
-                  <div className={cn("w-[88%] border border-[#d8d8d8] bg-white p-2 shadow-[0_8px_24px_rgba(0,0,0,0.05)]", isCurrentMember ? "ml-auto mr-0" : "ml-7")}>
-                    <div className="mb-1.5">
-                      <span className="text-[11px] text-[#737373]">Comment only — you can promote it to a steer later.</span>
-                    </div>
-                    <AnnotationComposer currentMember={currentMember} key={message.id} message={message} onAnnotate={onAnnotate} onCancel={cancelAnnotation} sessionId={sessionId} />
-                  </div>
+                  <button aria-label={`Open thread with ${messageAnnotations.length} ${messageAnnotations.length === 1 ? "reply" : "replies"}`} className={cn("flex w-fit items-center gap-2 rounded-md px-1 py-1 text-xs text-[#555] hover:bg-[#f5f5f5] focus-visible:outline-2", isCurrentMember && "ml-auto")} onClick={() => onOpenThread(message.id)} type="button">
+                    <span className="flex -space-x-1" aria-hidden="true">{[...new Set(messageAnnotations.map((reply) => reply.authorId))].slice(0, 3).map((id) => <span className="grid size-5 place-items-center rounded-full border border-white bg-[#ededed] text-[8px] font-medium" key={id}>{resolveMember(id, members).initials}</span>)}</span>
+                    <span className="font-medium">{messageAnnotations.length} {messageAnnotations.length === 1 ? "reply" : "replies"}</span>
+                    <span className="text-[#999]">View thread</span>
+                  </button>
                 ) : null}
               </Message>
             );
@@ -786,9 +681,10 @@ function RunsPane({ commands }: { commands: WorkspaceState["commands"] }) {
   );
 }
 
-function Workspace({ repository, sessionId, tab, workspace, onTabChange, fileCollaboration }: {
+function Workspace({ repository, sessionId, tab, workspace, onTabChange, fileCollaboration, checkpointRevision, onRestored }: {
   repository?: RepositoryState; sessionId: string; tab: WorkspaceTab; workspace: WorkspaceState; onTabChange: (tab: WorkspaceTab) => void;
   fileCollaboration: { memberId: string; deliveredIds: ReadonlySet<string>; disabled: boolean; onAnnotate: AnnotateCode };
+  checkpointRevision: number; onRestored: (snapshot: TaskSessionSnapshot) => void;
 }) {
   if (!repository) {
     return (
@@ -825,7 +721,7 @@ function Workspace({ repository, sessionId, tab, workspace, onTabChange, fileCol
         {tab === "diff" ? <DiffPane diff={workspace.diff} /> : null}
         {tab === "files" ? <WorkspaceFiles key={sessionId} sessionId={sessionId} initialPath={workspace.files[0]?.path} revision={`${workspace.agentSession?.id ?? ""}:${workspace.completedAt ?? ""}`} {...fileCollaboration} /> : null}
         {tab === "runs" ? <RunsPane commands={workspace.commands} /> : null}
-        {tab === "checkpoints" ? <WorkspaceCheckpoints sessionId={sessionId} revision={workspace.completedAt} /> : null}
+        {tab === "checkpoints" ? <WorkspaceCheckpoints sessionId={sessionId} revision={checkpointRevision} onRestored={onRestored} /> : null}
       </div>
     </section>
   );
@@ -886,7 +782,9 @@ export function HiveWorkspace({
   const [pane, setPane] = useState<"chat" | "workspace">("chat");
   const [tab, setTab] = useState<WorkspaceTab>("diff");
   const [copied, setCopied] = useState(false);
-  const { dispatch, setTyping, snapshot, syncing, syncError } = useSharedSession(sessionId, initialSnapshot);
+  const [threadId, setThreadId] = useState<string | null>(null);
+  const [threadTrigger, setThreadTrigger] = useState<HTMLElement | null>(null);
+  const { dispatch, setTyping, snapshot, syncing, syncError, receiveSnapshot } = useSharedSession(sessionId, initialSnapshot);
   const { session, activeMembers, members, typingMembers } = snapshot;
   const teamMembers = useMemo(
     () => [currentMember, ...members.filter((member) => member.id !== currentMember.id)],
@@ -895,7 +793,19 @@ export function HiveWorkspace({
   const { activeSteer, annotation, lifecycle, repository, stage, steeringQueue, workspace } = session;
   const messages = useMemo(() => conversationMessages(session), [session]);
   const codeAnnotationIds = useMemo(() => new Set(messages.filter((message) => message.codeReference && message.memberId === currentMember.id && message.clientId).map((message) => message.clientId!)), [currentMember.id, messages]);
+  const threadMessage = messages.find((message) => message.id === threadId);
+  const openThread = useCallback((messageId: string) => {
+    setThreadTrigger(document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    setThreadId(messageId);
+    setPane("workspace");
+  }, []);
+  const closeThread = useCallback(() => {
+    setThreadId(null);
+    setPane("chat");
+    requestAnimationFrame(() => threadTrigger?.focus());
+  }, [threadTrigger]);
   const runActive = isHiveRunActive(session);
+  const workspaceLocked = Boolean(workspace.restore);
   const canApplySteer = canApplyNextSteer(session);
   const steered = annotation.status === "steered";
   const queued = annotation.status === "queued";
@@ -933,6 +843,10 @@ export function HiveWorkspace({
   const steer = useCallback(() => { void dispatch({ type: "steer-agent" }); }, [dispatch]);
   const steerMessageAnnotation = useCallback((messageId: string, annotationId: string) => {
     void dispatch({ type: "steer-message-annotation", messageId, annotationId });
+  }, [dispatch]);
+  const steerThread = useCallback(async (messageId: string, throughReplyId: string) => {
+    const nextSnapshot = await dispatch({ type: "steer-thread", messageId, throughReplyId });
+    return nextSnapshot?.session.messages.find((message) => message.id === messageId)?.threadSteer?.throughReplyId === throughReplyId;
   }, [dispatch]);
   const moveSteer = useCallback((steerId: string, direction: "up" | "down") => {
     void dispatch({ type: "reorder-queued-steer", steerId, direction });
@@ -984,7 +898,7 @@ export function HiveWorkspace({
     steered,
     steeredBy: annotation.steeredBy,
     currentMember: currentMember.id,
-    disabled: lifecycle === "completed",
+    disabled: lifecycle === "completed" || workspaceLocked,
     members: teamMembers,
     messages,
     stage,
@@ -992,20 +906,24 @@ export function HiveWorkspace({
     typingMembers,
     steeringQueue,
     workspaceAnnotation: annotation.text,
-    onAnnotate: annotate,
+    onOpenThread: openThread,
+    selectedThreadId: threadMessage?.id ?? null,
     onMoveSteer: moveSteer,
     onRemoveSteer: removeSteer,
     onSteer: steer,
-    onSteerMessageAnnotation: steerMessageAnnotation,
     onSend: send,
     onTyping: setTyping,
     onAdvance: advance,
     onTabChange: setTab,
-  }), [activeMembers, activeSteer, advance, annotate, annotation.queuedBy, annotation.steeredBy, annotation.text, canApplySteer, currentMember.id, lifecycle, messages, moveSteer, queuePosition, queued, removeSteer, runActive, send, sessionId, setTyping, stage, steer, steerMessageAnnotation, steered, steeringQueue, tab, teamMembers, typingMembers]);
+  }), [activeMembers, activeSteer, advance, openThread, threadMessage?.id, annotation.queuedBy, annotation.steeredBy, annotation.text, canApplySteer, currentMember.id, lifecycle, workspaceLocked, messages, moveSteer, queuePosition, queued, removeSteer, runActive, send, sessionId, setTyping, stage, steer, steered, steeringQueue, tab, teamMembers, typingMembers]);
 
   return (
     <main className="flex h-dvh min-h-[560px] flex-col overflow-hidden bg-[#fafafa] text-[#171717]">
-      <ProductHeader activeMembers={activeMembers} copied={copied} currentMember={currentMember} lifecycle={lifecycle} members={teamMembers} onCopyInvite={copyInvite} onSignOut={signOut} onReset={reset} onToggleLifecycle={toggleLifecycle} repository={repository} sessionTitle={sessionTitle} runActive={runActive} queueCount={steeringQueue.length} syncing={syncing} syncError={syncError} />
+      <ProductHeader activeMembers={activeMembers} copied={copied} currentMember={currentMember} lifecycle={lifecycle} members={teamMembers} onCopyInvite={copyInvite} onSignOut={signOut} onReset={reset} onToggleLifecycle={toggleLifecycle} repository={repository} sessionTitle={sessionTitle} runActive={runActive} workspaceLocked={workspaceLocked} queueCount={steeringQueue.length} syncing={syncing} syncError={syncError} />
+      {workspace.restore ? <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[#e8e8e8] px-4 py-2 text-xs text-[#737373]" role="status">
+        <span>{workspace.restore.status === "unconfirmed" ? "Restore needs confirmation. The workspace is paused." : "Restoring workspace and agent context…"}</span>
+        <button className="shrink-0 underline underline-offset-4" onClick={() => { setThreadId(null); setTab("checkpoints"); setPane("workspace"); }} type="button">View checkpoints</button>
+      </div> : null}
       <div className="flex h-10 shrink-0 items-center gap-1 border-b border-[#e8e8e8] bg-[#fafafa] p-1 min-[960px]:hidden">
         <button
           aria-pressed={pane === "chat"}
@@ -1027,8 +945,8 @@ export function HiveWorkspace({
           onClick={() => setPane("workspace")}
           type="button"
         >
-          <Code2 className="size-3.5" /> Workspace
-          {workspace.changedFiles.length > 0 ? (
+          <Code2 className="size-3.5" /> {threadMessage ? "Thread" : "Workspace"}
+          {!threadMessage && workspace.changedFiles.length > 0 ? (
             <span className="grid size-4 place-items-center rounded-full bg-[#171717] font-mono text-[8px] text-white">
               {workspace.changedFiles.length}
             </span>
@@ -1038,14 +956,16 @@ export function HiveWorkspace({
       <WorkspaceSplit
         activePane={pane}
         conversation={<SharedSession {...shared} compact />}
-        workspace={
+        workspace={threadMessage ? (
+          <MessageThread currentMember={currentMember.id} disabled={lifecycle === "completed" || workspaceLocked} key={threadMessage.id} members={teamMembers} message={threadMessage} onClose={closeThread} onReply={annotate} onSteerReply={steerMessageAnnotation} onSteerThread={steerThread} queue={steeringQueue} runActive={runActive} sessionId={sessionId} />
+        ) : (
           <>
             <div className="min-h-0 flex-1">
-              <Workspace repository={repository} sessionId={sessionId} tab={shared.tab} workspace={workspace} onTabChange={shared.onTabChange} fileCollaboration={{ memberId: currentMember.id, deliveredIds: codeAnnotationIds, disabled: lifecycle === "completed", onAnnotate: annotateCode }} />
+              <Workspace repository={repository} sessionId={sessionId} tab={shared.tab} workspace={workspace} checkpointRevision={session.version} onRestored={receiveSnapshot} onTabChange={shared.onTabChange} fileCollaboration={{ memberId: currentMember.id, deliveredIds: codeAnnotationIds, disabled: lifecycle === "completed" || workspaceLocked, onAnnotate: annotateCode }} />
             </div>
             <RunBar activeSteer={activeSteer} completed={lifecycle === "completed"} reviewReady={canApproveChanges(session)} runActive={runActive} queueCount={steeringQueue.length} repository={repository} stage={shared.stage} onAdvance={shared.onAdvance} />
           </>
-        }
+        )}
       />
     </main>
   );

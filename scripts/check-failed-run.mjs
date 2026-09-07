@@ -38,8 +38,9 @@ const sandbox = {
   async readTextFile() { return content; },
 };
 
+const persistentSandbox = { keepLastSnapshots: { count: 3 }, async stop() { sandboxStopped = true; return { snapshot: { id: "snap-run-fixture", status: "created", createdAt: 50 } }; } };
 mock.module("@vercel/sandbox", { namedExports: {
-  Sandbox: { async getOrCreate() { return { async stop() { sandboxStopped = true; } }; } },
+  Sandbox: { async getOrCreate() { return persistentSandbox; }, async get() { return persistentSandbox; } },
 } });
 mock.module("@ai-sdk/sandbox-vercel", { namedExports: { createVercelSandbox() { return {}; } } });
 mock.module("@ai-sdk/harness-codex", { namedExports: { createCodex() { return {}; } } });

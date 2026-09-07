@@ -1,13 +1,13 @@
 "use client";
 
 import { Autocomplete } from "@base-ui/react/autocomplete";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { shouldSubmitMessage } from "@/lib/message-keyboard";
 import type { TeamMember } from "@/lib/task-session";
 import { activeTeammateMention, insertTeammateMention, matchingTeammates, teammateMentionHandle } from "@/lib/teammate-mention";
 
-export function MentionInput({ value, onChange, onSubmit, members, currentMember, disabled, readOnly }: {
+export function MentionInput({ value, onChange, onSubmit, members, currentMember, disabled, readOnly, label = "Ask Hive or mention a teammate", placeholder, maxLength, autoFocus = false }: {
   value: string;
   onChange: (value: string) => void;
   onSubmit: () => void;
@@ -15,8 +15,19 @@ export function MentionInput({ value, onChange, onSubmit, members, currentMember
   currentMember: string;
   disabled: boolean;
   readOnly: boolean;
+  label?: string;
+  placeholder?: string;
+  maxLength?: number;
+  autoFocus?: boolean;
 }) {
   const textarea = useRef<HTMLTextAreaElement>(null);
+  const initiallyFocused = useRef(false);
+  useEffect(() => {
+    if (autoFocus && !disabled && !initiallyFocused.current) {
+      textarea.current?.focus();
+      initiallyFocused.current = true;
+    }
+  }, [autoFocus, disabled]);
   const [selection, setSelection] = useState({ start: 0, end: 0 });
   const [focused, setFocused] = useState(false);
   const [composing, setComposing] = useState(false);
@@ -55,7 +66,7 @@ export function MentionInput({ value, onChange, onSubmit, members, currentMember
       value={value}
     >
       <Autocomplete.Input
-        aria-label="Ask Hive or mention a teammate"
+        aria-label={label}
         aria-multiline="true"
         className="max-h-24 min-h-8 min-w-0 flex-1 resize-none bg-transparent px-1 py-1.5 text-[13px] leading-5 outline-none placeholder:text-[#aaa]"
         onBlur={() => setFocused(false)}
@@ -94,7 +105,8 @@ export function MentionInput({ value, onChange, onSubmit, members, currentMember
           }
         }}
         onSelect={(event) => setSelection({ start: event.currentTarget.selectionStart ?? 0, end: event.currentTarget.selectionEnd ?? 0 })}
-        placeholder={disabled ? "This task is complete." : "Ask Hive or @mention a teammate…"}
+        placeholder={placeholder ?? (disabled ? "Messaging is paused." : "Ask Hive or @mention a teammate…")}
+        maxLength={maxLength}
         render={<textarea ref={textarea} rows={1} />}
       />
       <Autocomplete.Portal>

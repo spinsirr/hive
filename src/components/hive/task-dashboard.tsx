@@ -1,0 +1,168 @@
+"use client";
+
+import { ArrowRight, Check, FolderGit2, Plus } from "lucide-react";
+import Link from "next/link";
+import { useState } from "react";
+
+import { CreateSessionButton } from "@/components/hive/create-session-button";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { dashboardTasks, taskUpdatedLabel, type DashboardTask } from "@/lib/task-dashboard";
+import { cn } from "@/lib/utils";
+
+function NewTask({ createAction }: { createAction: (formData: FormData) => Promise<void> }) {
+  const [title, setTitle] = useState("");
+  const [open, setOpen] = useState(false);
+  return (
+    <Dialog onOpenChange={setOpen} open={open}>
+      <DialogTrigger render={<Button className="h-9 gap-2 px-3 text-xs" />}>
+        <Plus className="size-3.5" /> New task
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <form action={async (formData) => {
+          await createAction(formData);
+          setOpen(false);
+          setTitle("");
+        }}>
+          <DialogHeader>
+            <DialogTitle>New task</DialogTitle>
+            <DialogDescription>Start with an outcome. Invite teammates and attach a repository inside the task.</DialogDescription>
+          </DialogHeader>
+          <div className="py-5">
+            <label className="mb-2 block text-xs font-medium" htmlFor="new-task-title">Task name</label>
+            <input
+              autoComplete="off"
+              autoFocus
+              className="h-10 w-full rounded-md border border-[#dedede] bg-white px-3 text-sm outline-none placeholder:text-[#aaa] focus:border-[#737373] focus:ring-2 focus:ring-[#171717]/10"
+              id="new-task-title"
+              maxLength={120}
+              name="title"
+              onChange={(event) => setTitle(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229)) event.preventDefault();
+              }}
+              placeholder="What should we build together?"
+              pattern={".*\\S.*"}
+              required
+              title="Enter a task name."
+              value={title}
+            />
+          </div>
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
+            <CreateSessionButton />
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export function TaskDashboard({ tasks, memberName, memberInitials, loadedAt, createAction, homeHref = "/", onOpenTask }: {
+  tasks: DashboardTask[];
+  memberName: string;
+  memberInitials: string;
+  loadedAt: number;
+  createAction: (formData: FormData) => Promise<void>;
+  homeHref?: string;
+  onOpenTask?: (task: DashboardTask) => void;
+}) {
+  const [filter, setFilter] = useState<DashboardTask["lifecycle"]>("active");
+  const visible = dashboardTasks(tasks, filter);
+  const activeCount = tasks.filter((task) => task.lifecycle === "active").length;
+
+  return (
+    <main className="min-h-dvh bg-[#fafafa] text-[#171717]">
+      <header className="flex h-14 items-center justify-between gap-4 border-b border-[#e8e8e8] bg-white px-5 sm:px-8">
+        <Link aria-label="Hive home" className="flex items-center gap-2.5" href={homeHref}>
+          <span className="grid size-7 place-items-center rounded-md bg-[#171717] text-white">
+            <svg aria-hidden="true" className="size-5" fill="none" viewBox="0 0 24 24">
+              <path d="M12 3.5 15 5.25v3.5l-3 1.75-3-1.75v-3.5L12 3.5ZM8 11l3 1.75v3.5L8 18l-3-1.75v-3.5L8 11Zm8 0 3 1.75v3.5L16 18l-3-1.75v-3.5L16 11Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.45" />
+            </svg>
+          </span>
+          <span className="text-sm font-semibold tracking-[-0.03em]">Hive</span>
+        </Link>
+        <div className="flex min-w-0 items-center gap-2 text-xs text-[#737373]">
+          <span className="truncate">{memberName}</span>
+          <span aria-hidden="true" className="grid size-7 shrink-0 place-items-center rounded-full border border-[#dedede] text-[9px] font-medium text-[#333]">{memberInitials}</span>
+        </div>
+      </header>
+
+      <div className="mx-auto max-w-5xl px-5 py-9 sm:px-8 sm:py-12">
+        <div className="mb-8 flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-[-0.04em]">Tasks</h1>
+            <p className="mt-1.5 text-sm text-[#737373]">Your shared work with Hive.</p>
+          </div>
+          <NewTask createAction={async (formData) => {
+            await createAction(formData);
+            setFilter("active");
+          }} />
+        </div>
+
+        <div aria-label="Task status" className="mb-4 flex gap-1" role="group">
+          {(["active", "completed"] as const).map((value) => (
+            <button
+              aria-pressed={filter === value}
+              className={cn("flex h-8 items-center gap-2 rounded-md px-3 text-xs transition-colors focus-visible:outline-2 focus-visible:outline-offset-2", filter === value ? "bg-[#ededed] font-medium text-[#171717]" : "text-[#737373] hover:bg-[#f2f2f2]")}
+              key={value}
+              onClick={() => setFilter(value)}
+              type="button"
+            >
+              {value === "active" ? "Active" : "Completed"}
+              <span className="font-mono text-[10px] text-[#888]">{value === "active" ? activeCount : tasks.length - activeCount}</span>
+            </button>
+          ))}
+        </div>
+
+        <section aria-label={`${filter === "active" ? "Active" : "Completed"} tasks`} className="overflow-hidden rounded-lg border border-[#e1e1e1] bg-white">
+          <div aria-hidden="true" className="grid grid-cols-[minmax(0,1fr)_70px] gap-4 border-b border-[#ebebeb] bg-[#fcfcfc] px-5 py-3 text-[11px] text-[#888] sm:grid-cols-[minmax(0,1fr)_minmax(0,0.6fr)_80px_16px]">
+            <span>Task</span>
+            <span className="hidden sm:block">Repository</span>
+            <span>Updated</span>
+          </div>
+          {visible.length > 0 ? (
+            <ul className="divide-y divide-[#eeeeee]">
+              {visible.map((task) => {
+                const rowClassName = "group grid min-h-20 w-full grid-cols-[minmax(0,1fr)_70px] items-center gap-4 px-5 py-4 text-left transition-colors hover:bg-[#fafafa] focus-visible:bg-[#fafafa] focus-visible:outline-2 focus-visible:outline-offset-[-2px] sm:grid-cols-[minmax(0,1fr)_minmax(0,0.6fr)_80px_16px]";
+                const content = (
+                  <>
+                    <div className="min-w-0">
+                      <p className="flex items-center gap-2 text-sm font-medium tracking-[-0.015em]">
+                        {task.lifecycle === "completed" ? <Check aria-hidden="true" className="size-3.5 shrink-0 text-[#888]" /> : null}
+                        <span className="truncate" title={task.title}>{task.title}</span>
+                      </p>
+                      <p className="mt-1 truncate text-[11px] text-[#888] sm:hidden">{task.repositoryName ?? "No repository attached"}</p>
+                    </div>
+                    <span className="hidden min-w-0 items-center gap-1.5 text-xs text-[#737373] sm:flex">
+                      <FolderGit2 aria-hidden="true" className="size-3.5 shrink-0" />
+                      <span className="truncate">{task.repositoryName ?? "Not attached"}</span>
+                    </span>
+                    <time className="text-[11px] text-[#888]" dateTime={new Date(task.updatedAt).toISOString()}>{taskUpdatedLabel(task.updatedAt, loadedAt)}</time>
+                    <ArrowRight aria-hidden="true" className="hidden size-3.5 text-[#aaa] group-hover:text-[#171717] sm:block" />
+                  </>
+                );
+                return (
+                  <li key={task.id}>
+                    {onOpenTask ? (
+                      <button className={rowClassName} onClick={() => onOpenTask(task)} type="button">{content}</button>
+                    ) : (
+                      <Link className={rowClassName} href={`/sessions/${task.id}`}>{content}</Link>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <div className="grid min-h-60 place-items-center px-6 py-10 text-center">
+              <div>
+                <p className="text-sm font-medium">{tasks.length === 0 && filter === "active" ? "Start your first shared task" : `No ${filter} tasks`}</p>
+                <p className="mt-2 max-w-xs text-xs leading-5 text-[#888]">{filter === "completed" ? "Completed tasks will appear here." : "Create a task, then invite a teammate to work with Hive."}</p>
+              </div>
+            </div>
+          )}
+        </section>
+      </div>
+    </main>
+  );
+}

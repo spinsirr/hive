@@ -5,6 +5,7 @@ import { customAlphabet } from "nanoid";
 import { db } from "@/db";
 import { taskSessionMembers, taskSessionPresence, taskSessions, users } from "@/db/schema";
 import { sessionNotification } from "@/lib/session-events";
+import { beginWorkspaceRestore, completeWorkspaceRestore, failWorkspaceRestore, WorkspaceRestoreError, type RestoreWorkspaceRequest } from "@/lib/workspace-restore-state";
 import {
   applyHiveRunError,
   applyHiveRunResult,
@@ -235,6 +236,7 @@ export async function applyTaskSessionAction(
     }
 
     const previousSession = sessionState(storedSession);
+    if (previousSession.workspace.restore) throw new WorkspaceRestoreError(409, "Finish restoring the workspace before continuing.");
     const nextSession = reduceTaskSession(
       previousSession,
       action,
@@ -314,6 +316,7 @@ export async function appendHiveReply(
     }
 
     const currentSession = sessionState(storedSession);
+    if (currentSession.workspace.restore) return;
     if (options.forReplyId && currentSession.workspace.liveReply?.id !== options.forReplyId) return;
     if (
       options.forMessageId &&
@@ -379,6 +382,47 @@ export async function checkpointAgentReply(sessionId: string, replyId: string, b
     )).returning({ id: taskSessions.id });
     if (changed.length) await transaction.execute(sessionNotification(sessionId, "reply"));
   });
+}
+
+/** A file reader may resume a VM. Drain those readers before fencing a restore. */
+export async function withTaskWorkspaceRead<T>(sessionId: string, read: (session: TaskSessionState) => Promise<T>): Promise<T> {
+  return db.transaction(async (transaction) => {
+    const lock = await transaction.execute(sql`select pg_try_advisory_xact_lock_shared(hashtextextended(${'hive-workspace:' + sessionId}, 0)) as acquired`);
+    if (!lock.rows[0]?.acquired) throw new WorkspaceRestoreError(409, "Workspace is busy. Try again shortly.");
+    const [row] = await transaction.select().from(taskSessions).where(eq(taskSessions.id, sessionId));
+    if (!row) throw new WorkspaceRestoreError(404, "Task not found.");
+    const session = sessionState(row);
+    if (session.workspace.restore) throw new WorkspaceRestoreError(409, "The workspace is being restored. Refresh Checkpoints to see its status.");
+    return read(session);
+  });
+}
+
+export async function startTaskWorkspaceRestore(sessionId: string, request: RestoreWorkspaceRequest, member: TeamMember) {
+  return db.transaction(async (transaction) => {
+    const lock = await transaction.execute(sql`select pg_try_advisory_xact_lock(hashtextextended(${'hive-workspace:' + sessionId}, 0)) as acquired`);
+    if (!lock.rows[0]?.acquired) throw new WorkspaceRestoreError(409, "Files are still loading. Try restoring again shortly.");
+    const [row] = await transaction.select().from(taskSessions).where(eq(taskSessions.id, sessionId)).for("update");
+    if (!row) throw new WorkspaceRestoreError(404, "Task not found.");
+    const previous = sessionState(row);
+    const next = beginWorkspaceRestore(previous, request, member);
+    if (next === previous) return { session: previous, started: false };
+    await transaction.update(taskSessions).set(sessionValues(next)).where(eq(taskSessions.id, sessionId));
+    await transaction.execute(sessionNotification(sessionId));
+    return { session: next, started: true };
+  });
+}
+
+export async function finishTaskWorkspaceRestore(sessionId: string, operationId: string, confirmed: boolean) {
+  await db.transaction(async (transaction) => {
+    const [row] = await transaction.select().from(taskSessions).where(eq(taskSessions.id, sessionId)).for("update");
+    if (!row) throw new WorkspaceRestoreError(404, "Task not found.");
+    const session = sessionState(row);
+    const next = confirmed ? completeWorkspaceRestore(session, operationId) : failWorkspaceRestore(session, operationId);
+    if (next === session) return;
+    await transaction.update(taskSessions).set(sessionValues(next)).where(eq(taskSessions.id, sessionId));
+    await transaction.execute(sessionNotification(sessionId));
+  });
+  return getTaskSessionSnapshot(sessionId);
 }
 
 /** Streaming does not repeatedly transfer files, diffs, or private Codex checkpoints. */

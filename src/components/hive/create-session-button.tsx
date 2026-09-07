@@ -1,18 +1,19 @@
 "use client";
 
-import { ArrowUpRight } from "lucide-react";
+import { LoaderCircle, Plus } from "lucide-react";
 import { useFormStatus } from "react-dom";
+import { Button } from "@/components/ui/button";
 
 export function CreateSessionButton() {
   const { pending } = useFormStatus();
   return (
-    <button
-      aria-label="Create task session"
-      className="grid size-10 shrink-0 place-items-center rounded-md bg-[#171717] text-white transition hover:bg-black disabled:cursor-wait disabled:opacity-50"
+    <Button
+      aria-label={pending ? "Creating task" : "Create task"}
       disabled={pending}
       type="submit"
     >
-      <ArrowUpRight className="size-4" />
-    </button>
+      {pending ? <LoaderCircle className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
+      {pending ? "Creating…" : "Create task"}
+    </Button>
   );
 }
