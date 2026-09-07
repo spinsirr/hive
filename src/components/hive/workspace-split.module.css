@@ -1,0 +1,17 @@
+/* Keep both panes mounted when switching views so drafts and editors survive. */
+@media (width < 960px) {
+  .split > [data-panel] {
+    flex: 1 1 0 !important;
+    width: 100%;
+  }
+
+  /* No resize gesture on narrow screens; leave touch scrolling to the content. */
+  .split > [data-panel] > div {
+    touch-action: auto !important;
+  }
+
+  .split[data-active-pane="chat"] > [data-pane="workspace"],
+  .split[data-active-pane="workspace"] > [data-pane="chat"] {
+    display: none !important;
+  }
+}

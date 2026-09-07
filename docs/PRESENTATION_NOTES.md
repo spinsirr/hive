@@ -421,6 +421,14 @@ Be explicit: GitHub write-back is not built; organization administration is not 
 - The same run's expanded Runs entry was exactly `/bin/bash -lc 'pnpm test && pnpm typecheck && git diff --check'`, marked Passed. Output showed **92 tests / 92 pass / 0 fail** for the retained sandbox revision and successful type generation/TypeScript. The original `8cf1187..3624515` accessibility diff and Files snapshot remained. No new two-account or offline-mid-delta test is claimed; the earlier multiplayer evidence remains separate.
 - The native-streaming gate is closed. Remaining human gates: summary personalization, full narrated rehearsal, presentation date/time, reviewer access, and explicit publication/submission approval. The repository remains private and no materials were sent.
 
+### 2026-09-07 — Give conversation and code adjustable space
+
+- User feedback: the fixed 420px conversation column wastes space when reading longer messages and cannot yield more space when reviewing code.
+- Keep the same two-pane hierarchy and monochrome divider; make only the main conversation/workspace boundary resizable. Use shadcn-style primitives backed by `react-resizable-panels` 4.12.3, with a wider pointer hit target, keyboard resizing, a 360px conversation minimum, a 400px workspace minimum, and double-click reset. Width is a local view choice, not shared task state or an agent action.
+- Keep both panes mounted across the existing 960px breakpoint. Narrow screens still switch views; resizing or switching views must not recreate the draft or Monaco editor. Preserve the editor's existing automatic layout behavior.
+- Browser verification used the actual split component and Monaco in an isolated local fixture (no agent, authentication, or shared-session writes). At 1440px, dragging changed the conversation from 420px to 533px and Monaco from 811px to 698px. Home/End respected both minimums, ArrowLeft resized, and double-click restored 420px. At 390px and 959px only the selected pane occupied the viewport; at 960px both panes returned. The unsent Chinese draft and editor DOM identities survived view switching and breakpoint changes. No horizontal page overflow or browser errors. The temporary fixture was removed before release.
+- Checks: 98 unit tests plus existing stream/failure/input checks, typecheck, lint, whitespace validation, and webpack production build passed. No backend behavior or saved task data changed.
+
 ## Questions to prepare for
 
 - How is Hive different from tagging Claude in a shared channel?

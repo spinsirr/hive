@@ -33,6 +33,7 @@ import { Message, MessageContent } from "@/components/ai-elements/message";
 import { AgentResponse } from "@/components/hive/agent-response";
 import { DiffPane } from "@/components/hive/diff-pane";
 import { MentionInput } from "@/components/hive/mention-input";
+import { WorkspaceSplit } from "@/components/hive/workspace-split";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useSharedSession } from "@/hooks/use-shared-session";
@@ -1053,27 +1054,18 @@ export function HiveWorkspace({
           ) : null}
         </button>
       </div>
-      <div className="grid min-h-0 flex-1 grid-cols-1 min-[960px]:grid-cols-[minmax(360px,420px)_minmax(0,1fr)]">
-        <div
-          className={cn(
-            "min-h-0 border-r border-[#ebebeb]",
-            pane !== "chat" && "hidden min-[960px]:block",
-          )}
-        >
-          <SharedSession {...shared} compact />
-        </div>
-        <div
-          className={cn(
-            "min-h-0 flex-col",
-            pane === "workspace" ? "flex" : "hidden min-[960px]:flex",
-          )}
-        >
-          <div className="min-h-0 flex-1">
-            <Workspace repository={repository} sessionId={sessionId} tab={shared.tab} workspace={workspace} onTabChange={shared.onTabChange} />
-          </div>
-          <RunBar activeSteer={activeSteer} completed={lifecycle === "completed"} reviewReady={canApproveChanges(session)} runActive={runActive} queueCount={steeringQueue.length} repository={repository} stage={shared.stage} onAdvance={shared.onAdvance} />
-        </div>
-      </div>
+      <WorkspaceSplit
+        activePane={pane}
+        conversation={<SharedSession {...shared} compact />}
+        workspace={
+          <>
+            <div className="min-h-0 flex-1">
+              <Workspace repository={repository} sessionId={sessionId} tab={shared.tab} workspace={workspace} onTabChange={shared.onTabChange} />
+            </div>
+            <RunBar activeSteer={activeSteer} completed={lifecycle === "completed"} reviewReady={canApproveChanges(session)} runActive={runActive} queueCount={steeringQueue.length} repository={repository} stage={shared.stage} onAdvance={shared.onAdvance} />
+          </>
+        }
+      />
     </main>
   );
 }
