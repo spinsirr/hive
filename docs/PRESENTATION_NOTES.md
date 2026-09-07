@@ -71,6 +71,7 @@ This correction matters: the team is the durable collaboration space; a session 
 | Neon is canonical history | Native Codex history can disappear with compute; team intent cannot. | Treating sandbox files as the product database. |
 | Quiet error state | A failure should not become a theatrical agent apology. | Large error bubbles that repeat internal details. |
 | Neutral interface, semantic code colors | Syntax colors, file-type icons and green/red changes make the work readable; monochrome is for the surrounding interface. | Applying the black-and-white brand palette to every code token and diff line. |
+| Replies readable beside the message | Show the author's reply under its parent; keep the Thread panel for continued discussion and whole-thread steering. | Hiding a one-line comment behind a reply count and a panel switch. |
 | A small frontend task in Hive itself | An author-specific accessible label makes teammate intent visible in both the conversation and the diff. | A separate demo application or deployment workflow that needs its own setup. |
 | Remove Vercel Connect experiment | The available install flow is developer-dashboard oriented; direct GitHub App onboarding fits users today. | Shipping a connector path users cannot complete. |
 
@@ -494,6 +495,12 @@ Be explicit: GitHub write-back is not built; organization administration is not 
 - Replaced the generic file symbol with compact type-specific icons in both the Files tree and selected-file heading: TS/JS marks, React components, JSON, Markdown, styles, configuration, packages, scripts and assets. Directories retain open/closed states; restricted entries keep the lock and symbolic links keep the link symbol. Unknown types remain neutral.
 - Reused the installed Lucide library and Next.js's built-in import optimization. No new icon package, CDN request, editor runtime, file read, permission rule or agent behavior was added. Icons are decorative so existing accessible filenames and navigation remain unchanged.
 - Local verification passed: three filename-classification regressions (including configuration-name priority, uppercase extensions and unknown names), actual-component rendering checks for decorative/locked/folder states, the full 125-test suite and controlled runner/route regressions, TypeScript, ESLint, whitespace validation and the production Webpack build. These checks are not a new production agent execution.
+
+### September 7 — Keep Thread replies visible in the conversation
+
+- The owner pointed out that replacing inline annotations with only a reply count hid useful feedback. Thread now preserves the same reply records and explicit steering semantics while showing author and full body beneath the parent. The newest three replies are directly visible; older replies expand in place, and Open thread still opens the dedicated composer and whole-thread steering panel.
+- Main conversation and Thread use the same reply component, including attribution and disabled/queue/steered states. Reading or opening the discussion does not promote it. Inline replies omit secondary timestamps; the opened Thread retains them. No database schema, queue, agent prompt or execution change was needed.
+- Added a real-component rendering regression for visible text/authorship, safe text escaping, idle/busy/disabled steering controls, distinct promoter attribution, empty threads and chronological older-reply disclosure. The check uses invented display data and never writes to a task or runs a model.
 
 ## Questions to prepare for
 

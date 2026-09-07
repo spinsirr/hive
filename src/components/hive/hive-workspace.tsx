@@ -33,6 +33,7 @@ import { AgentResponse } from "@/components/hive/agent-response";
 import { DiffPane } from "@/components/hive/diff-pane";
 import { MentionInput } from "@/components/hive/mention-input";
 import { MessageThread } from "@/components/hive/message-thread";
+import { MessageThreadPreview } from "@/components/hive/message-thread-preview";
 import { WorkspaceSplit } from "@/components/hive/workspace-split";
 import { WorkspaceFiles } from "@/components/hive/workspace-files";
 import { WorkspaceCheckpoints } from "@/components/hive/workspace-checkpoints";
@@ -340,7 +341,7 @@ function SteeringQueue({ activeSteer, canApply, items, members, onApply, onMove,
   );
 }
 
-function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, runActive, queued, queuedBy, queuePosition, steered, steeredBy, steeringQueue, currentMember, disabled, members, messages, onAdvance, onOpenThread, selectedThreadId, onMoveSteer, onRemoveSteer, onSteer, onSend, onTyping, stage, typingMembers, workspaceAnnotation, compact = false }: {
+function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, runActive, queued, queuedBy, queuePosition, steered, steeredBy, steeringQueue, currentMember, disabled, members, messages, onAdvance, onOpenThread, onSteerReply, selectedThreadId, onMoveSteer, onRemoveSteer, onSteer, onSend, onTyping, stage, typingMembers, workspaceAnnotation, compact = false }: {
   sessionId: string;
   activeMembers: MemberId[];
   activeSteer?: ActiveSteer;
@@ -358,6 +359,7 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
   messages: ChatMessage[];
   onAdvance: () => void;
   onOpenThread: (messageId: string) => void;
+  onSteerReply: (messageId: string, replyId: string) => void;
   selectedThreadId: string | null;
   onMoveSteer: (steerId: string, direction: "up" | "down") => void;
   onRemoveSteer: (steerId: string) => void;
@@ -397,7 +399,6 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
         <ConversationContent className={cn("gap-5 px-5 py-6", compact && "gap-4")}>
           {messages.map((message) => {
             const isCurrentMember = message.memberId === currentMember;
-            const messageAnnotations = message.annotations ?? [];
             if (message.status === "error") {
               return (
                 <div
@@ -434,13 +435,7 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
                   {message.role === "agent" ? <AgentResponse streaming={message.status === "streaming"}>{message.body}</AgentResponse> : message.codeReference ? <div><p className="break-all font-mono text-[11px] text-[#737373]">{codeReferenceLabel(message.codeReference)}</p><pre className="mt-2 max-h-40 overflow-auto whitespace-pre font-mono text-[11px] leading-5">{message.codeReference.quote}</pre></div> : message.body}
                 </MessageContent>
 
-                {messageAnnotations.length > 0 ? (
-                  <button aria-label={`Open thread with ${messageAnnotations.length} ${messageAnnotations.length === 1 ? "reply" : "replies"}`} className={cn("flex w-fit items-center gap-2 rounded-md px-1 py-1 text-xs text-[#555] hover:bg-[#f5f5f5] focus-visible:outline-2", isCurrentMember && "ml-auto")} onClick={() => onOpenThread(message.id)} type="button">
-                    <span className="flex -space-x-1" aria-hidden="true">{[...new Set(messageAnnotations.map((reply) => reply.authorId))].slice(0, 3).map((id) => <span className="grid size-5 place-items-center rounded-full border border-white bg-[#ededed] text-[8px] font-medium" key={id}>{resolveMember(id, members).initials}</span>)}</span>
-                    <span className="font-medium">{messageAnnotations.length} {messageAnnotations.length === 1 ? "reply" : "replies"}</span>
-                    <span className="text-[#999]">View thread</span>
-                  </button>
-                ) : null}
+                <MessageThreadPreview disabled={disabled} members={members} message={message} onOpen={() => onOpenThread(message.id)} onSteerReply={onSteerReply} queueing={runActive || steeringQueue.length > 0} />
               </Message>
             );
           })}
@@ -907,6 +902,7 @@ export function HiveWorkspace({
     steeringQueue,
     workspaceAnnotation: annotation.text,
     onOpenThread: openThread,
+    onSteerReply: steerMessageAnnotation,
     selectedThreadId: threadMessage?.id ?? null,
     onMoveSteer: moveSteer,
     onRemoveSteer: removeSteer,
@@ -915,7 +911,7 @@ export function HiveWorkspace({
     onTyping: setTyping,
     onAdvance: advance,
     onTabChange: setTab,
-  }), [activeMembers, activeSteer, advance, openThread, threadMessage?.id, annotation.queuedBy, annotation.steeredBy, annotation.text, canApplySteer, currentMember.id, lifecycle, workspaceLocked, messages, moveSteer, queuePosition, queued, removeSteer, runActive, send, sessionId, setTyping, stage, steer, steered, steeringQueue, tab, teamMembers, typingMembers]);
+  }), [activeMembers, activeSteer, advance, openThread, steerMessageAnnotation, threadMessage?.id, annotation.queuedBy, annotation.steeredBy, annotation.text, canApplySteer, currentMember.id, lifecycle, workspaceLocked, messages, moveSteer, queuePosition, queued, removeSteer, runActive, send, sessionId, setTyping, stage, steer, steered, steeringQueue, tab, teamMembers, typingMembers]);
 
   return (
     <main className="flex h-dvh min-h-[560px] flex-col overflow-hidden bg-[#fafafa] text-[#171717]">

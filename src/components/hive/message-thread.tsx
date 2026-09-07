@@ -1,18 +1,17 @@
 "use client";
 
-import { Check, LoaderCircle, MessageSquare, Send, X } from "lucide-react";
+import { LoaderCircle, MessageSquare, Send, X } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 
 import { Conversation, ConversationContent, ConversationScrollButton } from "@/components/ai-elements/conversation";
 import { AgentResponse } from "@/components/hive/agent-response";
 import { MentionInput } from "@/components/hive/mention-input";
+import { ThreadReply } from "@/components/hive/thread-reply";
 import { Button } from "@/components/ui/button";
 import { useMessageDraft } from "@/hooks/use-message-draft";
 import { codeReferenceLabel } from "@/lib/code-reference";
 import type { MessageSubmission } from "@/lib/message-draft";
 import { resolveMember, type ChatMessage, type SteeringQueueItem, type TeamMember } from "@/lib/task-session";
-
-const timeLabel = (time: number) => new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(time);
 
 export function MessageThread({ sessionId, message, members, currentMember, disabled, runActive, queue, onClose, onReply, onSteerReply, onSteerThread }: {
   sessionId: string;
@@ -67,20 +66,7 @@ export function MessageThread({ sessionId, message, members, currentMember, disa
               {message.role === "agent" ? <AgentResponse>{message.body}</AgentResponse> : message.codeReference ? <><p className="break-all font-mono text-xs text-[#737373]">{codeReferenceLabel(message.codeReference)}</p><pre className="mt-2 max-h-52 overflow-auto font-mono text-xs leading-5">{message.codeReference.quote}</pre></> : <p className="whitespace-pre-wrap">{message.body}</p>}
             </div>
           </article>
-          {(replies?.length ?? 0) === 0 ? <p className="text-xs text-[#737373]">Start a discussion about this message.</p> : replies?.map((reply) => {
-            const author = resolveMember(reply.authorId, members);
-            const promoter = reply.steeredBy ?? reply.queuedBy;
-            return (
-              <article className="group/reply flex gap-3" key={reply.id}>
-                <span className="grid size-7 shrink-0 place-items-center rounded-full border border-[#dedede] bg-[#fafafa] text-[9px] font-medium">{author.initials}</span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 text-xs"><span className="font-medium">{author.name}</span><time className="text-[#999]" dateTime={new Date(reply.createdAt).toISOString()}>{timeLabel(reply.createdAt)}</time></div>
-                  <p className="mt-1 whitespace-pre-wrap break-words text-[13px] leading-6 text-[#414141]">{reply.body}</p>
-                  {reply.status === "open" ? <Button aria-label={`${queueing ? "Queue steer" : "Steer Hive"} for ${author.shortName}'s reply`} className="mt-1 h-6 px-1.5 text-[11px] text-[#737373] sm:opacity-0 sm:group-hover/reply:opacity-100 sm:group-focus-within/reply:opacity-100" disabled={disabled} onClick={() => onSteerReply(message.id, reply.id)} size="sm" variant="ghost">{queueing ? "Queue steer" : "Steer Hive"}</Button> : <p className="mt-2 flex items-center gap-1 text-[11px] text-[#737373]">{reply.status === "steered" ? <Check className="size-3" /> : null}{reply.status === "queued" ? "Queued" : "Steered"}{promoter ? ` by ${resolveMember(promoter, members).shortName}` : ""}</p>}
-                </div>
-              </article>
-            );
-          })}
+          {(replies?.length ?? 0) === 0 ? <p className="text-xs text-[#737373]">Start a discussion about this message.</p> : replies?.map((reply) => <ThreadReply disabled={disabled} key={reply.id} members={members} onSteer={() => onSteerReply(message.id, reply.id)} queueing={queueing} reply={reply} showTimestamp />)}
         </ConversationContent>
         <ConversationScrollButton />
       </Conversation>

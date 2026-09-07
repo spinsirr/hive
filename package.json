@@ -9,7 +9,7 @@
     "postinstall": "node scripts/prepare-monaco.mjs && node scripts/prepare-codex-bridge.mjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "test": "node --test src/lib/*.test.ts && node scripts/check-native-stream.mjs && node --experimental-test-module-mocks scripts/check-failed-run.mjs && node --experimental-test-module-mocks scripts/check-conversation-input.mjs && node --experimental-test-module-mocks scripts/check-workspace-files.mjs && node --experimental-test-module-mocks scripts/check-workspace-restore.mjs",
+    "test": "node --test src/lib/*.test.ts && node scripts/check-native-stream.mjs && node --experimental-test-module-mocks scripts/check-failed-run.mjs && node --experimental-test-module-mocks scripts/check-conversation-input.mjs && node --experimental-test-module-mocks scripts/check-workspace-files.mjs && node --experimental-test-module-mocks scripts/check-workspace-restore.mjs && node scripts/check-thread-preview.mjs",
     "typecheck": "next typegen && tsc --noEmit",
     "start": "next start",
     "lint": "eslint",
