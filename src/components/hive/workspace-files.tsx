@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronRight, File, FileLock2, Folder, FolderOpen, Link2, MessageSquarePlus, PanelLeft, RotateCw } from "lucide-react";
+import { ChevronRight, MessageSquarePlus, PanelLeft, RotateCw } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useState } from "react";
 
@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import type { WorkspaceEntry } from "@/lib/workspace-files";
 import type { CodeReference } from "@/lib/code-reference";
 import { CodeAnnotationComposer, type AnnotateCode } from "./code-annotation-composer";
+import { WorkspaceFileIcon } from "./workspace-file-icon";
 
 import styles from "./workspace-files.module.css";
 
@@ -58,7 +59,6 @@ function Entry({ entry, depth, ...tree }: TreeProps & { entry: WorkspaceEntry; d
   const directory = entry.kind === "directory";
   const open = tree.expanded.has(entry.path);
   const reason = unavailable[entry.kind];
-  const Icon = directory ? open ? FolderOpen : Folder : entry.kind === "restricted" ? FileLock2 : entry.kind === "symlink" ? Link2 : File;
   return (
     <li>
       <button
@@ -73,7 +73,7 @@ function Entry({ entry, depth, ...tree }: TreeProps & { entry: WorkspaceEntry; d
         type="button"
       >
         {directory ? <ChevronRight className={cn("size-3 shrink-0", open && "rotate-90")} /> : <span className="w-3 shrink-0" />}
-        <Icon className="size-3.5 shrink-0" />
+        <WorkspaceFileIcon path={entry.path} kind={entry.kind} expanded={open} />
         <span className="truncate">{entry.name}</span>
       </button>
       {directory && open ? <Directory path={entry.path} depth={depth + 1} {...tree} /> : null}
@@ -110,6 +110,7 @@ export function WorkspaceFiles({ sessionId, revision, initialPath = "", memberId
     <div className={styles.browser}>
       <div className="flex h-9 shrink-0 items-center gap-2 border-b border-[#ebebeb] px-2 text-[11px] text-[#737373]">
         <Button aria-label={explorerOpen ? "Hide file explorer" : "Show file explorer"} aria-pressed={explorerOpen} className="size-7 shrink-0" onClick={() => setExplorerOpen(!explorerOpen)} size="icon" title={explorerOpen ? "Hide file explorer" : "Show file explorer"} variant="ghost"><PanelLeft className="size-3.5" /></Button>
+        {selected ? <WorkspaceFileIcon path={selected} /> : null}
         <span className="min-w-0 flex-1 truncate font-mono" title={selected || "Workspace"}>{selected || "Workspace"}</span>
         <Button aria-label="Annotate selected code" className="h-7 shrink-0 px-2 text-[11px]" disabled={disabled || !selectedReference || selectedReference.path !== selected || pending} onClick={() => setAnnotation(selectedReference)} size="sm" title="Select up to 100 lines to annotate" variant="ghost"><MessageSquarePlus className="size-3.5" /> Annotate</Button>
         <Button aria-label="Refresh workspace files" className="size-7 shrink-0" onClick={onRefresh} size="icon" title="Refresh workspace files" variant="ghost"><RotateCw className="size-3.5" /></Button>

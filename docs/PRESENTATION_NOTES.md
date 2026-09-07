@@ -70,7 +70,7 @@ This correction matters: the team is the durable collaboration space; a session 
 | Name the human need, not the implementation | Runs is an audit trail for teammates: command, outcome, duration, and expandable output. | Calling a read-only log “Terminal” and implying that humans should operate it. |
 | Neon is canonical history | Native Codex history can disappear with compute; team intent cannot. | Treating sandbox files as the product database. |
 | Quiet error state | A failure should not become a theatrical agent apology. | Large error bubbles that repeat internal details. |
-| Neutral interface, semantic code colors | Syntax colors and green/red changes make the work readable; monochrome is for the surrounding interface. | Applying the black-and-white brand palette to every code token and diff line. |
+| Neutral interface, semantic code colors | Syntax colors, file-type icons and green/red changes make the work readable; monochrome is for the surrounding interface. | Applying the black-and-white brand palette to every code token and diff line. |
 | A small frontend task in Hive itself | An author-specific accessible label makes teammate intent visible in both the conversation and the diff. | A separate demo application or deployment workflow that needs its own setup. |
 | Remove Vercel Connect experiment | The available install flow is developer-dashboard oriented; direct GitHub App onboarding fits users today. | Shipping a connector path users cannot complete. |
 
@@ -488,6 +488,12 @@ Be explicit: GitHub write-back is not built; organization administration is not 
 - The actual accessibility Diff remained; expanded Runs retained the original successful combined command with 92 sandbox-revision tests, type generation and no failed tests. Full Files navigation loaded both the changed component and unchanged README in Monaco. File reads can resume the existing sandbox; they do not run an agent or write repository files.
 - Checkpoints loaded an existing legacy recovery point with **No matching agent checkpoint**, and Restore was correctly disabled. No new checkpoint or restore was attempted. A real paired restore remains an explicit acceptance gap; do not infer a pass from the local provider doubles.
 - Inspected production task and demo browser logs contained no warnings or errors. The retained execution evidence and team discussion were preserved. The separate public UI demo is the safe design-review link for remote viewing.
+
+### September 7 — File-type icons in the workspace
+
+- Replaced the generic file symbol with compact type-specific icons in both the Files tree and selected-file heading: TS/JS marks, React components, JSON, Markdown, styles, configuration, packages, scripts and assets. Directories retain open/closed states; restricted entries keep the lock and symbolic links keep the link symbol. Unknown types remain neutral.
+- Reused the installed Lucide library and Next.js's built-in import optimization. No new icon package, CDN request, editor runtime, file read, permission rule or agent behavior was added. Icons are decorative so existing accessible filenames and navigation remain unchanged.
+- Local verification passed: three filename-classification regressions (including configuration-name priority, uppercase extensions and unknown names), actual-component rendering checks for decorative/locked/folder states, the full 125-test suite and controlled runner/route regressions, TypeScript, ESLint, whitespace validation and the production Webpack build. These checks are not a new production agent execution.
 
 ## Questions to prepare for
 
