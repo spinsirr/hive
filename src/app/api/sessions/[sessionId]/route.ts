@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { getSessionMember, HIVE_SESSION_COOKIE } from "@/lib/auth-session";
 import { createReplyWriter } from "@/lib/agent-stream";
+import { codeReferenceSchema } from "@/lib/code-reference";
 import { HiveAgentError } from "@/lib/hive-agent";
 import { runHiveConversation } from "@/lib/hive-conversation";
 import { hiveErrorCopy } from "@/lib/hive-error-copy";
@@ -78,6 +79,7 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
   if (
     payload.type !== "send-message" &&
     payload.type !== "annotate-message" &&
+    payload.type !== "annotate-code" &&
     payload.type !== "steer-message-annotation" &&
     payload.type !== "apply-next-steer" &&
     payload.type !== "remove-queued-steer" &&
@@ -92,14 +94,14 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
   }
 
   if (
-    (payload.type === "send-message" || payload.type === "annotate-message") &&
+    (payload.type === "send-message" || payload.type === "annotate-message" || payload.type === "annotate-code") &&
     (!("clientId" in payload) || !isClientSubmissionId(payload.clientId))
   ) {
     return NextResponse.json({ error: "A valid submission ID is required" }, { status: 400 });
   }
 
   if (
-    (payload.type === "send-message" || payload.type === "annotate-message") &&
+    (payload.type === "send-message" || payload.type === "annotate-message" || payload.type === "annotate-code") &&
     (!("body" in payload) || typeof payload.body !== "string" || !payload.body.trim())
   ) {
     return NextResponse.json({ error: "Message body is required" }, { status: 400 });
@@ -135,6 +137,11 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
   ) {
     return NextResponse.json({ error: "Invalid queue direction" }, { status: 400 });
   }
+
+  if (payload.type === "annotate-code" && (
+    !("reference" in payload) || !codeReferenceSchema.safeParse(payload.reference).success ||
+    !("body" in payload) || typeof payload.body !== "string" || payload.body.length > 500
+  )) return NextResponse.json({ error: "Select up to 100 lines and write an annotation of up to 500 characters." }, { status: 400 });
 
   const action = { ...payload, actor: member.id } as TaskSessionAction;
   const actionAt = Date.now();

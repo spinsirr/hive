@@ -59,12 +59,15 @@ workspace evidence → changed files, command output, and real git diff
 - Each repository-backed task maps to a persistent named Vercel Sandbox and Codex session; Neon remains the canonical team history if compute disappears.
 - GitHub App credentials stay server-side. Sandbox receives a fresh installation token limited to the selected repository.
 - AI Gateway uses Vercel OIDC in production. `openai/gpt-5-mini` is the low-cost default for both planning and coding turns and can be overridden.
-- The interface renders only real changed files, commands, and diffs returned by the runner—there are no hardcoded execution artifacts.
+- Files browses the complete existing sandbox worktree on demand, including unchanged, untracked, and hidden files; Diff and Runs retain the runner’s actual evidence. There are no hardcoded execution artifacts.
+- Select code in Monaco and share a file-and-line annotation with the team. It remains discussion until **Steer Hive** promotes it, retaining the author and quoted code. Busy runs queue the steer through the same existing path.
+- Checkpoints displays the real sandbox’s available saved recovery points without resuming or stopping it. The current retention policy keeps one recovery point. This view does not implement manual snapshot creation or rollback.
 
 ## Deliberate boundaries
 
 - One team for the take-home; the membership model is explicit, but organization administration is out of scope.
 - One repository and one mutating run per task session.
+- File browsing can resume the existing sandbox, but never creates one or starts an agent. Text previews are capped at 512 KB; credential files, Git internals, symlinks, and binary files are not opened. Monaco supports selection and collaborative annotations, not direct file saves. Restoring a checkpoint together with its matching agent history is not implemented.
 - Hive can clone, edit, test, and expose a diff. Branch push, PR creation, merging, and multi-team administration are outside the current [completion scope](docs/GOAL.md).
 - Repository access uses the GitHub App directly. The Vercel Connect experiment was removed because its current install flow is intended for connector developers, not this product's end-user onboarding.
 - Production history lives in a durable Neon Free database provisioned through Vercel Marketplace. The previous temporary database is retained only for the short rollback window after migration.
@@ -108,7 +111,7 @@ pnpm typecheck
 pnpm exec next build --webpack
 ```
 
-The 98-test suite covers invitation-only admission, signed invitation expiry and scope, OAuth origin and return-path checks, the multiplayer state machine, attributed prompts, safe-boundary queue execution and recovery, completed-session immutability, nonempty-diff approval, persistent sandbox selection, failure checkpoints, IME-safe submission, teammate autocomplete, retry deduplication, draft recovery, and streaming/reconnect guards. `pnpm test` also runs seven controlled regressions through the real coding runner and task transition, checking that failed runs retain command and file evidence without presenting unknown exit codes as passing, plus a pre-repository runner regression that verifies the selected attributed steer reaches the model input.
+The 108-test suite covers invitation-only admission, signed invitation expiry and scope, OAuth origin and return-path checks, the multiplayer state machine, attributed prompts, safe-boundary queue execution and recovery, completed-session immutability, nonempty-diff approval, persistent sandbox selection, failure checkpoints, IME-safe submission, teammate autocomplete, retry deduplication, draft recovery, streaming/reconnect guards, full file-tree pagination, bounded safe reads, and attributed code annotations. `pnpm test` also runs seven controlled regressions through the real coding runner and task transition, a pre-repository input regression, and the actual file/checkpoint/session HTTP handlers with doubled external boundaries. These check authorization, no hidden sandbox creation or agent execution, comment deduplication, and the code context delivered on explicit steer.
 
 Historical production checks admitted two real GitHub accounts and observed attribution, automatic message queuing, and retained transcript/queue after refresh. On September 6, a real accessible-label change survived a rate-limited run, then passed the sandbox revision's 92 tests, TypeScript, and diff check in one recorded command. Runs, the actual diff, colored read-only Files, and the transcript survived a same-account production reload. The sandbox revision does not include the seven newer runner regressions; those are local regression evidence, not part of that live run.
 
@@ -139,7 +142,7 @@ It uses transient notifications and isolated in-memory task fixtures, not task-t
 - **Attach code when intent is ready.** Repository selection is not a provisioning prerequisite.
 - **One task per session.** The team is durable; a session is intentionally disposable and bounded.
 - **Reuse the harness.** AI SDK Harness, Codex, and Vercel Sandbox are infrastructure; multiplayer control is the product.
-- **Artifacts over summaries.** Workspace navigation exposes the verifiable diff, bounded changed-file snapshots, and the latest run's command output; repository setup stands on its own before a run. Each artifact is the workspace surface itself, without decorative cards or duplicated panel chrome.
+- **Artifacts over summaries.** Workspace navigation exposes the complete real working copy, verifiable diff, latest run’s command output, and available sandbox recovery points. The full file tree is loaded on demand, not copied into every live chat update. Code annotations enter the existing shared conversation rather than creating a separate review system.
 - **Quiet failures.** Errors appear as compact system state while the human prompt and resumable checkpoint remain intact.
 - **Delivery is not execution.** Preserve an unconfirmed draft without repeating accepted work. Retry identity is scoped to a task and author; an explicit task reset also clears the transcript used for deduplication.
 

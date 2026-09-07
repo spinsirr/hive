@@ -15,6 +15,7 @@ import { getRepositoryCloneCredentials } from "@/lib/github-app";
 import { buildHivePrompt } from "@/lib/hive-prompt";
 import {
   isRepositoryWorkingCopy,
+  repositoryDirectory,
   resolvePersistentSandboxName,
 } from "@/lib/hive-sandbox";
 import {
@@ -38,15 +39,6 @@ function truncate(value: string, max = MAX_OUTPUT_CHARS) {
   return value.length <= max
     ? value
     : `${value.slice(0, max)}\n\n[output truncated by Hive]`;
-}
-
-function repositoryDirectory(repositoryUrl: string) {
-  const pathname = new URL(repositoryUrl).pathname.replace(/\/+$/, "");
-  const directory = path.posix.basename(pathname).replace(/\.git$/, "");
-  if (!directory || directory === "." || directory === "..") {
-    throw new Error("Repository URL does not contain a valid directory name.");
-  }
-  return directory;
 }
 
 async function commandOutput(

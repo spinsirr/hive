@@ -1,0 +1,43 @@
+.browser {
+  container: workspace-files / inline-size;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: white;
+}
+
+.body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+.explorer {
+  width: 192px;
+  flex-shrink: 0;
+  overflow: auto;
+  border-right: 1px solid #ebebeb;
+  background: #fafafa;
+  padding: 8px 4px;
+}
+
+.editor {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+@container workspace-files (max-width: 560px) {
+  .body {
+    flex-direction: column;
+  }
+
+  .explorer {
+    width: 100%;
+    max-height: 160px;
+    border-right: 0;
+    border-bottom: 1px solid #ebebeb;
+  }
+}

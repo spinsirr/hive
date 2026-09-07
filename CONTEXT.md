@@ -25,7 +25,7 @@ The single repository selected from Repository Access for a task session. It may
 _Avoid_: Project, default repository
 
 **Annotation**:
-A human comment attached to a teammate’s message that remains discussion until someone promotes it.
+A human comment attached to a teammate’s message or a quoted file-and-line selection. It remains discussion until someone promotes it.
 _Avoid_: Prompt, agent response
 
 **Steer**:
@@ -37,5 +37,5 @@ One agent execution turn against the attached repository.
 _Avoid_: Session, task
 
 **Workspace**:
-The task session’s evidence of agent execution: repository status, changed files, diff, and commands.
+The task session’s real repository working copy and evidence of agent execution: a complete, on-demand file browser, diff, commands, and available sandbox checkpoints. File annotations quote what a teammate reviewed; they do not silently edit the repository.
 _Avoid_: Team space, chat history

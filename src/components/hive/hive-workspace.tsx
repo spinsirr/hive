@@ -9,6 +9,7 @@ import {
   Copy,
   FileCode2,
   FolderGit2,
+  History,
   ListChecks,
   LoaderCircle,
   MessageSquare,
@@ -20,7 +21,6 @@ import {
   WifiOff,
   X,
 } from "lucide-react";
-import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
 
@@ -34,11 +34,15 @@ import { AgentResponse } from "@/components/hive/agent-response";
 import { DiffPane } from "@/components/hive/diff-pane";
 import { MentionInput } from "@/components/hive/mention-input";
 import { WorkspaceSplit } from "@/components/hive/workspace-split";
+import { WorkspaceFiles } from "@/components/hive/workspace-files";
+import { WorkspaceCheckpoints } from "@/components/hive/workspace-checkpoints";
+import type { AnnotateCode } from "@/components/hive/code-annotation-composer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useSharedSession } from "@/hooks/use-shared-session";
 import { useMessageDraft } from "@/hooks/use-message-draft";
 import type { MessageSubmission } from "@/lib/message-draft";
+import { codeReferenceLabel } from "@/lib/code-reference";
 import { displayHiveErrorMessage } from "@/lib/hive-error-copy";
 import {
   type ActiveSteer,
@@ -60,12 +64,7 @@ import { shouldSubmitMessage } from "@/lib/message-keyboard";
 import type { TaskSessionSnapshot } from "@/lib/task-session-store";
 import { cn } from "@/lib/utils";
 
-type WorkspaceTab = "diff" | "files" | "runs";
-
-const CodeViewer = dynamic(() => import("./code-viewer"), {
-  ssr: false,
-  loading: () => <div className="grid h-full place-items-center text-xs text-[#737373]" role="status">Loading code viewer…</div>,
-});
+type WorkspaceTab = "diff" | "files" | "runs" | "checkpoints";
 
 type RepositoryOption = {
   id: number;
@@ -85,6 +84,7 @@ const tabs: Array<{ key: WorkspaceTab; label: string; icon: typeof Code2 }> = [
   { key: "diff", label: "Diff", icon: Code2 },
   { key: "files", label: "Files", icon: FileCode2 },
   { key: "runs", label: "Runs", icon: ListChecks },
+  { key: "checkpoints", label: "Checkpoints", icon: History },
 ];
 
 function HiveMark({ className, light = false }: { className?: string; light?: boolean }) {
@@ -497,7 +497,7 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
                   ) : null}
                 </div>
                 <MessageContent className={cn("w-fit max-w-[94%] rounded-lg border border-[#e8e8e8] px-3 py-2.5 text-[13px] leading-5 shadow-none", message.role === "agent" ? "bg-[#fafafa] text-[#4d4d4d]" : isCurrentMember ? "ml-auto bg-white" : "bg-white")}>
-                  {message.role === "agent" ? <AgentResponse streaming={message.status === "streaming"}>{message.body}</AgentResponse> : message.body}
+                  {message.role === "agent" ? <AgentResponse streaming={message.status === "streaming"}>{message.body}</AgentResponse> : message.codeReference ? <div><p className="break-all font-mono text-[11px] text-[#737373]">{codeReferenceLabel(message.codeReference)}</p><pre className="mt-2 max-h-40 overflow-auto whitespace-pre font-mono text-[11px] leading-5">{message.codeReference.quote}</pre></div> : message.body}
                 </MessageContent>
 
                 {messageAnnotations.length > 0 ? (
@@ -521,6 +521,7 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
                               <div className="ml-auto">
                                 <Button
                                   className="h-7 rounded px-2.5 text-[11px]"
+                                  disabled={disabled}
                                   onClick={() => onSteerMessageAnnotation(message.id, annotation.id)}
                                   size="sm"
                                   title={runActive || steeringQueue.length > 0 ? "Queue this steer for Hive's next safe boundary" : "Promote this annotation into a follow-up turn"}
@@ -728,41 +729,6 @@ function RepositorySetup({ sessionId }: { sessionId: string }) {
   );
 }
 
-function FilesPane({ files }: { files: WorkspaceState["files"] }) {
-  const [selected, setSelected] = useState("");
-  const selectedFile = files.find((file) => file.path === selected) ?? files[0];
-  if (!selectedFile) {
-    return <div className="grid h-full place-items-center bg-[#fafafa] p-8 text-center"><div><FileCode2 className="mx-auto size-6 text-[#737373]" /><p className="mt-3 text-sm font-medium">No changed files yet</p><p className="mt-1 text-xs text-[#8f8f8f]">Review file snapshots here after Hive makes a change.</p></div></div>;
-  }
-  return (
-    <div className="flex h-full min-h-0 flex-col bg-white sm:flex-row">
-      <nav aria-label="Changed files" className="flex max-h-36 shrink-0 gap-1 overflow-auto border-b border-[#ebebeb] bg-[#fafafa] p-2 sm:max-h-none sm:w-40 sm:flex-col sm:border-b-0 sm:border-r lg:w-52">
-        {files.map((file) => (
-          <button
-            aria-current={selectedFile.path === file.path ? "true" : undefined}
-            className={cn("shrink-0 truncate rounded px-2 py-2 text-left font-mono text-[11px] text-[#737373] hover:bg-white focus-visible:outline-2 focus-visible:outline-[#737373] sm:w-full", selectedFile.path === file.path && "bg-white text-[#171717]")}
-            key={file.path}
-            onClick={() => setSelected(file.path)}
-            title={file.path}
-            type="button"
-          >
-            {file.path}
-          </button>
-        ))}
-      </nav>
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <div className="flex shrink-0 items-center gap-3 border-b border-[#ebebeb] px-4 py-2 text-[11px] text-[#737373]">
-          <span className="min-w-0 flex-1 truncate font-mono" title={selectedFile.path}>{selectedFile.path}</span>
-          <span className="shrink-0">Snapshot · Read-only</span>
-        </div>
-        <div className="min-h-0 flex-1">
-          <CodeViewer content={selectedFile.content} path={selectedFile.path} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function RunsPane({ commands }: { commands: WorkspaceState["commands"] }) {
   if (commands.length === 0) {
     return (
@@ -820,7 +786,10 @@ function RunsPane({ commands }: { commands: WorkspaceState["commands"] }) {
   );
 }
 
-function Workspace({ repository, sessionId, tab, workspace, onTabChange }: { repository?: RepositoryState; sessionId: string; tab: WorkspaceTab; workspace: WorkspaceState; onTabChange: (tab: WorkspaceTab) => void }) {
+function Workspace({ repository, sessionId, tab, workspace, onTabChange, fileCollaboration }: {
+  repository?: RepositoryState; sessionId: string; tab: WorkspaceTab; workspace: WorkspaceState; onTabChange: (tab: WorkspaceTab) => void;
+  fileCollaboration: { memberId: string; deliveredIds: ReadonlySet<string>; disabled: boolean; onAnnotate: AnnotateCode };
+}) {
   if (!repository) {
     return (
       <section className="h-full min-h-0 bg-white">
@@ -852,7 +821,12 @@ function Workspace({ repository, sessionId, tab, workspace, onTabChange }: { rep
           })}
         </div>
       </div>
-      <div className="min-h-0 flex-1">{tab === "diff" ? <DiffPane diff={workspace.diff} /> : null}{tab === "files" ? <FilesPane files={workspace.files} /> : null}{tab === "runs" ? <RunsPane commands={workspace.commands} /> : null}</div>
+      <div className="min-h-0 flex-1">
+        {tab === "diff" ? <DiffPane diff={workspace.diff} /> : null}
+        {tab === "files" ? <WorkspaceFiles key={sessionId} sessionId={sessionId} initialPath={workspace.files[0]?.path} revision={`${workspace.agentSession?.id ?? ""}:${workspace.completedAt ?? ""}`} {...fileCollaboration} /> : null}
+        {tab === "runs" ? <RunsPane commands={workspace.commands} /> : null}
+        {tab === "checkpoints" ? <WorkspaceCheckpoints sessionId={sessionId} revision={workspace.completedAt} /> : null}
+      </div>
     </section>
   );
 }
@@ -920,6 +894,7 @@ export function HiveWorkspace({
   );
   const { activeSteer, annotation, lifecycle, repository, stage, steeringQueue, workspace } = session;
   const messages = useMemo(() => conversationMessages(session), [session]);
+  const codeAnnotationIds = useMemo(() => new Set(messages.filter((message) => message.codeReference && message.memberId === currentMember.id && message.clientId).map((message) => message.clientId!)), [currentMember.id, messages]);
   const runActive = isHiveRunActive(session);
   const canApplySteer = canApplyNextSteer(session);
   const steered = annotation.status === "steered";
@@ -948,6 +923,12 @@ export function HiveWorkspace({
     return nextSnapshot?.session.messages.find((message) => message.id === messageId)?.annotations?.some(
       (annotation) => annotation.authorId === currentMember.id && annotation.clientId === clientId && annotation.body === body,
     ) ?? false;
+  }, [currentMember.id, dispatch]);
+  const annotateCode = useCallback<AnnotateCode>(async (reference, { body, clientId }) => {
+    const nextSnapshot = await dispatch({ type: "annotate-code", reference, body, clientId });
+    const delivered = nextSnapshot?.session.messages.some((message) => message.memberId === currentMember.id && message.clientId === clientId && message.annotations?.some((annotation) => annotation.body === body)) ?? false;
+    if (delivered) setPane("chat");
+    return delivered;
   }, [currentMember.id, dispatch]);
   const steer = useCallback(() => { void dispatch({ type: "steer-agent" }); }, [dispatch]);
   const steerMessageAnnotation = useCallback((messageId: string, annotationId: string) => {
@@ -1060,7 +1041,7 @@ export function HiveWorkspace({
         workspace={
           <>
             <div className="min-h-0 flex-1">
-              <Workspace repository={repository} sessionId={sessionId} tab={shared.tab} workspace={workspace} onTabChange={shared.onTabChange} />
+              <Workspace repository={repository} sessionId={sessionId} tab={shared.tab} workspace={workspace} onTabChange={shared.onTabChange} fileCollaboration={{ memberId: currentMember.id, deliveredIds: codeAnnotationIds, disabled: lifecycle === "completed", onAnnotate: annotateCode }} />
             </div>
             <RunBar activeSteer={activeSteer} completed={lifecycle === "completed"} reviewReady={canApproveChanges(session)} runActive={runActive} queueCount={steeringQueue.length} repository={repository} stage={shared.stage} onAdvance={shared.onAdvance} />
           </>

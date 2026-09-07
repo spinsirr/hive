@@ -4,6 +4,7 @@
  */
 
 import type { HarnessAgentResumeSessionState } from "@ai-sdk/harness/agent";
+import { codeReferenceContext, codeReferenceSchema, type CodeReference } from "./code-reference.ts";
 
 export type MemberId = string;
 
@@ -89,6 +90,7 @@ export type ChatMessage = {
   memberId?: MemberId;
   annotations?: MessageAnnotation[];
   status?: "error" | "streaming";
+  codeReference?: CodeReference;
   time: string;
 };
 
@@ -193,6 +195,7 @@ export type TaskSessionState = {
 
 export type TaskSessionAction =
   | { type: "send-message"; actor: MemberId; body: string; clientId?: string }
+  | { type: "annotate-code"; actor: MemberId; body: string; clientId: string; reference: CodeReference }
   | {
       type: "connect-repository";
       actor: MemberId;
@@ -561,6 +564,32 @@ export function reduceTaskSession(
           time: timeLabel(now),
         },
       ],
+      updatedAt: now,
+    };
+  }
+
+  if (action.type === "annotate-code") {
+    const body = action.body.trim();
+    const reference = codeReferenceSchema.safeParse(action.reference);
+    if (!state.repository || !body || body.length > 500 || !reference.success) return state;
+    if (state.messages.some((message) => message.memberId === action.actor && message.clientId === action.clientId)) return state;
+    // A code reference is a discussion message with an ordinary annotation.
+    // Promotion, authorship, idempotency and queueing use the existing path.
+    return {
+      ...state,
+      version: state.version + 1,
+      messages: [...state.messages, {
+        id: `human-${now}-${state.version + 1}`,
+        clientId: action.clientId,
+        name: actor.name,
+        initials: actor.initials,
+        body: codeReferenceContext(reference.data),
+        codeReference: reference.data,
+        role: "human",
+        memberId: actor.id,
+        time: timeLabel(now),
+        annotations: [{ id: `annotation-${now}-${state.version + 1}`, clientId: action.clientId, body, authorId: actor.id, createdAt: now, status: "open" }],
+      }],
       updatedAt: now,
     };
   }

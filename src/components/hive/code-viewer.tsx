@@ -2,6 +2,7 @@
 
 import Editor, { loader, type BeforeMount } from "@monaco-editor/react";
 import { useEffect, useState } from "react";
+import { codeReferenceSchema, type CodeReference } from "@/lib/code-reference";
 
 loader.config({ paths: { vs: "/monaco/vs" } });
 
@@ -26,7 +27,7 @@ const configureEditor: BeforeMount = (monaco) => {
   });
 };
 
-export default function CodeViewer({ path, content }: { path: string; content: string }) {
+export default function CodeViewer({ path, content, onSelectionChange }: { path: string; content: string; onSelectionChange?: (selection: CodeReference | null) => void }) {
   const [loadFailed, setLoadFailed] = useState(false);
 
   useEffect(() => {
@@ -55,6 +56,18 @@ export default function CodeViewer({ path, content }: { path: string; content: s
       beforeMount={configureEditor}
       height="100%"
       loading={<span className="text-xs text-[#737373]" role="status">Loading code viewer…</span>}
+      onMount={(editor) => {
+        if (!onSelectionChange) return;
+        editor.onDidChangeCursorSelection(({ selection }) => {
+          const model = editor.getModel();
+          if (!model || selection.isEmpty()) { onSelectionChange(null); return; }
+          const startLine = selection.startLineNumber;
+          const endLine = selection.endLineNumber - (selection.endColumn === 1 && selection.endLineNumber > startLine ? 1 : 0);
+          const quote = model.getValueInRange({ startLineNumber: startLine, startColumn: 1, endLineNumber: endLine, endColumn: model.getLineMaxColumn(endLine) });
+          const reference = codeReferenceSchema.safeParse({ path, startLine, endLine, quote });
+          onSelectionChange(reference.success ? reference.data : null);
+        });
+      }}
       options={{
         ariaLabel: `Read-only code: ${path}`,
         automaticLayout: true,

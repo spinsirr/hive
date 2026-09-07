@@ -2,6 +2,15 @@ import path from "node:path";
 
 import type { TaskSessionState } from "./task-session.ts";
 
+export function repositoryDirectory(repositoryUrl: string) {
+  const pathname = new URL(repositoryUrl).pathname.replace(/\/+$/, "");
+  const directory = path.posix.basename(pathname).replace(/\.git$/, "");
+  if (!directory || directory === "." || directory === "..") {
+    throw new Error("Repository URL does not contain a valid directory name.");
+  }
+  return directory;
+}
+
 export function isRepositoryWorkingCopy(
   sessionWorkDir: string,
   gitTopLevel: string,
