@@ -2,7 +2,7 @@
 
 import { ChevronRight, MessageSquarePlus, PanelLeft, RotateCw } from "lucide-react";
 import dynamic from "next/dynamic";
-import { Activity, useState } from "react";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { useWorkspaceRead } from "@/hooks/use-workspace-read";
@@ -117,10 +117,11 @@ export function WorkspaceFiles({ sessionId, revision, initialPath = "", memberId
     return next;
   });
 
-  // The provider must remain mounted while Activity hides its read consumers.
+  // Keep data and selection, but fully unmount Monaco when hidden: its React
+  // wrapper disposes the editor in effect cleanup and cannot resume that instance.
   return (
     <WorkspaceReadCache scope={JSON.stringify([sessionId, memberId, readRevision, locked])}>
-      <Activity mode={active ? "visible" : "hidden"}>
+      {active ? (
         <div className={styles.browser}>
           <div className="flex h-9 shrink-0 items-center gap-2 border-b border-[#ebebeb] px-2 text-[11px] text-[#737373]">
             <Button aria-label={explorerOpen ? "Hide file explorer" : "Show file explorer"} aria-pressed={explorerOpen} className="size-7 shrink-0" onClick={() => setExplorerOpen(!explorerOpen)} size="icon" title={explorerOpen ? "Hide file explorer" : "Show file explorer"} variant="ghost"><PanelLeft className="size-3.5" /></Button>
@@ -137,7 +138,7 @@ export function WorkspaceFiles({ sessionId, revision, initialPath = "", memberId
           </div>}
           {annotation && !disabled && !locked ? <CodeAnnotationComposer reference={annotation} sessionId={sessionId} memberId={memberId} deliveredIds={deliveredIds} onSubmit={onAnnotate} onClose={() => setAnnotation(null)} /> : null}
         </div>
-      </Activity>
+      ) : null}
     </WorkspaceReadCache>
   );
 }

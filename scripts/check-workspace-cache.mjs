@@ -1,8 +1,8 @@
-// Exercise the real Files UI, read hook, SWR provider, and React Activity.
-// Only the network and Monaco rendering are doubled; no live workspace is read.
+// Exercise the real Files UI, read hook, SWR provider, and Monaco React lifecycle.
+// Only the network and Monaco rendering engine are doubled; no live workspace is read.
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
-import { registerHooks } from "node:module";
+import { createRequire, registerHooks } from "node:module";
 import { mock } from "node:test";
 import { JSDOM } from "jsdom";
 import { JsxEmit, ModuleKind, transpileModule } from "typescript";
@@ -15,6 +15,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 registerHooks({
   resolve(specifier, context, next) {
     if (specifier === "next/dynamic") return next("next/dynamic.js", context);
+    if (specifier === "@monaco-editor/react") return next(new URL("../node_modules/@monaco-editor/react/dist/index.mjs", import.meta.url).href, context);
     if (!specifier.startsWith("@/") && !specifier.startsWith(".")) return next(specifier, context);
     const base = specifier.startsWith("@/") ? new URL(`../src/${specifier.slice(2)}`, import.meta.url) : new URL(specifier, context.parentURL);
     const target = [".ts", ".tsx"].map((extension) => new URL(`${base.href}${extension}`)).find((url) => existsSync(url));
@@ -28,7 +29,58 @@ registerHooks({
 });
 const { StrictMode, createElement: h } = await import("react");
 const { act, cleanup, fireEvent, render, screen, waitFor } = await import("@testing-library/react");
-mock.module("next/dynamic.js", { defaultExport: () => function CodeFixture({ path, content }) { return h("pre", { "aria-label": `Code: ${path}` }, content); } });
+// Preserve the actual @monaco-editor/react effects, ready state and editor refs.
+// The engine double catches calls on an already-disposed editor without WebGL.
+const invalidEditorCalls = [];
+const editorInstances = [];
+const models = new Map();
+const monaco = {
+  Uri: { parse: (path) => ({ toString: () => path }) },
+  editor: {
+    EditorOption: { readOnly: 1 },
+    defineTheme() {}, setTheme() {},
+    onDidChangeMarkers: () => ({ dispose() {} }),
+    getModel: (uri) => models.get(uri.toString()),
+    createModel(content, language, uri) {
+      const model = { content, uri, dispose: () => models.delete(uri.toString()) };
+      models.set(uri.toString(), model);
+      return model;
+    },
+    create(container, options) {
+      let disposed = false;
+      let model = options.model;
+      const code = document.createElement("pre");
+      code.textContent = model.content;
+      container.append(code);
+      const live = (name, action = () => {}) => (...args) => {
+        if (disposed) invalidEditorCalls.push(name);
+        return action(...args);
+      };
+      const editor = {
+        getModel: live("getModel", () => model),
+        setModel: live("setModel", (next) => { model = next; code.textContent = next.content; }),
+        getOption: live("getOption", () => true),
+        setValue: live("setValue", (value) => { model.content = value; code.textContent = value; }),
+        updateOptions: live("updateOptions"),
+        saveViewState: live("saveViewState", () => null),
+        restoreViewState: live("restoreViewState"),
+        onDidChangeCursorSelection: live("onDidChangeCursorSelection", () => ({ dispose() {} })),
+        dispose() { disposed = true; code.remove(); },
+      };
+      editorInstances.push(editor);
+      return editor;
+    },
+  },
+};
+mock.module(createRequire(import.meta.resolve("@monaco-editor/react")).resolve("@monaco-editor/loader"), { defaultExport: {
+  config() {},
+  init: () => Object.assign(Promise.resolve(monaco), { cancel() {} }),
+} });
+const { default: CodeViewer } = await import("../src/components/hive/code-viewer.tsx");
+let realEditorLifecycle = false;
+mock.module("next/dynamic.js", { defaultExport: () => function CodeFixture({ path, content, onSelectionChange }) {
+  return realEditorLifecycle ? h(CodeViewer, { path, content, onSelectionChange }) : h("pre", { "aria-label": `Code: ${path}` }, content);
+} });
 const { WorkspaceFiles } = await import("../src/components/hive/workspace-files.tsx");
 const { WorkspaceReadCache } = await import("../src/components/hive/workspace-read-cache.tsx");
 const { useWorkspaceRead } = await import("../src/hooks/use-workspace-read.ts");
@@ -78,7 +130,7 @@ try {
   assert.ok(screen.getByRole("button", { name: "index.ts" }));
   await act(async () => { dom.window.dispatchEvent(new dom.window.Event("focus")); dom.window.dispatchEvent(new dom.window.Event("online")); });
   assert.equal(calls.length, 4, "tab/thread visibility and focus must not re-read cached paths");
-  console.log("PASS: file switches, reopened folders, and Activity hide/show reuse content and preserve the expanded tree without new reads.");
+  console.log("PASS: file switches, reopened folders, and pane hide/show reuse content and preserve the expanded tree without new reads.");
 
   version = "two";
   click("Refresh workspace files");
@@ -216,6 +268,23 @@ try {
   ]) assert.notEqual(baseline, workspaceReadRevision({ ...idle, ...change }));
   assert.notEqual(workspaceReadRevision({ ...idle, startedAt: 30, completedAt: undefined }), workspaceReadRevision({ ...idle, startedAt: 50, completedAt: undefined }));
   console.log("PASS: run starts/completions, sandbox/context replacement and restores invalidate; unrelated chat/status changes do not.");
+  cleanup();
+
+  realEditorLifecycle = true;
+  read = defaultRead;
+  calls.length = 0;
+  const editorView = render(files());
+  await screen.findByText(content("README.md"));
+  for (let index = 0; index < 3; index++) {
+    editorView.rerender(files({}, "hidden"));
+    editorView.rerender(files());
+    await act(async () => {});
+    assert.deepEqual(invalidEditorCalls, [], "showing a cached Files pane must never reuse a disposed Monaco editor");
+    await screen.findByText(content("README.md"));
+  }
+  assert.equal(count("README.md"), 1, "editor remounts must reuse the file cache");
+  assert.equal(editorInstances.length, 4, "a disposed editor needs a new React instance on each show");
+  console.log("PASS: the real Monaco React wrapper remounts cleanly across repeated pane switches while file reads stay cached.");
 } finally {
   cleanup();
   dom.window.close();
