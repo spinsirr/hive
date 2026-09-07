@@ -1,6 +1,6 @@
 # Codex text streaming — diagnosis and native transport
 
-Status: native transport implemented and locally verified; production acceptance pending. September 6, 2026. The failed observation below is retained as the before-fix evidence.
+Status: native transport deployed; production incremental-text acceptance passed at **2026-09-07 00:19 UTC** (September 6 locally). The failed observation below is retained as before-fix evidence.
 
 ## Production observation
 
@@ -46,4 +46,12 @@ Validation:
 - `node scripts/diagnostics/check-codex-process.mjs <isolated-sdk-install>`: opt-in real CLI **0.149.1** against a loopback-only Responses fixture. Native deltas passed; a second process resumed the on-disk thread and sent its original marker in the next model request; one actual `printf native-check` returned exit 0 and its output reached the next model call. No account credentials or paid model were used.
 - Existing 98 unit tests, seven failed-run scenarios, pre-repository input regression, TypeScript and ESLint pass. The supported webpack production build passes and includes all three sandbox assets in the session route's deployment trace. Default local Turbopack still fails on its port-binding permission; its configuration is unchanged.
 
-These tests do not substitute for observing growing text in the deployed browser. Record that production result before marking native streaming accepted.
+## Production acceptance after the change
+
+Commit `4a1abb3` received a successful Vercel status for deployment `FEK7aAcWYRPv6eVuGptwxcBD2m4X`. In the canonical app's existing formal task, one new explanation-plus-read-only-check request was submitted. No retry, reset or replacement task was used.
+
+A continuous browser observer recorded **25 strictly growing in-progress updates**, from **32 to 1,148 displayed characters**, between **00:19:28.481 and 00:19:36.081 UTC**. Complete remained disabled during every observation. A screenshot at the first update showed only the beginning of the answer. After completion, there was exactly one new agent reply (18 → 19), containing 1,148 displayed characters.
+
+Runs contained one actual `/bin/bash -lc 'pnpm test && pnpm typecheck && git diff --check'`, marked Passed. Expanded output showed **92 tests passed / 0 failed** for the preserved sandbox revision, followed by successful type generation/TypeScript. The original accessible-label diff (`8cf1187..3624515`) and Files snapshot remained. A fresh page restored all 19 replies and the identical final text, reached Live, and had Complete enabled without submitting any work.
+
+This closes the native incremental-text gate on production. It is not a new two-account/offline-mid-delta test: those earlier multiplayer and human-message recovery checks remain separately recorded. No additional model request was made to repeat them.
