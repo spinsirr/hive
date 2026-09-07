@@ -399,6 +399,7 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
         <ConversationContent className={cn("gap-5 px-5 py-6", compact && "gap-4")}>
           {messages.map((message) => {
             const isCurrentMember = message.memberId === currentMember;
+            const hasReplies = Boolean(message.annotations?.length);
             if (message.status === "error") {
               return (
                 <div
@@ -415,7 +416,7 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
               );
             }
             return (
-              <Message className={cn("max-w-full gap-2 rounded-lg", selectedThreadId === message.id && "outline-1 outline-offset-8 outline-[#e0e0e0]")} from={message.role === "agent" || !isCurrentMember ? "assistant" : "user"} key={message.id}>
+              <Message className={cn("max-w-full gap-2 rounded-lg", hasReplies && "w-fit min-w-0 max-w-[94%]", selectedThreadId === message.id && "outline-1 outline-offset-8 outline-[#e0e0e0]")} from={message.role === "agent" || !isCurrentMember ? "assistant" : "user"} key={message.id}>
                 <div className={cn("flex items-center gap-2", isCurrentMember && "justify-end")}>
                   {message.role === "agent" ? <HiveMark className="size-5 rounded-full border border-[#dedede]" light /> : <span className="grid size-5 place-items-center rounded-full border border-[#dedede] bg-[#fafafa] text-[8px] font-semibold">{message.initials}</span>}
                   <span className="text-[12px] font-medium">{message.name}</span>
@@ -431,7 +432,7 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
                     </button>
                   ) : null}
                 </div>
-                <MessageContent className={cn("w-fit max-w-[94%] rounded-lg border border-[#e8e8e8] px-3 py-2.5 text-[13px] leading-5 shadow-none", message.role === "agent" ? "bg-[#fafafa] text-[#4d4d4d]" : isCurrentMember ? "ml-auto bg-white" : "bg-white")}>
+                <MessageContent className={cn("w-fit max-w-[94%] rounded-lg border border-[#e8e8e8] px-3 py-2.5 text-[13px] leading-5 shadow-none", hasReplies && "w-full max-w-full", message.role === "agent" ? "bg-[#fafafa] text-[#4d4d4d]" : isCurrentMember ? "ml-auto bg-white" : "bg-white")}>
                   {message.role === "agent" ? <AgentResponse streaming={message.status === "streaming"}>{message.body}</AgentResponse> : message.codeReference ? <div><p className="break-all font-mono text-[11px] text-[#737373]">{codeReferenceLabel(message.codeReference)}</p><pre className="mt-2 max-h-40 overflow-auto whitespace-pre font-mono text-[11px] leading-5">{message.codeReference.quote}</pre></div> : message.body}
                 </MessageContent>
 

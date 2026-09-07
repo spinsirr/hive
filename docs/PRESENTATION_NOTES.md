@@ -501,6 +501,7 @@ Be explicit: GitHub write-back is not built; organization administration is not 
 - The owner pointed out that replacing inline annotations with only a reply count hid useful feedback. Thread now preserves the same reply records and explicit steering semantics while showing author and full body beneath the parent. The newest three replies are directly visible; older replies expand in place, and Open thread still opens the dedicated composer and whole-thread steering panel.
 - Main conversation and Thread use the same reply component, including attribution and disabled/queue/steered states. Reading or opening the discussion does not promote it. Inline replies omit secondary timestamps; the opened Thread retains them. No database schema, queue, agent prompt or execution change was needed.
 - Added a real-component rendering regression for visible text/authorship, safe text escaping, idle/busy/disabled steering controls, distinct promoter attribution, empty threads and chronological older-reply disclosure. The check uses invented display data and never writes to a task or runs a model.
+- Follow-up visual review exposed a grouping error: a short right-aligned parent still had replies starting at the conversation's far left. Threaded messages now size and align as one parent-and-replies group, with a small inset reply rail. Messages without replies keep their existing layout. This is a layout-only correction; it does not alter discussion or steering semantics.
 
 ## Questions to prepare for
 

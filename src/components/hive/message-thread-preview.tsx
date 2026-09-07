@@ -18,7 +18,7 @@ export function MessageThreadPreview({ message, members, disabled, queueing, onO
   const renderReply = (reply: (typeof replies)[number]) => <ThreadReply disabled={disabled} key={reply.id} members={members} onSteer={() => onSteerReply(message.id, reply.id)} queueing={queueing} reply={reply} />;
 
   return (
-    <section aria-label={`Replies to ${message.name}'s message`} className="ml-5 mt-1 min-w-0 border-l-2 border-[#e8e8e8] py-1 pl-3 text-left sm:ml-7 sm:pl-4">
+    <section aria-label={`Replies to ${message.name}'s message`} className="ml-3 mt-1 min-w-0 border-l-2 border-[#e8e8e8] py-1 pl-3 text-left">
       {earlier.length > 0 ? (
         <details className="mb-3 text-xs text-[#737373]">
           <summary className="w-fit cursor-pointer rounded py-1 focus-visible:outline-2">{earlier.length} earlier {earlier.length === 1 ? "reply" : "replies"}</summary>
