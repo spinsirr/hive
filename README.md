@@ -16,7 +16,7 @@ Open the live app with a GitHub account already admitted to Hive, or open a team
 
 Create a task, invite a teammate, and start a conversation. Attach one authorized repository when ready to work on code. Use **Reply** to discuss a human or completed agent message in a thread. Replies stay discussion until someone chooses **Steer Hive** for one reply or **Steer thread** for the whole discussion. While Hive runs, new agent-directed messages and promoted threads queue. At the end of the run, apply the next steer and review the actual Runs, Files, and Diff.
 
-The [submission packet](docs/SUBMISSION.md) links the overview, summary, and outstanding access checks. The two-account coding and recovery acceptance passed; a timed rehearsal, owner-reviewed summary and publication/submission approval remain. The verification section below distinguishes implemented behavior from observed results.
+The [submission packet](docs/SUBMISSION.md) links the overview, owner-confirmed summary, and outstanding access checks. The two-account coding and recovery acceptance passed; a timed rehearsal and publication/submission approval remain. The verification section below distinguishes implemented behavior from observed results.
 
 ### UI demo
 

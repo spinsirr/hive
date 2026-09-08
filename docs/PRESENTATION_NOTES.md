@@ -23,7 +23,7 @@ The owner-approved Luna switch deployed in `9662380`, but the account's free-cre
 
 ## Summary blurb
 
-The current two-paragraph draft lives in the [submission packet](SUBMISSION.md#summary-blurb), alongside all four deliverables and the remaining access gates. Spencer should review it in his own words before submission.
+The current two-paragraph introduction lives in the [submission packet](SUBMISSION.md#summary-blurb), alongside all four deliverables and the remaining access gates. Spencer confirmed this existing wording on September 8, 2026. The text was not rewritten as part of that confirmation; repository publication and external sending remain separately unauthorized.
 
 ## Problem
 
@@ -629,6 +629,11 @@ Keep the evidence distinctions visible: original two-account execution and no-re
 - Both real authenticated task browsers retained the successful combined command, approved workspace and correct identities. Opening the original Thread showed **2 replies steered by josephmreb1** alongside the later third reply and the separate **Steer entire thread with 3 replies** action. Checkpoints listed the 11:02 AM and 10:54 AM paired points as restorable, while the newer 11:15 AM sandbox-only point was disabled for lack of matching agent context. No message, steer or restore was sent during this read-only preflight.
 - Screened every blob reachable from the local Git refs at `ce2741b`: **80 commits**, **568 unique blobs**, **10,215,106 bytes**, with no size exclusions. Rules checked complete private-key blocks, common provider-token shapes, credential-bearing database URLs, signed tokens and literal secret assignments; matching values were not printed. Fourteen URL matches were verified as `user`/`password`/documentation-host placeholders across seven `.env.example` versions. One literal-secret match was a labeled HMAC test fixture. No other matches or tracked credential/private-key filenames were found. This is custom pattern screening, not a comprehensive security/privacy audit; repository publication still needs approval.
 - Prepared [DEMO_BRIEF](DEMO_BRIEF.md) as a compact speaking/navigation card and corrected the full route's Runs explanation: a later reply-only steer legitimately changes the latest-turn view. The original success remains dated evidence, not something to reconstruct with a reset. The code walkthrough was rechecked against the actual state-machine gate, frozen reply boundary, row lock and attributed prompt functions. This read-only preflight does not complete the narrated 20-minute rehearsal.
+
+### September 8 — Owner confirms the project introduction
+
+- Spencer confirmed the existing two-paragraph project introduction. The submission packet and current readiness summaries now record that confirmation; the approved text itself is unchanged. This does not claim that Spencer originally drafted the AI-assisted wording.
+- No repository visibility change, external message, new agent run or completed narrated rehearsal is authorized or implied by this confirmation. The remaining rehearsal and publication/submission gates stay open.
 
 ## Questions to prepare for
 

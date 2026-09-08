@@ -49,4 +49,4 @@ Do not walk every file. Keep the [runner](../src/lib/hive-runner.ts), [restore i
 
 ## Before submission
 
-Review the [two-paragraph summary](SUBMISSION.md#summary-blurb) in Spencer's own words. Run the narrated rehearsal with a timer and record actual outcomes, not just elapsed browsing time. Public repository access and external sending require Spencer's explicit approval. The presentation is not scheduled yet; once it is, all four items must arrive at least 24 hours beforehand.
+Use the existing [two-paragraph summary](SUBMISSION.md#summary-blurb), confirmed by Spencer on September 8, 2026. Run the narrated rehearsal with a timer and record actual outcomes, not just elapsed browsing time. Public repository access and external sending still require separate explicit approval. The presentation is not scheduled yet; once it is, all four items must arrive at least 24 hours beforehand.
