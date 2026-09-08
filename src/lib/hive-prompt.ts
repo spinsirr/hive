@@ -72,16 +72,6 @@ export function buildHiveRunInput(
   return { actor, actorName, steer };
 }
 
-function latestTask(session: TaskSessionState, actor: MemberId, steer?: string) {
-  if (steer) return steer;
-  return (
-    session.messages.findLast(
-      (message) =>
-        message.role === "human" && message.memberId === actor,
-    )?.body ?? "Inspect the repository and report what needs attention."
-  );
-}
-
 export function buildHivePrompt(
   session: TaskSessionState,
   actor: MemberId,
@@ -89,15 +79,21 @@ export function buildHivePrompt(
   actorName?: string,
   mode: "planning" | "coding" = "coding",
 ) {
+  const latestMessage = session.messages.findLast(
+    (message) => message.role === "human" && message.memberId === actor,
+  );
   const currentTeammate =
     actorName ??
-    session.messages.findLast(
-      (message) => message.role === "human" && message.memberId === actor,
-    )?.name ??
+    latestMessage?.name ??
     resolveMember(actor).name;
+  const hasNativeHistory = mode === "coding" && Boolean(session.workspace.agentSession?.resumeFrom);
   const teamContext = session.messages
     .filter((message) => message.status !== "error")
     .slice(-12)
+    // Native resume already retains agent replies. Keep teammate context, but
+    // do not append public copies of the agent's own history on every turn.
+    .filter((message) => !hasNativeHistory || message.role === "human")
+    .filter((message) => steer || message.id !== latestMessage?.id)
     .map((message) => `[${message.name}]: ${message.body}`)
     .join("\n");
 
@@ -107,6 +103,6 @@ export function buildHivePrompt(
     "Shared team context (for attribution, not a second agent history):",
     teamContext,
     mode === "planning" ? "Latest request to discuss:" : "Task to execute now:",
-    `[${currentTeammate}]: ${latestTask(session, actor, steer)}`,
+    `[${currentTeammate}]: ${steer || (latestMessage?.body ?? "Inspect the repository and report what needs attention.")}`,
   ].join("\n\n");
 }

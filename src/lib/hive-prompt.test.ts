@@ -46,6 +46,44 @@ test("pre-repository conversation frames intent as discussion, not execution", (
   assert.doesNotMatch(prompt, /Task to execute now:/);
 });
 
+for (const mode of ["planning", "coding"] as const) {
+  test(`${mode} includes the current message exactly once while retaining teammate context`, () => {
+    let session = reduceTaskSession(createInitialTaskSessionState(1), {
+      type: "send-message", actor: "spencer", body: "Keep the earlier keyboard requirement",
+    }, 2);
+    session = appendHiveReply(session, "Previous agent explanation", 3);
+    session = reduceTaskSession(session, {
+      type: "send-message", actor: "maya", body: "CURRENT_REQUEST_ONCE",
+    }, 4);
+    const prompt = buildHivePrompt(session, "maya", undefined, undefined, mode);
+    assert.equal(prompt.split("CURRENT_REQUEST_ONCE").length - 1, 1);
+    assert.match(prompt, /\[Spencer Zhao\]: Keep the earlier keyboard requirement/);
+    assert.match(prompt, /Previous agent explanation/, "A fresh model context still needs the prior discussion");
+  });
+}
+
+test("resumed coding uses native agent history without reinserting its public replies", () => {
+  let session = reduceTaskSession(createInitialTaskSessionState(1), {
+    type: "send-message", actor: "spencer", body: "Keep keyboard support",
+  }, 2);
+  session = appendHiveReply(session, "ALREADY_IN_NATIVE_HISTORY ".repeat(400), 3);
+  session = reduceTaskSession(session, {
+    type: "send-message", actor: "maya", body: "Continue the label fix",
+  }, 4);
+  session.workspace.agentSession = {
+    id: "hive-codex-session", runtime: "codex",
+    resumeFrom: { type: "resume-session", specificationVersion: "harness-v1", harnessId: "codex", data: {} },
+  };
+  const original = structuredClone(session);
+  const prompt = buildHivePrompt(session, "maya");
+  assert.doesNotMatch(prompt, /ALREADY_IN_NATIVE_HISTORY/);
+  assert.match(prompt, /\[Spencer Zhao\]: Keep keyboard support/);
+  assert.match(prompt, /\[Maya Chen\]: Continue the label fix/);
+  assert.equal(prompt.split("Continue the label fix").length - 1, 1);
+  assert.deepEqual(session, original, "Reducing the prompt must not alter the shared transcript or checkpoint");
+  assert.match(buildHivePrompt(session, "maya", undefined, undefined, "planning"), /ALREADY_IN_NATIVE_HISTORY/, "Planning does not resume native Codex history");
+});
+
 test("applying another teammate's queued annotation does not transfer its authorship", () => {
   const running = reduceTaskSession(createInitialTaskSessionState(1), {
     type: "send-message", actor: "spencer", body: "Check the accessible label",
