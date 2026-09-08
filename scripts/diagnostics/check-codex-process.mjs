@@ -23,6 +23,9 @@ await mkdir(codexHome);
 let requestNumber = 0;
 let requestFailure;
 const requests = [];
+const requestTimes = [];
+const diagnostics = [];
+let launches = 0;
 const firstDelta = Promise.withResolvers();
 const secondDelta = Promise.withResolvers();
 let responseFinished = false;
@@ -33,7 +36,18 @@ const provider = createServer(async (request, response) => {
     for await (const chunk of request) chunks.push(chunk);
     const body = JSON.parse(Buffer.concat(chunks));
     requests.push(body);
+    requestTimes.push(Date.now());
     requestNumber++;
+    if (requestNumber === 3 || (requestNumber >= 5 && requestNumber <= 7)) {
+      response.writeHead(429, { "Content-Type": "application/json", "Retry-After": "1", "x-request-id": "hive-controlled-429" });
+      response.end(JSON.stringify({ error: { type: "rate_limit_exceeded", message: "Controlled temporary rate limit" } }));
+      return;
+    }
+    if (requestNumber >= 8) {
+      response.writeHead(502, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({ error: { message: "Controlled server failure" } }));
+      return;
+    }
     response.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" });
     const send = (data) => response.write(`event: ${data.type}\ndata: ${JSON.stringify(data)}\n\n`);
     send({ type: "response.created", response: { id: `fixture-${requestNumber}` } });
@@ -51,7 +65,10 @@ const provider = createServer(async (request, response) => {
         ...(shell.namespace ? { namespace: shell.namespace } : {}), arguments: JSON.stringify(args),
       } });
     } else {
-      if (requestNumber === 3) assert.match(JSON.stringify(body.input), /native-check/, "Real command output must reach the next model call");
+      if (requestNumber === 4) {
+        assert.deepEqual(body, requests[2], "Only the rejected model request may be retried, not a new turn");
+        assert.match(JSON.stringify(body.input), /native-check/, "Real command output must reach the next model call");
+      }
       const item = { type: "message", role: "assistant", id: `reply-${requestNumber}`, content: [] };
       send({ type: "response.output_item.added", item });
       send({ type: "response.output_text.delta", delta: "第一段" });
@@ -72,26 +89,29 @@ const provider = createServer(async (request, response) => {
 });
 await new Promise((resolve, reject) => { provider.once("error", reject); provider.listen(0, "127.0.0.1", resolve); });
 // Process-local routing to a controlled loopback fixture, never a real provider.
-process.env.OPENAI_BASE_URL = `http://127.0.0.1:${provider.address().port}/v1`;
-delete process.env.AI_GATEWAY_BASE_URL;
+process.env.AI_GATEWAY_BASE_URL = `http://127.0.0.1:${provider.address().port}/v1`;
+delete process.env.OPENAI_BASE_URL;
 delete process.env.AI_GATEWAY_API_KEY;
+process.env.CODEX_API_KEY = "controlled-loopback-fixture";
 let threadId;
 const allEvents = [];
 try {
-  for (let turnNumber = 0; turnNumber < 2; turnNumber++) {
+  for (let turnNumber = 0; turnNumber < 4; turnNumber++) {
     const events = [];
     const started = Date.now();
-    await runCodexAppServerTurn({
+    let caught;
+    try { await runCodexAppServerTurn({
       start: { model: "gpt-5-mini", prompt: turnNumber === 0 ? "Remember HIVE-NATIVE-MEMORY-27." : "Run the check.", webSearch: false },
       workdir: fixtureDirectory, threadId,
       onThread(id) { if (threadId) assert.equal(id, threadId); threadId = id; },
       launch(workdir) {
+        launches++;
         return spawn(process.execPath, [cli, "app-server"], {
           cwd: workdir, stdio: ["pipe", "pipe", "pipe"], detached: true,
           env: { PATH: process.env.PATH, CODEX_HOME: codexHome, CODEX_API_KEY: "controlled-loopback-fixture" },
         });
       },
-      turn: { abortSignal: AbortSignal.timeout(25_000), emit(event) {
+      turn: { abortSignal: AbortSignal.timeout(25_000), bridgeLog(event) { diagnostics.push(event); }, emit(event) {
         events.push(event);
         if (event.type === "text-delta") {
           if (turnNumber === 0 && event.delta !== "." && event.delta !== "。") assert.equal(responseFinished, false, "Codex must emit text before the provider finishes");
@@ -99,17 +119,33 @@ try {
           if (event.delta === "，继续") secondDelta.resolve();
         }
       } },
-    });
+    }); } catch (error) { caught = error; }
     allEvents.push(...events);
-    assert.equal(events.filter((event) => event.type === "text-delta").map((event) => event.delta).join(""), "第一段，继续。");
-    console.log(`PASS: real Codex ${turnNumber ? "fresh-process resume and command" : "native public deltas"} (${Date.now() - started} ms)`);
+    if (turnNumber < 2) {
+      assert.equal(caught, undefined);
+      assert.equal(events.filter((event) => event.type === "text-delta").map((event) => event.delta).join(""), "第一段，继续。");
+      console.log(`PASS: real Codex ${turnNumber ? "fresh-process resume and command" : "native public deltas"} (${Date.now() - started} ms)`);
+    } else {
+      assert.match(caught?.message ?? "", turnNumber === 2 ? /429/ : /502/);
+      assert.equal(events.some((event) => event.type === "finish"), false);
+      assert.equal(events.some((event) => event.type === "tool-call"), false);
+      console.log(`PASS: real Codex stops on ${turnNumber === 2 ? "exhausted 429 retries" : "502 without native layered retries"}`);
+    }
   }
   assert.equal(requestFailure, undefined);
-  assert.equal(requestNumber, 3);
+  assert.equal(requestNumber, 8);
+  assert.equal(launches, 4, "One native process per requested turn, with no restart on failure");
+  assert.ok(requestTimes[3] - requestTimes[2] >= 900, "Do not retry before Retry-After");
+  assert.deepEqual(requests[4], requests[5]);
+  assert.deepEqual(requests[5], requests[6]);
+  assert.equal(allEvents.filter((event) => event.type === "tool-result").length, 1, "The completed command must not execute twice after rate limiting");
   const command = allEvents.find((event) => event.type === "tool-result" && event.toolName === "bash");
   assert.equal(command.result.exitCode, 0);
   assert.match(command.result.output, /native-check/);
-  console.log("PASS: persisted native history and actual command exit/output survive the transport change");
+  assert.equal(diagnostics.filter((event) => event.attrs.outcome === "recovered").length, 1);
+  assert.equal(diagnostics.filter((event) => event.attrs.stopReason === "attempt-limit").length, 1);
+  assert.doesNotMatch(JSON.stringify(diagnostics), /HIVE-NATIVE-MEMORY-27|controlled-loopback-fixture/);
+  console.log("PASS: native history resumes; a rejected request recovers from 429 without repeating the command or restarting the turn");
 } finally {
   firstDelta.resolve(); secondDelta.resolve();
   provider.closeAllConnections();

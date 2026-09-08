@@ -331,6 +331,8 @@ export async function runHiveCodingTask(
         reasoningEffort: "low",
         webSearch: false,
         codexConfig: { model_verbosity: "low" },
+      }, (attributes) => {
+        console.info("Hive Gateway request", { taskSessionId: taskSession.sessionId, ...attributes });
       }),
       model: process.env.HIVE_CODEX_MODEL?.trim() || DEFAULT_MODEL,
       instructions: [

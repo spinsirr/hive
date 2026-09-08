@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { createInterface } from "node:readline";
+import { startGatewayTransport } from "./gateway-transport.mjs";
 
 // The sandbox recipe pins the CLI via @openai/codex-sdk. Use that installation,
 // not a global CLI, and keep the task sandbox's existing Codex home and credentials.
@@ -65,13 +66,45 @@ function threadSettings(start, workdir) {
 }
 
 /** Native stdio JSON-RPC -> the public harness event contract. No simulated deltas. */
-export async function runCodexAppServerTurn({
-  start, turn, workdir, threadId: resumedThreadId, onThread,
-  launch = launchCodexAppServer,
-}) {
+export async function runCodexAppServerTurn(options) {
+  const { start, turn, workdir } = options;
   if (start.tools?.length) throw new Error("Hive's Codex bridge does not accept host-executed tools.");
   turn.abortSignal.throwIfAborted();
   const settings = threadSettings(start, workdir);
+  let gateway;
+  try {
+    if (process.env.AI_GATEWAY_BASE_URL) {
+      gateway = await startGatewayTransport({
+        baseUrl: process.env.AI_GATEWAY_BASE_URL,
+        authorization: process.env.CODEX_API_KEY ? `Bearer ${process.env.CODEX_API_KEY}` : undefined,
+        signal: turn.abortSignal,
+        onDiagnostic(attrs) {
+          turn.bridgeLog?.({
+            level: attrs.outcome === "recovered" ? "info" : "warn",
+            subsystem: "hive.gateway", message: "Gateway request recovery",
+            attrs: { ...attrs, model: settings.model },
+          });
+        },
+      });
+      Object.assign(settings.config.model_providers.agent_bridge_openai, {
+        base_url: gateway.baseUrl,
+        // The transport retries only rejected 429s. Do not layer native retries
+        // on top, especially after an ambiguous connection/stream failure.
+        request_max_retries: 0,
+        stream_max_retries: 0,
+      });
+    }
+    turn.abortSignal.throwIfAborted();
+    return await runNativeTurn({ ...options, settings });
+  } finally {
+    await gateway?.close();
+  }
+}
+
+async function runNativeTurn({
+  start, turn, workdir, settings, threadId: resumedThreadId, onThread,
+  launch = launchCodexAppServer,
+}) {
   const child = launch(workdir);
   const lines = createInterface({ input: child.stdout });
   const messages = lines[Symbol.asyncIterator]();
