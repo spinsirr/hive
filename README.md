@@ -185,4 +185,4 @@ It uses transient notifications and isolated in-memory task fixtures, not task-t
 
 AI helped compare product directions, generate interface alternatives, implement the full-stack vertical slice, diagnose infrastructure failures, and build regression coverage. Human judgment repeatedly changed the result: narrowing the product from a generic team workspace to a task-scoped multiplayer agent, separating annotation from steering, rejecting fake execution artifacts and verbose errors, choosing an existing harness, and correcting the assumption that a Codex session ID alone makes history durable.
 
-The fuller demo narrative, decision log, evidence, and 20-minute presentation outline live in [`docs/PRESENTATION_NOTES.md`](docs/PRESENTATION_NOTES.md).
+Use the compact [20-minute presenter card](docs/DEMO_BRIEF.md) for delivery. The full interaction prompts, decision log and dated evidence live in [`docs/PRESENTATION_NOTES.md`](docs/PRESENTATION_NOTES.md).
