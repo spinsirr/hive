@@ -17,7 +17,7 @@ Current app: [hive-roan-mu.vercel.app](https://hive-roan-mu.vercel.app/)
 
 ## Release boundary
 
-On September 7, the owner authorized pushing and deploying the simpler homepage, retained `/demo`, Reply/Thread UI, whole-thread steering and paired rollback in `fec2484`. Follow-up UI fixes are deployed through `396d80f`, including file caching, wider inline threads and instant conversation entry. The September 7–8 independent acceptance below now verifies real two-account Thread/queue boundaries and checkpoint filesystem/evidence recovery. Gateway 429 interrupted implementation before the requested tests, so successful coding completion and native continuation after restore remain open. The UI demo reviews the dashboard, not the repository workflow. The approved formal task was left untouched; fresh passing command evidence and a timed narrated rehearsal are still required.
+On September 7, the owner authorized pushing and deploying the simpler homepage, retained `/demo`, Reply/Thread UI, whole-thread steering and paired rollback in `fec2484`. Follow-up UI fixes shipped in `396d80f`; bounded Gateway recovery shipped in `f3f602f`; accurate Runs exit-code labels shipped in `4cf91a2`. The September 7–8 independent acceptance below verifies real two-account Thread/queue boundaries and checkpoint filesystem/evidence recovery. Gateway 429 interrupted implementation before the requested tests, so successful coding completion and native continuation after restore remain open. The UI demo reviews the dashboard, not the repository workflow. The approved formal task was left untouched; fresh passing command evidence and a timed narrated rehearsal are still required.
 
 ## Summary blurb
 
@@ -35,8 +35,8 @@ Hive makes the agent conversation the primary product surface:
 
 - Every normal message addresses Hive; an explicit `@teammate` mention remains human discussion.
 - Every human message has server-authoritative authorship.
-- A teammate can annotate a particular message without waking Hive.
-- Promoting an annotation to **Steer Hive** makes the transition from discussion to execution visible.
+- A teammate can open **Reply** or **Open thread**, discuss a message and retain each reply's author without waking Hive.
+- **Steer Hive** promotes one reply; **Steer thread** promotes the discussion through its current last reply. Later replies are not silently added to an already queued steer.
 - Steers created during a run enter an attributed, ordered queue and wait for a safe boundary.
 - Everyone sees the same transcript, presence, repository, run state, files, command output, and diff.
 
@@ -46,8 +46,9 @@ Hive makes the agent conversation the primary product surface:
 - **Task Session:** one intended outcome, one shared transcript, and at most one repository.
 - **Repository Access:** the team-authorized GitHub pool.
 - **Attached Repository:** selected at any time after a task begins and immutable within that session.
-- **Annotation:** discussion attached to a teammate message.
-- **Steer:** discussion explicitly promoted into agent direction.
+- **Thread:** authored replies attached to a human or completed agent message.
+- **Code Annotation:** a quoted file-and-line selection shared for discussion, not a file edit.
+- **Steer:** one reply or a frozen discussion explicitly promoted into agent direction.
 - **Run:** one execution turn against the attached repository.
 - **Workspace:** evidence of what the agent actually did.
 
@@ -60,13 +61,13 @@ This correction matters: the team is the durable collaboration space; a session 
 | Make the agent conversation primary | Collaboration happens before and during execution, not beside it. | A team chat with a tagged bot. |
 | One task per session | Gives the transcript, repository, and run state a clear lifecycle. | A long-lived room that accumulates unrelated work. |
 | Allow conversation before repository attachment | Intent can be clarified before code access is needed. | Requiring a repo during session provisioning. |
-| Separate annotate from steer | Humans can discuss without accidentally redirecting the agent. | Treating every comment as a prompt. |
+| Separate Thread discussion from steer | Humans can discuss without accidentally redirecting the agent; a whole-thread steer has an explicit reply boundary. | Treating every comment as a prompt or silently extending an already queued instruction. |
 | Queue concurrent steering | Multiplayer input stays visible, attributed, and deterministic. | Last-write-wins prompts or silent instruction merging. |
 | Preserve distinct authorship through execution | A parent message author, annotation author, steer promoter, and person applying it can be different people. | Treating the person pressing Apply or the parent message author as the author of every instruction. |
 | One repository per task | Keeps credentials, filesystem scope, and review evidence legible. | Ambient access to every team repository. |
 | GitHub App for team access, OAuth for identity | Repository authority and human identity have different lifecycles. | Personal access tokens or browser-supplied identity. |
 | Reuse AI SDK Harness + Codex + Sandbox | The differentiator is multiplayer control, not rebuilding an agent runtime. | A custom harness and container platform. |
-| Show artifacts, not a generic overview | Diff, changed files, and run history each have a clear object and can be verified. | A dashboard tab that mixes repository metadata, status, and summary counts. |
+| Show artifacts, not a generic overview | Diff, workspace files, and the latest turn's commands each have a clear object and can be verified. | A workspace tab that mixes repository metadata, status, and summary counts. |
 | Name the human need, not the implementation | Runs is an audit trail for teammates: command, outcome, duration, and expandable output. | Calling a read-only log “Terminal” and implying that humans should operate it. |
 | Neon is canonical history | Native Codex history can disappear with compute; team intent cannot. | Treating sandbox files as the product database. |
 | Quiet error state | A failure should not become a theatrical agent apology. | Large error bubbles that repeat internal details. |
@@ -78,96 +79,94 @@ This correction matters: the team is the durable collaboration space; a session 
 
 ## Demo sequence (20 minutes)
 
-Use the [formal accessibility task](https://hive-roan-mu.vercel.app/sessions/clarify-annotation-to-steer-inte-o5uwf0) attached to `spinsirr/hive`. The concrete outcome is an author-attributed accessible label on the annotation action: `Steer Hive for <author>` when idle and `Queue steer for <author>` while running or queued. Do not introduce a separate mobile-navigation project for the presentation.
+Use the owner-authorized [Label the return-to-latest message action](https://hive-roan-mu.vercel.app/sessions/label-the-return-to-latest-messa-qvezdg) task, attached to `spinsirr/hive`. The intended result is small and inspectable: `ConversationScrollButton` has the default accessible name **Scroll to latest message**, a caller can override it, and the existing real-component regression covers both cases. Joseph owns the behavior requirement; Spinsirr owns the checks and no-push boundary.
 
-Retained execution: **September 7 at 00:19 UTC**, after the native-streaming fix. The owner verified the original accessible-label diff, Files, and one real combined command with 92 passing sandbox-revision tests, TypeScript and diff validation. Both accounts had previously inspected the same change and an earlier successful check. Recheck those artifacts before rehearsal; this dated observation is not a new live inspection. Runs contains only the latest turn's commands: inspect the command before applying a text-only steer, and do not treat a dated note or chat summary as a current Runs artifact. Do not Reset the task or describe a read-only follow-up as a new implementation.
-
-Read-only recheck on **September 7, 17:43 UTC**: a fresh owner-page load still showed that combined command as Passed, with expanded `tests 92 / pass 92 / fail 0` and successful type generation. Diff retained the actual `runActive || steeringQueue.length > 0` author-label addition. The current Files tree loaded both the changed TSX file and the unchanged repository README. This rechecks the retained evidence without executing anything; it is not a new test run, a second-account check, or the narrated rehearsal.
-
-**Current preflight — September 7, 23:23 UTC:** that command is no longer the latest-turn artifact. Runs now reads **No commands in this turn** after a later text-only steer; the workspace is **Approved**. Both inspected browsers use Spinsirr. Pause the live sequence until a fresh real check and the second authenticated account are available. A proposed isolated acceptance task was not created because the safety review required explicit owner authorization. Do not use a reset or restore of the approved task as a workaround.
+**This is the target presentation route, not a completed rehearsal.** The current task has only the source-label addition; the requested regressions and passing combined check are missing after 429 failures. Finish that work before rehearsing the success path. The earlier [formal accessibility task](https://hive-roan-mu.vercel.app/sessions/clarify-annotation-to-steer-inte-o5uwf0) is approved historical evidence, not the active demo task. Do not reset, restore or send new work there to manufacture a current pass.
 
 ### Rehearsal gate — not yet complete
 
-- Sign in as `Spinsirr` and `josephmreb1` in separate browsers; both must open the same task URL and see the current state.
-- The two-account sequence passed at 07:09 UTC, including Joseph's discussion-only annotation, explicit promotion during a real run, disabled Apply until completion, and the correct author after owner Apply. Cross-account completion/reopening passed at 07:14. Rehearse the actual click order; these acceptance checks are not a timed presentation rehearsal.
-- Keep a current real successful result available as evidence, clearly labeled with its run and checks. If the result is no longer present, the rehearsal gate fails; a dated note is not a substitute for inspectable Runs, Files, and Diff. Do not pass a replay off as fresh execution. If a live attempt hits the known 429, show the retained request and queue and explain the failed attempt accurately.
-- Reconfirm the presentation time and submission deadline. The repository is still private and final access/publication needs the owner's approval.
+- Finish the existing coding task, including its two requested regressions, unmodified combined checks and attributed final response. Separately close the remaining post-restore continuation and nonempty-queue restore checks in [GOAL](GOAL.md); a filesystem restore alone does not prove them.
+- Use `Spinsirr` and `josephmreb1` in separate authenticated browsers on the same task URL. Check the identity menus, not only the online avatars. Both identities were rechecked on September 8; this does not verify a new reviewer's invitation/sign-in.
+- Inspect current **Diff**, **Files** and the expanded combined command in **Runs** before starting anything. Read the actual output and exit code. **Exit 0** is a command result, not an automatic test verdict. The old 92-test result belongs to a different repository revision and is not a substitute.
+- The new read-only Thread below is for rehearsing collaboration after implementation passes. Do not re-steer the existing three-reply implementation thread: its third, future-localization reply was deliberately excluded from the earlier two-reply steer.
+- Confirm the model decision before new paid execution, and the presentation date/time before calculating the 24-hour submission deadline. Keep the repository private and do not send invitations or submission material to outside reviewers without the owner's approval.
 
-Read-only route preflight passed on September 6: the owner navigated from the homepage back to the formal task, loaded the actual read-only file, inspected the retained diff and expanded successful command, then returned to the correctly attributed response. That sequence took 170 seconds including tool round-trips. Joseph's separate browser still showed the same task, real identity, latest answer, and corrected annotation attribution. This is a navigation/evidence check, **not** a 20-minute narrated rehearsal or a new live queue execution.
+Read-only UI navigation is verified separately in the dated evidence log. Neither the earlier 170-second preflight nor the September 8 route reconciliation is a 20-minute narrated rehearsal. Record the actual start/end time, observed outcomes and any skipped steps when that rehearsal happens.
 
 ### 0–3 min — Problem
 
-Explain how a coding task currently begins in one person’s private agent context and becomes collaborative only after work is produced. Emphasize lost intent, delayed review, and unclear authorship.
+Start with one concrete disagreement: one teammate wants an accessible name; another wants the existing caller override preserved and proven by a regression. In private agent sessions, those intentions meet only after code is produced. Hive puts both people in the same agent conversation while the work happens. The unit is one task, not a permanent chat room or a collection of agents.
 
 ### 3–10 min — Product
 
-1. Open the formal task in both authenticated browsers. Point out the two human identities; Hive is not counted as an online person. Briefly explain that the attached repository was selected after the task began.
-2. Show the actual Diff, Files, and expanded Runs **before** starting anything. State that this code change already exists. Read the test count from the recorded command, not from memory or the agent's summary.
-3. From Spencer's browser, type `@`, choose the real Joseph suggestion, and send `@josephmreb1 should the queued label retain the author's name?`. Both browsers should show it without an agent run. Keep the browser's Find control available to locate the original code-task message beginning `请在当前连接的 spinsirr/hive 仓库里完成这一个小修改`; do not clear the historical transcript.
-4. Joseph opens **Reply** on that code-task message, writes the exact read-only wording below, and sends the thread reply. Show that sending alone does not start Hive. Pre-position Joseph's browser on the new reply before Spencer starts the one combined check below.
-5. While the check is visibly running, Joseph clicks **Queue steer** once. Both browsers must show one Joseph-attributed queue item with Apply disabled. If the run already finished, identify that honestly as an immediate steer case; do not keep rerunning checks to manufacture the timing window.
-6. Once the run actually ends, inspect the real Runs command and output before the owner clicks Apply. Then confirm that Hive identifies Joseph as the annotation author, despite the owner applying it. Show the retained Diff and Files. The text-only follow-up has no commands of its own; explain the latest-turn Runs boundary.
-7. If the run is finished and the queue empty, complete the task with the collaborators' agreement, refresh its read-only state, then reopen. Do not Reset or approve changes just to advance the demo.
+1. **3:00–4:00 — Shared task.** Open the signed-in dashboard, then the same acceptance task in both browsers. Point out the human identities and online count; Hive is not an online person. Show the saved repository-attachment message and explain that it happened after task creation. On narrow screens use **Conversation / Workspace**; **Close thread** returns from Thread to the previous surface.
+2. **4:00–5:00 — Real result.** Show the prepared task's actual Diff, read-only Monaco file and expanded combined check. State clearly that the implementation was completed beforehand. Read the test count from Runs, not from memory or chat. Files browses the repository, not only changed files. Do not edit or add annotations just to navigate.
+3. **5:00–6:00 — Discussion.** Type `@`, select Joseph and send `@josephmreb1 let's review the completed accessible-name change together.` Open **Reply** on that new message. Joseph and Spinsirr each send the read-only reply below. Both stay human-only; prepare Joseph's browser on this Thread before starting the check.
+4. **6:00–8:00 — Shared control.** Spinsirr sends the one combined check below. While it is visibly running, Joseph clicks **Queue thread** once, not the individual reply's **Queue steer**. Both browsers should show one queued item with two replies and Joseph as the promoter; Apply remains disabled. Add the optional third reply only after the queue snapshot exists, and show that it remains a discussion outside those two replies. If execution finishes too quickly, call it an immediate-steer case; do not rerun just to manufacture a queue window.
+5. **8:00–9:00 — Inspect, then apply.** When the check ends, inspect the actual command/output before Spinsirr clicks **Apply**. Verify that the resulting answer separates Joseph's behavior requirement from Spinsirr's validation requirement and does not execute the third reply. The reply-only turn has no commands; **No commands in this turn** is expected afterward. Runs does not display the earlier check on that turn; do not describe it as a history browser.
+6. **9:00–10:00 — Recovery boundary.** Open **Checkpoints** and explain the paired files/context boundary and disabled unmatched snapshots. Do not restore during this timed route or sacrifice the prepared Runs result. If idle with an empty queue and the collaborators agree, show Complete → refresh → Reopen. Skip it rather than pretending a running or incomplete task is finished.
 
-**Joseph's annotation — discussion first, then explicit steer:**
+**Joseph's read-only Thread reply:**
 
-> 排队时的 accessible label 也要体现 Queue steer，并保留批注作者名。现有改动已完成；请只读核对这个条件，回复时说明提出这条批注的人是谁，不要改文件或重复运行测试。
+> 请只读核对现有 ConversationScrollButton：默认名称是 Scroll to latest message，调用方传入 aria-label 仍能覆盖。只需简短说明是否符合，并把行为要求归属到 josephmreb1。不要改文件或运行检查。
+
+**Spinsirr's read-only Thread reply:**
+
+> 请只读核对已有回归是否分别覆盖默认名称与调用方覆盖，并把验证要求归属到 Spinsirr。不要重跑测试、修改文件、提交、推送或部署；不要执行这次 steer 之后新增的讨论。
+
+**Optional later reply, after the two-reply thread is queued:**
+
+> 后续讨论：以后再考虑 tooltip 本地化。这条不在刚才排队的两条要求中，不需要本轮实现。
 
 **Spencer's check — one command against the existing change:**
 
-> 请只读复核现有的无障碍标签改动。本轮只调用一次 bash，原样执行 pnpm test && pnpm typecheck && git diff --check，等命令完成后简短报告真实结果与退出码。不要改文件、安装依赖、提交、推送、部署、读取凭据或吞掉失败退出码。队友的待处理批注由我们在本轮结束后的安全边界另行 Apply，不要提前处理。
+> 请只读复核现有的无障碍名称改动。本轮只调用一次 bash，原样执行 pnpm test && pnpm typecheck && git diff --check，等命令完成后简短报告真实结果与退出码。不要改文件、安装依赖、提交、推送、部署、读取凭据或吞掉失败退出码。队友的待处理 Thread 由我们在本轮结束后的安全边界另行 Apply，不要提前处理。
 
-**If execution is slow or fails:** At minute 9, move to the code explanation with the real state still visible. A 429 is a failed attempt, not a pass; inspect what was actually retained and do not automatically retry, clear the queue, or substitute old command results for this turn. If the fresh live segment cannot finish, explicitly distinguish the previously verified two-account sequence from what happened today. Native incremental text passed its separate production acceptance check; describe today's observed delivery honestly rather than claiming a particular token cadence from a completed reply.
-
-The live sequence above remains subject to a timed rehearsal. The original attribution failure is now reproduced, fixed with regressions, and retested successfully in the same two-account path. Keep that honest failure-to-fix story; do not rewrite the earlier failed run as a pass.
+**Hard stop at minute 9:** If the check or steer is still running or fails, preserve its real state and move to code at minute 10. Do not auto-apply after a failed check, retry repeatedly, clear the queue, or call old output a new pass. Describe a 429 as the observed failed attempt. The prepared result and earlier multiplayer acceptance remain dated evidence, not a substitute for today's result. Observe live text if present; a completed reply alone does not prove incremental delivery.
 
 ### 10–15 min — Code
 
 Keep the walkthrough to three questions, with the actual functions open:
 
-- **Who may start the next run?** `reduceTaskSession` / `canApplyNextSteer` in [`task-session.ts`](../src/lib/task-session.ts): discussion does not execute, new agent-directed work queues, and Apply waits for the current turn.
+- **Who may start the next run?** `reduceTaskSession` / `canApplyNextSteer` in [`task-session.ts`](../src/lib/task-session.ts): discussion does not execute, `throughReplyId` freezes a whole-thread steer, and Apply waits for the current turn.
 - **What if both people click?** `applyTaskSessionAction` in [`task-session-store.ts`](../src/lib/task-session-store.ts): the row lock covers the transition and grants execution once; a browser's timestamp is not a lock.
-- **Whose instruction is this?** `buildHiveRunInput` in [`hive-prompt.ts`](../src/lib/hive-prompt.ts): annotation author, parent-message author, promoter, and execution starter remain distinct. Use the observed attribution bug and its regression as evidence.
+- **Whose instruction is this?** `buildHiveRunInput` in [`hive-prompt.ts`](../src/lib/hive-prompt.ts): frozen authored replies, promoter, and execution starter remain distinct. A shared avatar row alone cannot guarantee correct model attribution.
 
-For Q&A, keep [`hive-runner.ts`](../src/lib/hive-runner.ts) ready for Codex/Sandbox checkpoints and failed-run artifacts, the [session route](../src/app/api/sessions/[sessionId]/route.ts) for authenticated mutations, the [repository route](../src/app/api/github/repositories/route.ts) for validated attachment, and [`use-shared-session.ts`](../src/hooks/use-shared-session.ts) for WebSocket recovery. Do not attempt a tour of every module in five minutes.
+For Q&A, keep [`hive-runner.ts`](../src/lib/hive-runner.ts) ready for Codex/Sandbox execution, [`workspace-restore.ts`](../src/lib/workspace-restore.ts) for paired recovery, and [`use-shared-session.ts`](../src/hooks/use-shared-session.ts) for WebSocket recovery. These are backup references, not another live workflow in the five-minute code section.
 
 ### 15–18 min — AI journey
 
-Show the brainstorm as evidence of collaboration rather than a perfect linear plan:
+Use three concrete moments, about one minute each; the longer chronology below is for Q&A:
 
-- AI helped compare the idea against v0, Claude tagging, and Conductor; the human kept pushing until the product had a real multiplayer interaction.
-- AI initially over-indexed on intent governance; the human corrected the product back to a shared agent conversation.
-- AI proposed repository-at-provisioning and long-lived rooms; the human clarified late attachment and one-task session lifecycle.
-- AI produced a plausible Codex session plan; the human caught that history would disappear with the sandbox, leading to canonical Postgres history plus resumable checkpoints.
-- AI accelerated UI, code, migrations, and diagnosis; the human owned scope, trust boundaries, product language, and what not to claim.
-- Show one concrete verification moment: the coding agent's summary called the accessible-label ternary incomplete, but the captured diff contained both branches. The supervising AI checked the artifact and avoided an unnecessary rewrite. Credit that check accurately; do not describe it as a manual edit by the human.
-- Show the failed TypeScript check next to the successful continuation: the workspace needed Next.js route-type generation before TypeScript. The final evidence is the command's exit status and output, not merely the agent saying the tests passed.
-- A second verification moment on September 6: an agent summary claimed 92 passing tests, but that turn's Runs only showed typecheck and a failure-masking diff command. The supervising AI withheld the pass, requested one check with unmodified exit semantics, and verified the real combined output. This is why the team needs the workspace evidence next to the conversation; do not present a prompt as a guarantee against false claims.
-- A multiplayer-specific example: correct avatars did not guarantee correct model attribution. The original run named the parent message author instead of the annotation author. The first diagnosis targeted the wrong caller; inspection of the actual route corrected it. Explicit server-resolved authorship fields and a real-runner regression fixed the input ambiguity, and the original Joseph-author / owner-applier production case then passed. Distinguish the human's product requirement from the supervising AI's diagnosis and implementation.
+- **Human product direction:** AI leaned toward intent governance and long-lived rooms. Spencer brought it back to a real multiplayer agent conversation, one task per session, and a repository that can be attached later. The brainstorm records those corrections.
+- **Human challenge, AI implementation:** Spencer caught that native session history could disappear with the sandbox. Postgres became canonical team history; saved sandbox/context pairs support resumable execution. Show the boundary, not a claim of disaster recovery after permanent deletion.
+- **AI output needs evidence:** In the September 8 acceptance run, the coding agent issued malformed edit commands with `|| true`: shell exit zero did not mean the edit or tests succeeded. The supervising AI inspected the output, reproduced the misleading **Passed** label and shipped **Exit 0 / Exit N** with a real-component regression. Credit the diagnosis and implementation to AI; do not call it a manual human fix or a successful coding-task run.
 
 ### 18–20 min — Boundaries
 
-Be explicit: GitHub write-back is not built; organization administration is not built; sandbox disaster recovery from the canonical transcript is a next layer. Two people collaborating with and steering one real coding agent passed the bounded production acceptance sequence. No-reload recovery of a missed human message also passed. Incremental text initially failed because the SDK event source supplied completed messages; the native app-server transport subsequently passed on production at **September 7, 00:19 UTC**, with 25 growing updates and one final reply. Interrupted model-delta recovery and the timed rehearsal remain unverified. The pending paired rollback is not disaster recovery after permanent sandbox deletion, and its local tests do not establish a production restore.
+Close on the shipped scope: one team, one task, one late-attached repository, one coding agent and explicit multiplayer control. No PR creation, organization administration, attachment ingestion or cross-task memory system is part of this demo.
+
+Keep the evidence distinctions visible: original two-account execution and no-reload missed-message recovery passed; native incremental text passed separately at September 7, 00:19 UTC; whole-thread snapshot/queue boundaries and a real filesystem/evidence restore round trip passed later. Successful completion of the new coding task, post-restore native continuation and nonempty-queue restore are still open until verified. Available snapshots are capped at three, and a snapshot without matching agent context cannot be restored. This is not permanent-sandbox-deletion disaster recovery. Do not turn today's route navigation into a claim that the timed rehearsal or submission is complete.
 
 ## What is real today
 
 - Dynamic task list and `/sessions/[sessionId]` routes.
 - GitHub-authenticated humans with revocable, hashed database sessions.
 - Seven-day signed invite links and explicit task-session membership.
-- Durable transcript, presence, typing, annotations, steer queue, lifecycle, and workspace state in Postgres.
+- Durable transcript, presence, typing, Thread replies, frozen whole-thread steers, queue, lifecycle, and workspace state in Postgres.
 - Row-locked mutations so concurrent teammate messages survive.
 - Conversation with Hive before repository attachment.
 - Team-level GitHub App installations and repository picker; one immutable repository per task.
 - Fresh repository-scoped installation tokens for private Sandbox clones.
 - AI SDK Harness with Codex and a persistent named Vercel Sandbox.
 - Successful and failed Codex checkpoints persisted server-side; opaque resume state stripped from clients.
-- Real changed-file contents, run output, and git diff; no fake PR, preview, test, or tool-result cards.
+- Full on-demand read-only file navigation, command exit codes/output, and git diff; no fake PR, preview, test, or tool-result cards. Runs is the latest turn, not a run-history browser.
 - IME-aware message submission that avoids duplicate CJK sends.
 - Compact error states that preserve the human prompt and session.
 
 ## Current boundaries before final submission
 
-- Complete the timed rehearsal on the final verified release. [Native incremental delivery](STREAMING_DIAGNOSIS.md) passed its production acceptance check; two-account queue execution, attribution, shared lifecycle, failed-run continuation, offline-page reload recovery, and automatic recovery of a missed human message have separate dated production evidence below. None of these closes the pending release's Thread/rollback verification or an offline-mid-model-delta test.
+- Complete the timed rehearsal on the final verified release. [Native incremental delivery](STREAMING_DIAGNOSIS.md), original two-account execution/recovery, and newer Thread snapshot/queue and filesystem/evidence restore checks have separate dated production evidence below. They do not close successful whole-thread coding completion, post-restore native continuation, nonempty-queue restore or an offline-mid-model-delta test.
 - Retain and rehearse an inspectable real coding result; do not rely on artifacts that are no longer present.
 - Branch push, PR creation, and organization administration are excluded by the current [goal](GOAL.md). Do not spend the remaining work on a separate delivery workflow.
 - Match local credentials to the intended environment before using them as evidence. Previous temporary-database cleanup is a separate owner-controlled infrastructure action, not a reason to delete data during this goal.
@@ -564,6 +563,15 @@ Be explicit: GitHub write-back is not built; organization administration is not 
 - Moved the existing Runs pane beside the other workspace panes to test the actual component. The regression first failed on a masked-error fixture displaying **Passed**, then passed with the corrected label. It also checks nonzero/incomplete states, verbatim escaped output, disclosure structure and empty turns. These are invented local fixtures, not replacement production evidence.
 - Local validation passed: all **132 unit tests**, controlled native/runner/route/component regressions including the new three-case Runs check, TypeScript, lint without warnings, whitespace validation and the production Webpack build. All 27 relative links/anchors across the four submission documents resolved.
 - Commit `4cf91a26660be8917b04b7ed95e7b1977ccbf963` was pushed through the already-authorized release flow; GitHub confirmed Vercel deployment `7TrjC23fZid7YJ34XVNvd6pKvNon` successful. On a fresh canonical owner page, all five retained commands displayed **Exit 0**, not **Passed**, and the original syntax-error output still expanded. Both members were shown online; this was an owner-side UI check, not a new two-account execution. No message, restore, model call, task approval, completion, or billing change was made. The coding task remains incomplete independently of this UI correction.
+
+### September 8 — Reconcile the route with the current product
+
+- GitHub reported the docs-only `c5b0505` deployment successful. The application behavior remains the `4cf91a2` Runs fix. Checked the canonical independent task in two existing browser profiles: one identity menu said **Spinsirr**, the other **josephmreb1**; both showed the same task and authored discussion. This was a read-only identity/state check, not a new two-user execution or fresh reviewer onboarding.
+- Opened the actual Thread: three replies were visible, while its footer said **2 replies steered by josephmreb1**. The next action offered all three replies, so the revised route explicitly avoids re-steering that implementation thread. The current Diff still contained only the default accessible-label source addition. Runs retained the five commands, with the malformed edit's output expanded under **Exit 0**. Files loaded the repository tree, including unchanged files and dependencies, and the selected source in a read-only editor.
+- Checkpoints loaded three entries: only one had a matching agent checkpoint and an enabled Restore action; the other two explicitly said **No matching agent checkpoint** and were disabled. No Restore was clicked. Available checkpoint IDs and retention change, so the route does not promise a particular old checkpoint remains restorable.
+- Replaced the stale formal-task/single-annotation instructions with a timed target route for the independent task and whole-thread steering, exact two-author read-only review prompts, latest-turn Runs semantics and a minute-nine failure boundary. Updated the current product/domain wording and separated shipped restore behavior from unverified continuation. Earlier dated evidence is preserved below its original dates.
+- Documentation validation resolved the relative links/anchors, checked five contiguous planned sections totaling 20 minutes, and passed `git diff --check`. These checks validate the script, not its actual delivery time. No application code changed; the application test suite was not rerun for this documentation-only revision.
+- No message, steer, model request, restore, approval, completion, repository visibility or billing change occurred. The real coding check remains blocked on the pending model decision; this reconciliation does not complete the narrated rehearsal or any remaining acceptance gate.
 
 ## Questions to prepare for
 
