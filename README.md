@@ -6,7 +6,7 @@ Hive is a multiplayer coding agent: two or more teammates share one agent conver
 
 **Live app:** [hive-roan-mu.vercel.app](https://hive-roan-mu.vercel.app/)
 
-**Release boundary — September 8:** `f3f602f` deployed bounded Gateway recovery on top of the file-cache, inline-thread and conversation-entry fixes. A post-restore continuation still hit 429 after five successful model calls and two delayed retries. Two real accounts have verified frozen whole-thread queuing and a real checkpoint round trip, but the independent coding task has not passed its requested checks. The approved formal task was left untouched. See the dated [presentation evidence](docs/PRESENTATION_NOTES.md#evidence-log).
+**Release boundary — September 8:** `4cf91a2` is deployed; Runs now reports actual exit codes instead of implying tests passed. The preceding `f3f602f` added bounded Gateway recovery. A post-restore continuation still hit 429 after five successful model calls and two delayed retries. Two real accounts have verified frozen whole-thread queuing and a real checkpoint round trip, but the independent coding task has not passed its requested checks. The approved formal task was left untouched. See the dated [presentation evidence](docs/PRESENTATION_NOTES.md#evidence-log).
 
 ## Try the app
 

@@ -2,7 +2,7 @@
 
 Draft prepared for owner review. Not yet submitted; the remaining live acceptance checks and reviewer access are not complete.
 
-Release note: `f3f602f` deployed bounded Gateway recovery on September 8. The canonical dashboard, public [UI demo](https://hive-roan-mu.vercel.app/demo), file navigation/cache and conversation entry have bounded UI verification. The separate owner-authorized task has real two-account Thread/queue acceptance and a checkpoint filesystem/evidence round trip. Its post-restore continuation still stopped on 429 after two delayed retries; no requested test/typecheck command ran. Successful coding completion after rollback remains unverified. Deployment authorization does not authorize repository publication or external submission.
+Release note: `4cf91a2` is deployed with accurate Runs exit-code labels, following `f3f602f`'s bounded Gateway recovery. The canonical dashboard, public [UI demo](https://hive-roan-mu.vercel.app/demo), file navigation/cache and conversation entry have bounded UI verification. The separate owner-authorized task has real two-account Thread/queue acceptance and a checkpoint filesystem/evidence round trip. Its post-restore continuation still stopped on 429 after two delayed retries; no requested test/typecheck command ran. Successful coding completion after rollback remains unverified. Deployment authorization does not authorize repository publication or external submission.
 
 ## Four submission items
 
