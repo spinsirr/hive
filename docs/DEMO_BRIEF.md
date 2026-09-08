@@ -4,6 +4,8 @@
 
 **Open beforehand:** the [real acceptance task](https://hive-roan-mu.vercel.app/sessions/label-the-return-to-latest-messa-qvezdg) as Spinsirr and josephmreb1 in separate browsers. The [public UI demo](https://hive-roan-mu.vercel.app/demo) uses sample data; it is optional design context, never execution evidence.
 
+**Go/no-go:** check the [current availability gate](GOAL.md#completion-checklist) first. Both accounts must freshly load the same real task and reconnect successfully before rehearsal. A cached task page or the sample-data UI demo does not clear a database outage.
+
 ## Run of show
 
 | Time | Show | Main point |
@@ -18,7 +20,7 @@
 
 1. Check the identity menus, not just avatars. Show that the repository was attached after the task began.
 2. Open the existing implementation Thread. Joseph specified the default accessible name and preserved caller override; Spinsirr required real regression checks and no pushing. The third localization reply was excluded. **“2 replies steered”** describes the old frozen boundary; do not click **Steer entire thread with 3 replies** on this discussion.
-3. Show the actual two-file Diff and full file explorer. Expand the current combined check in Runs. Its recorded result is **125 sandbox-revision unit tests**, the controlled regressions and TypeScript passing, with **Exit 0**. These are not the deployed app's 135 local unit tests. Say that the implementation was completed beforehand and required repair guidance.
+3. Show the actual two-file Diff and full file explorer. Expand the current combined check in Runs. Its recorded result is **125 sandbox-revision unit tests**, the controlled regressions and TypeScript passing, with **Exit 0**. These belong to the saved Sandbox checkout, not the current app release's local test suite. Say that the implementation was completed beforehand and required repair guidance.
 4. For the live-control portion, use a **new** human-only review Thread and the exact bounded prompts in the [full route](PRESENTATION_NOTES.md#demo-sequence-20-minutes). Two authors reply; one combined read-only check runs; Joseph queues the Thread while it is active; Spinsirr applies it only after inspecting the completed check.
 5. Stop the live portion at minute nine even if it fails or is still running. Preserve the real state and move to code. If it finishes before queuing, name it an immediate-steer case; do not repeat work to manufacture a queue window.
 6. Explain the Checkpoints boundary without restoring the prepared result. Complete → refresh → Reopen is optional when idle and the queue is empty; it was already verified in both accounts.
