@@ -39,11 +39,20 @@ Do not walk every file. Keep the [runner](../src/lib/hive-runner.ts), [restore i
 - **Spencer challenged persistence:** a Codex session ID alone does not make sandbox history durable. Team history and paired recovery became explicit product boundaries.
 - **AI work needed verification:** a shell exit zero masked failed edits, and a regression queried a deliberately hidden button. The supervising AI inspected real output, reproduced the defects, supplied a repair and verified the final sandbox command. Do not present that as a manual human fix or an autonomous first-pass success.
 
+## Workflow tradeoff — Q&A, not another demo segment
+
+This is a **September 8 post-build review**, not an original decision reconstructed after the fact. See the [short presentation explanation](PRESENTATION_NOTES.md#short-presentation-explanation) and [sourced comparison](WORKFLOW_TRADEOFF.md).
+
+Spencer then [froze the submission scope](GOAL.md#submission-scope-freeze--september-8): no Workflow integration or execution-architecture migration before this submission. Present it as a consciously deferred reliability improvement, not an unfinished promised feature.
+
+Postgres owns who said what, which replies become instructions, and who may run next. It does not make the current request-bound execution crash-resumable. Workflow is a credible execution layer, including official Harness/Codex-compatible integration primitives; it would not remove our responsibility for permissions, effect deduplication and matching files to native context. The existing streaming bridge's compatibility remains untested. We have not integrated it or verified recovery after hard worker termination.
+
 ## What not to claim
 
 - A successful continuation does not mean 429 is permanently resolved. Bounded retries stop; they do not create more quota.
 - Two authenticated accounts were operated by the assistant during acceptance; that is not two independent human reviews.
 - Paired checkpoint restore is not permanent-sandbox-deletion disaster recovery.
+- Persisted messages and browser reconnection are not proof of automatic recovery after the executing process is killed. Do not describe Postgres as a substitute for durable execution or Workflow as unsuitable for interactive agents.
 - No PR automation, issue triage, attachment ingestion, cross-task memory or multi-team administration is in this demo.
 - The public dashboard preview is not a fake substitute for the real task.
 

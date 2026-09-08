@@ -2,6 +2,8 @@
 
 Spencer confirmed the existing two-paragraph summary on September 8, 2026. Its wording is retained unchanged. Technical coding/recovery acceptance has passed; the timed rehearsal and publication/reviewer access gates remain open. This confirmation does not authorize repository publication or external sending. Nothing has been submitted.
 
+The [September 8 scope freeze](GOAL.md#submission-scope-freeze--september-8) defers Workflow and additional features. Recovery acceptance refers to the dated browser-reconnection, caught-failure continuation and paired-restore checks below, not automatic recovery after hard worker termination.
+
 Release note: `a13b3a1` deployed successfully, removing duplicate prompt context while retaining native Codex history and the owner's selected `openai/gpt-5.1-codex-mini`. On September 8 at 15:01–15:02 UTC, the independent task completed one real `pnpm test && pnpm typecheck && git diff --check` with Exit 0: 125 sandbox-revision unit tests, controlled regressions and TypeScript passed. Both real accounts inspected the two-file result and the attributed final answer, then verified shared approval and Complete → refresh → Reopen. Earlier Thread/queue and paired-restore checks include preservation of a nonempty queue. The supervising AI supplied a tested regression repair after earlier failures; this was an assisted completion, not an autonomous first-pass result. Recurring 429 risk remains despite the successful continuation. The public [UI demo](https://hive-roan-mu.vercel.app/demo) is still a dashboard preview, not execution evidence. Deployment authorization does not authorize billing changes, repository publication or external submission.
 
 ## Four submission items

@@ -6,10 +6,16 @@ Deliver a working, shareable multiplayer coding agent and an evidence-backed tak
 
 The current user-provided goal explicitly excludes PR creation and multi-team management. Complete one real coding task, shared review, two-account collaboration, recovery, and the take-home materials. The September 4 discussion proposed PR handoff; that proposal is superseded for this goal and is not a completion gate. Normal authorized pushes and Vercel deployments of Hive itself remain part of implementation, not a product PR feature.
 
+### Submission scope freeze — September 8
+
+After reviewing Workflow's benefits and integration costs, Spencer explicitly chose not to expand this submission: **do not integrate Vercel Workflow, replace the execution architecture, or add product features.** Remaining engineering is limited to fixes and verification of the existing end-to-end flow, plus presentation and submission preparation.
+
+Request-bound execution and unverified automatic recovery after hard worker termination remain disclosed limitations, not new implementation gates. This does not waive the existing browser-reconnection and caught-failure-continuation requirements, the approximately 20-minute rehearsal, reviewer access, or the four submission items. Repository publication and external sending still require separate owner approval. The [Workflow assessment](WORKFLOW_TRADEOFF.md) remains retrospective research and a possible post-submission direction, not a migration plan or a claim that Workflow was rejected at the beginning.
+
 ## Completion checklist
 
 - [x] Complete a small change in a real attached repository; verify the checks, Runs, Files, and Diff (recorded real check: formal task, 2026-09-07 00:19 UTC; 92 sandbox-revision tests, TypeScript, and diff check passed in one command; both accounts previously inspected the workspace). This historical pass does not satisfy the current evidence gate below.
-- [x] Make Invite and Complete accessible at narrow viewport widths (375px local interaction fixture; production controls verified at 737px).
+- [x] Make Invite and Complete accessible at narrow viewport widths (375px local interaction fixture; production controls verified at 737px, then actual Invite copy and cross-account Complete → refresh → Reopen verified at 375 × 812 on September 8).
 - [x] Verify two real GitHub users sharing a task: attribution, annotations, steering during a run, queue ordering, and synchronization (original Joseph-author / owner-applier case passed at 07:09 UTC; the earlier queued message was applied once at 06:44).
 - [x] Verify refresh, reconnect, and continuation after a failed run preserve messages and execution context. In addition to failed-run continuation and offline-page reload recovery, the 07:28 UTC no-reload check recovered one missed teammate message and the unsent draft, with a new live WebSocket handshake and no agent wake-up.
 - [x] Add a read-only Monaco file viewer with file navigation and syntax highlighting (production changed-file snapshot rendered for the completed accessibility change).
@@ -40,6 +46,8 @@ The current user-provided goal explicitly excludes PR creation and multi-team ma
 Record completed checks and their limitations in `PRESENTATION_NOTES.md`. Distinguish implementation from live verification. Two-user testing requires two real authenticated accounts.
 
 ## Current rehearsal evidence
+
+**September 8 final preflight:** both real identities, the frozen two-of-three-reply Thread, successful Runs and two-file Diff remained available. A 375px production lifecycle/invite check passed, as did unchanged-file navigation and colored read-only Monaco. Local `pnpm test` passed all 135 unit tests and controlled regressions; typecheck and lint passed. The [dated preflight](PRESENTATION_NOTES.md#september-8--scope-freeze-and-final-technical-preflight) is not a timed narrated rehearsal. No new model run occurred, and the prepared coding result was preserved.
 
 **Latest result — September 8, 15:01–15:10 UTC:** the independent task is now a passing prepared result. After the isolated regression repair and deployed prompt deduplication, its one combined check returned Exit 0 with 125 sandbox-revision unit tests, real-component regressions and TypeScript passing. Both accounts retained the same attributed final response, two-file diff and actual output. Joseph's authenticated browser approved it, the owner's browser completed it, and Joseph refreshed and reopened it; this acceptance was operated by the supervising assistant, not two independently acting human reviewers. The task is left open with its workspace approved and the successful Runs command intact. No new text-only turn, restore, model request or sandbox push followed. Gateway recorded two successful calls, not proof that rate limits are fixed. The chronology below preserves earlier failures rather than presenting them as the current state.
 

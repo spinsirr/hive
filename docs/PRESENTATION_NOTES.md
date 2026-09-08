@@ -80,6 +80,32 @@ This correction matters: the team is the durable collaboration space; a session 
 | A small frontend task in Hive itself | An author-specific accessible label makes teammate intent visible in both the conversation and the diff. | A separate demo application or deployment workflow that needs its own setup. |
 | Remove Vercel Connect experiment | The available install flow is developer-dashboard oriented; direct GitHub App onboarding fits users today. | Shipping a connector path users cannot complete. |
 
+## Workflow tradeoff
+
+**Reviewed September 8, 2026, after the build.** This is a newly researched tradeoff, not evidence that we evaluated and rejected Workflow at the start. The [sourced comparison](WORKFLOW_TRADEOFF.md) separates official capabilities, current code, and recommendations. No architecture change has been implemented as part of this review.
+
+**Final submission decision:** Spencer subsequently chose to defer this integration and freeze the existing architecture. Follow the [submission scope freeze](GOAL.md#submission-scope-freeze--september-8); the recommendation below is a post-submission direction, not remaining implementation work for this goal.
+
+The useful distinction is **collaboration state versus durable execution**, not Postgres versus Workflow as interchangeable products.
+
+| Responsibility | What Hive currently does | What Workflow would change |
+| --- | --- | --- |
+| Authorship, membership, frozen Thread input, queue order and Apply permission | Postgres plus the task state machine owns these product rules. | Hooks can receive events, but we still define authorization, ordering and discussion-to-instruction policy. |
+| Continuing work after the executing process dies | The session POST awaits the agent inside a request configured for 300 seconds. Caught failures retain recovery data where possible. | Durable steps can persist progress and schedule continuation; this is a capability the database row alone does not provide. |
+| Native agent context and files | Hive pairs Codex resume state with Sandbox recovery points. | Official Harness workflow helpers support step/time-slice continuation, but cross-turn resume storage and consistent workspace recovery still need an explicit owner. |
+
+Sources: [current session route](../src/app/api/sessions/[sessionId]/route.ts), [locked state transitions](../src/lib/task-session-store.ts), [runner/checkpoints](../src/lib/hive-runner.ts), [Workflow hooks](https://useworkflow.dev/docs/foundations/hooks), [Harness workflow utilities](https://ai-sdk.dev/docs/ai-sdk-harnesses/workflow-utilities).
+
+**The cost of our current approach:** the state transition commits before execution starts. A process killed in that gap or during execution may never reach our error/checkpoint handler, leaving the task marked running. The inspected run path has no durable dispatch or automatic stale-run recovery. This is a static-code risk, not a production crash we induced or reproduced. Successful browser reconnection and caught-error continuation do not prove hard-process-crash recovery.
+
+**The alternative deserves serious consideration:** `@ai-sdk/workflow-harness` already supports `HarnessAgent`, so adopting Workflow need not replace Codex. Its semantic-step and time-slice runners reduce custom orchestration work. Compatibility with Hive's native streaming bridge and paired restore path has not been tested. Durable retries also do not make arbitrary coding side effects exactly-once; commands may have taken effect before their result was saved. Stable execution IDs, safe continuation, duplicate-effect handling and database-to-run reconciliation remain necessary. [Harness utilities](https://ai-sdk.dev/docs/ai-sdk-harnesses/workflow-utilities), [idempotency](https://useworkflow.dev/docs/foundations/idempotency).
+
+**Recommendation, not a shipped claim:** retain Postgres as the authority for team intent and permissions; evaluate Workflow for execution durability if reliable continuation across worker termination or long-running waits is a product requirement. Do not add a second independently authoritative steering queue. Validate commit-before-dispatch failure, duplicate delivery, interrupted coding steps and paired restoration before calling the integration reliable. Workflow would not remove model-provider rate limits.
+
+### Short presentation explanation
+
+> Hive 把多人协作状态放在 Postgres 里，明确谁说了什么、哪些讨论进入队列，以及什么时候可以执行。但保存了数据，不等于执行进程被终止后能够自动续跑。构建后的调研发现，Workflow 可以承接持久执行，并保留 Codex；接入仍要验证重试是否重复改代码，以及文件和 agent 上下文的一致性。我决定这次冻结 scope，不迁移执行架构，把剩余精力用于现有协作闭环的修复和验收。这是明确保留的限制和后续方向，不是已经具备的恢复能力。
+
 ## Demo sequence (20 minutes)
 
 Use the compact [presenter card](DEMO_BRIEF.md) during delivery; this section retains the exact interaction prompts and failure boundaries.
@@ -635,6 +661,22 @@ Keep the evidence distinctions visible: original two-account execution and no-re
 - Spencer confirmed the existing two-paragraph project introduction. The submission packet and current readiness summaries now record that confirmation; the approved text itself is unchanged. This does not claim that Spencer originally drafted the AI-assisted wording.
 - No repository visibility change, external message, new agent run or completed narrated rehearsal is authorized or implied by this confirmation. The remaining rehearsal and publication/submission gates stay open.
 
+### September 8 — Workflow tradeoff research, not an architecture migration
+
+- Spencer asked to research the Workflow tradeoff and record it for presentation. Official Workflow/Harness documentation and the actual request, state-store and checkpoint paths were inspected; the [research note](WORKFLOW_TRADEOFF.md) records sources and limits.
+- The comparison uncovered official Harness workflow helpers and the distinction between persistent team state and durable execution. The current request-bound run path's hard-termination risk is a code-reading inference, not a new production incident or a completed fault-injection test.
+- Added a short explanation and Q&A pointer without claiming this was the original design rationale. No application code, model, queue behavior, production task or deployment changed; the approved submission introduction is untouched.
+
+### September 8 — Scope freeze and final technical preflight
+
+- Spencer explicitly deferred Workflow and further feature expansion. The [scope freeze](GOAL.md#submission-scope-freeze--september-8) is the canonical decision; the research remains available for Q&A. The README was shortened from 3,543 to approximately 1,330 words, keeping setup, access boundaries, architecture, evidence and AI ownership while linking the detailed chronology here. The owner-confirmed summary in `SUBMISSION.md` is unchanged.
+- At **17:16 UTC**, the current local application passed **135/135 unit tests** and every controlled runner/route/native-stream/component regression in `pnpm test`. `pnpm typecheck`, `pnpm lint` and `git diff --check` also exited 0. These are local regression results, not another live coding run. Intentional fixture failures in test output are not new provider incidents.
+- GitHub reported `spinsirr/hive` **PRIVATE**, remote main at `e6f0d2b`, and that commit's Vercel status **success**. Anonymous requests returned **200** for the homepage and `/demo`, and **401** for the independent task API. No publication or external submission occurred.
+- The two real browser identities remained **Spinsirr** and **josephmreb1**. The original Thread still displayed **2 replies steered by josephmreb1** alongside all three authored replies; the later localization reply remained excluded. Expanded Runs retained the exact successful combined check with **125 sandbox-revision tests**, component regressions, generated route types and **Exit 0**. Diff still showed only the source-label and scrolling-regression files.
+- At **375 × 812**, the owner successfully completed the task. Joseph received disabled steering controls, refreshed the read-only task, and reopened it; the owner recovered the active controls. Invite then showed **Invite link copied** and produced the expected task URL with a nonempty signed invite parameter, checked without printing or saving its value. An initial unconfirmed clipboard attempt was traced to the browser-control clipboard bridge; a fresh page with an initialized bridge passed. No application change was made for that tooling failure and no invitation was sent externally.
+- Files reloaded the actual workspace tree and opened both the changed regression script and the unchanged `package.json` in read-only Monaco. Visual inspection confirmed file-type icons and syntax colors. The temporary narrow viewport was reset. No model request, new steer, file edit, restore, reset or sandbox push was performed; only the documented completion/reopening lifecycle changed.
+- This preflight and document cleanup are **not** a narrated 20-minute rehearsal. That rehearsal, a fresh reviewer's invitation/sign-in and owner approval for public access/external submission remain open. Do not manufacture elapsed rehearsal time from this maintenance session.
+
 ## Questions to prepare for
 
 - How is Hive different from tagging Claude in a shared channel?
@@ -642,6 +684,7 @@ Keep the evidence distinctions visible: original two-account execution and no-re
 - When does Hive wake, and who can redirect it?
 - What happens when two teammates steer at once?
 - Why use an existing coding harness?
+- Why does Hive use Postgres state transitions rather than Workflow today, and what survives a hard worker termination? See the [retrospective comparison](#workflow-tradeoff).
 - Why one task and one repository per session?
 - What survives if a Sandbox disappears?
 - What is real versus intentionally out of scope?
