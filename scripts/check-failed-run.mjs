@@ -49,7 +49,10 @@ mock.module(new URL("../src/lib/github-app.ts", import.meta.url).href, {
 });
 mock.module("@ai-sdk/harness/agent", { namedExports: {
   HarnessAgent: class {
-    constructor(settings) { this.settings = settings; }
+    constructor(settings) {
+      assert.equal(settings.model, scenario.modelOverride ?? "openai/gpt-5.6-luna", "The coding default and explicit model override must reach the harness");
+      this.settings = settings;
+    }
     async createSession() {
       await this.settings.sandboxConfig.onSession({ session: sandbox, sessionWorkDir: "/vercel/sandbox/hive" });
       return { async stop() {
@@ -101,8 +104,11 @@ for (const options of [
   { name: "git error is not displayed as a code diff", fail: true, artifactFailure: "git-error" },
   { name: "checkpoint failure still retains command and file evidence", fail: true, checkpointFailure: true },
   { name: "normal completion still retains all commands and reviewable files", fail: false },
+  { name: "an explicit coding model overrides the Luna default", fail: false, modelOverride: "openai/controlled-model-override" },
 ]) {
   scenario = options;
+  // This standalone controlled runner never contacts the selected model.
+  process.env.HIVE_CODEX_MODEL = options.modelOverride ?? "";
   sandboxStopped = false;
   const initial = { ...running, workspace: { ...running.workspace, ...previousSnapshot } };
   const publicText = [];

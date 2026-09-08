@@ -28,7 +28,7 @@ import {
   type WorkspaceFile,
 } from "@/lib/task-session";
 
-const DEFAULT_MODEL = "openai/gpt-5-mini";
+const DEFAULT_MODEL = "openai/gpt-5.6-luna";
 const CODEX_BRIDGE_PORT = 4319;
 const MAX_OUTPUT_CHARS = 20_000;
 const MAX_DIFF_CHARS = 60_000;

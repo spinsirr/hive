@@ -53,16 +53,12 @@ const provider = createServer(async (request, response) => {
     send({ type: "response.created", response: { id: `fixture-${requestNumber}` } });
     if (requestNumber === 2) {
       assert.match(JSON.stringify(body.input), /HIVE-NATIVE-MEMORY-27/, "The resumed native history must contain the first turn");
-      const tools = body.tools.flatMap((tool) => tool.type === "namespace"
-        ? tool.tools.map((nested) => ({ ...nested, namespace: tool.name })) : [tool]);
-      const shell = tools.find((tool) => ["exec_command", "shell_command", "shell"].includes(tool.name));
-      assert.ok(shell, `No shell tool in ${tools.map((tool) => tool.name).join(", ")}`);
-      const args = shell.name === "exec_command" ? { cmd: "printf native-check", yield_time_ms: 1000 }
-        : shell.name === "shell" ? { command: ["/bin/sh", "-c", "printf native-check"] }
-          : { command: "printf native-check" };
+      // The pinned CLI exposes Luna's tools in the prompt, through code mode,
+      // instead of the older JSON-schema tools array. Exercise that real path.
+      assert.match(JSON.stringify(body.input), /declare const tools: \{ exec_command/);
       send({ type: "response.output_item.done", item: {
-        type: "function_call", call_id: "native-command", name: shell.name,
-        ...(shell.namespace ? { namespace: shell.namespace } : {}), arguments: JSON.stringify(args),
+        type: "custom_tool_call", call_id: "native-command", name: "exec", namespace: "functions",
+        input: 'text(await tools.exec_command({ cmd: "printf native-check", yield_time_ms: 1000 }));',
       } });
     } else {
       if (requestNumber === 4) {
@@ -101,7 +97,7 @@ try {
     const started = Date.now();
     let caught;
     try { await runCodexAppServerTurn({
-      start: { model: "gpt-5-mini", prompt: turnNumber === 0 ? "Remember HIVE-NATIVE-MEMORY-27." : "Run the check.", webSearch: false },
+      start: { model: turnNumber === 0 ? "gpt-5-mini" : "openai/gpt-5.6-luna", reasoningEffort: "low", prompt: turnNumber === 0 ? "Remember HIVE-NATIVE-MEMORY-27." : "Run the check.", webSearch: false },
       workdir: fixtureDirectory, threadId,
       onThread(id) { if (threadId) assert.equal(id, threadId); threadId = id; },
       launch(workdir) {
@@ -120,6 +116,7 @@ try {
         }
       } },
     }); } catch (error) { caught = error; }
+    if (requestFailure) throw requestFailure;
     allEvents.push(...events);
     if (turnNumber < 2) {
       assert.equal(caught, undefined);
@@ -134,6 +131,11 @@ try {
   }
   assert.equal(requestFailure, undefined);
   assert.equal(requestNumber, 8);
+  assert.equal(requests[0].model, "openai/gpt-5-mini");
+  for (const request of requests.slice(1)) {
+    assert.equal(request.model, "openai/gpt-5.6-luna", "A resumed native thread must use the newly selected coding model");
+    assert.equal(request.reasoning.effort, "low", "Changing models must preserve the explicit reasoning level");
+  }
   assert.equal(launches, 4, "One native process per requested turn, with no restart on failure");
   assert.ok(requestTimes[3] - requestTimes[2] >= 900, "Do not retry before Retry-After");
   assert.deepEqual(requests[4], requests[5]);
@@ -145,7 +147,7 @@ try {
   assert.equal(diagnostics.filter((event) => event.attrs.outcome === "recovered").length, 1);
   assert.equal(diagnostics.filter((event) => event.attrs.stopReason === "attempt-limit").length, 1);
   assert.doesNotMatch(JSON.stringify(diagnostics), /HIVE-NATIVE-MEMORY-27|controlled-loopback-fixture/);
-  console.log("PASS: native history resumes; a rejected request recovers from 429 without repeating the command or restarting the turn");
+  console.log("PASS: native history resumes across the model change; a rejected request recovers from 429 without repeating the command or restarting the turn");
 } finally {
   firstDelta.resolve(); secondDelta.resolve();
   provider.closeAllConnections();
