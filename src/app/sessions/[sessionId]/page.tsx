@@ -7,7 +7,7 @@ import { getSessionMember, HIVE_SESSION_COOKIE } from "@/lib/auth-session";
 import { isTaskSessionId } from "@/lib/task-session-id";
 import { publicTaskSessionSnapshot } from "@/lib/task-session-snapshot";
 import {
-  getTaskSessionSnapshot,
+  getPublicTaskSessionSnapshot,
   isTaskSessionMember,
   joinTaskSession,
   taskSessionExists,
@@ -55,7 +55,7 @@ export default async function SessionPage({
     await joinTaskSession(sessionId, member.id);
   }
 
-  const snapshot = await getTaskSessionSnapshot(sessionId);
+  const snapshot = await getPublicTaskSessionSnapshot(sessionId);
   return (
     <HiveWorkspace
       currentMember={member}

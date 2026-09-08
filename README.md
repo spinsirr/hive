@@ -85,7 +85,9 @@ pnpm typecheck
 pnpm exec next build --webpack
 ```
 
-`pnpm test` includes 135 unit tests plus controlled runner, route, native-stream, and real-component regressions. Coverage includes authorship, invitation admission, deduplication, queue boundaries, frozen Threads, IME input, file-read safety, paired restore, reconnect ordering, caching, and scrolling. External boundaries are doubled in these local checks.
+`pnpm test` includes 138 unit tests plus controlled runner, route, native-stream, and real-component regressions. Coverage includes authorship, invitation admission, deduplication, queue boundaries, frozen Threads, IME input, file-read safety, paired restore, reconnect ordering, lightweight presence, caching, and scrolling. External boundaries are doubled in these local checks.
+
+For real Postgres/live-route egress regression coverage, set `HIVE_EGRESS_TEST_DATABASE_URL` to a **local loopback** Postgres server with a role that can create databases, then run `pnpm test:session-egress`. The check creates and removes its own uniquely named fixture database. It does not load `.env.local`, contact Neon, use real accounts, or call a model. It verifies heartbeat fanout without task reads and SQL-side exclusion of private recovery data. See the [September 8 incident](docs/PRESENTATION_NOTES.md#september-8--neon-egress-incident) for measurements and production availability limits.
 
 On September 8, the independent real-repository task completed `pnpm test && pnpm typecheck && git diff --check` with Exit 0. Its older Sandbox checkout passed **125 unit tests**, component regressions, TypeScript, and diff validation. Both real GitHub accounts inspected the two-file change and attributed response, then verified approval and Complete → refresh → Reopen. Earlier checks separately verified queued Threads, excluded later replies, native incremental text, offline recovery, and paired restore with pending input.
 

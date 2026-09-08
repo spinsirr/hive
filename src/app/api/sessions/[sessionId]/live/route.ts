@@ -5,7 +5,7 @@ import { getSessionMember, HIVE_SESSION_COOKIE } from "@/lib/auth-session";
 import { sessionEvents } from "@/lib/session-events";
 import { subscribeToTaskSession } from "@/lib/session-live";
 import { isTaskSessionId } from "@/lib/task-session-id";
-import { getAgentReply, getTaskSessionSnapshot, isTaskSessionMember } from "@/lib/task-session-store";
+import { getAgentReply, getTaskSessionPresence, getPublicTaskSessionSnapshot, isTaskSessionMember } from "@/lib/task-session-store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,8 +27,9 @@ export async function GET(request: NextRequest, context: { params: Promise<{ ses
   return experimental_upgradeWebSocket((socket) => subscribeToTaskSession(socket, {
     sessionId,
     authorized,
-    snapshot: () => getTaskSessionSnapshot(sessionId),
+    snapshot: () => getPublicTaskSessionSnapshot(sessionId),
     reply: () => getAgentReply(sessionId),
+    presence: () => getTaskSessionPresence(sessionId),
     events: sessionEvents,
   }), { maxPayload: 1024 });
 }

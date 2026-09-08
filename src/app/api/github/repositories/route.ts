@@ -8,7 +8,7 @@ import {
 import { isTaskSessionId } from "@/lib/task-session-id";
 import {
   applyTaskSessionAction,
-  getTaskSessionSnapshot,
+  getPublicTaskSessionSnapshot,
   isTaskSessionMember,
 } from "@/lib/task-session-store";
 
@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const snapshot = await getTaskSessionSnapshot(auth.sessionId);
+    const snapshot = await getPublicTaskSessionSnapshot(auth.sessionId);
     if (snapshot.session.repository) {
       return NextResponse.json(
         { error: "This task already has a repository." },

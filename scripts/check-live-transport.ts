@@ -43,6 +43,7 @@ try {
       authorized: async () => allowed,
       snapshot: async () => ({ session, members: [], activeMembers: [], typingMembers: [] }),
       reply: async () => session.workspace.liveReply!,
+      presence: async () => ({ members: [], activeMembers: [], typingMembers: [] }),
       events: hub,
     }));
     await once(server, "listening");

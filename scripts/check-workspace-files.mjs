@@ -36,6 +36,7 @@ mock.module(new URL("../src/lib/task-session-store.ts", import.meta.url).href, {
   finishTaskWorkspaceRestore: async () => { throw new Error("Restore is outside this read-only check"); },
   isTaskSessionMember: async () => admitted,
   getTaskSessionSnapshot: async () => ({ session }),
+  getPublicTaskSessionSnapshot: async () => ({ session }),
   heartbeat: async () => {},
   checkpointAgentReply: async () => {},
   applyTaskSessionAction: async (_id, action, actor, now) => {

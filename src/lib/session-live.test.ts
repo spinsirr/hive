@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import test from "node:test";
 import type { WebSocket } from "ws";
+import type { SessionEventKind } from "./session-events.ts";
 
 import { subscribeToTaskSession } from "./session-live.ts";
 import { createInitialTaskSessionState } from "./task-session.ts";
@@ -29,18 +30,19 @@ function fixture() {
   const reply = { id: "reply-1", body: "Streaming text", startedAt: 2, sequence: 1 };
   let allowed = true;
   let unsubscribed = 0;
-  let change: (kind: "snapshot" | "reply") => void = () => undefined;
+  let change: (kind: SessionEventKind) => void = () => undefined;
   const source = {
     sessionId: session.sessionId,
     authorized: async () => allowed,
     snapshot: async () => ({ session, members: [], activeMembers: [], typingMembers: [] }),
     reply: async () => reply,
+    presence: async () => ({ members: [], activeMembers: [], typingMembers: [] }),
     events: { subscribe: async (listener: { onChange: typeof change }) => {
       change = listener.onChange;
       return () => { unsubscribed++; };
     } },
   };
-  return { socket, source, change: (kind: "snapshot" | "reply") => change(kind),
+  return { socket, source, change: (kind: SessionEventKind) => change(kind),
     revoke: () => { allowed = false; }, unsubscribed: () => unsubscribed };
 }
 
@@ -100,4 +102,55 @@ test("slow viewers reconnect instead of accumulating unlimited output", async ()
   await settle();
   assert.equal(f.socket.closeCode, 1013);
   assert.equal(f.socket.sent.length, 0);
+});
+
+test("presence and reply notifications during a slow snapshot both reach the viewer", async () => {
+  const f = fixture();
+  const snapshot = await f.source.snapshot();
+  let release!: () => void;
+  const waiting = new Promise<void>((resolve) => { release = resolve; });
+  f.source.snapshot = async () => { await waiting; return snapshot; };
+  try {
+    await subscribeToTaskSession(f.socket, f.source);
+    await settle();
+    f.change("reply");
+    f.change("presence");
+    f.change("presence");
+    release();
+    await settle();
+    assert.deepEqual(f.socket.sent.map((data) => JSON.parse(data).type), ["snapshot", "reply", "presence"]);
+  } finally { release(); f.socket.close(); }
+});
+
+test("a queued full snapshot subsumes pending deltas without redundant task reads", async () => {
+  const f = fixture();
+  const snapshot = await f.source.snapshot();
+  let release!: () => void;
+  const waiting = new Promise<void>((resolve) => { release = resolve; });
+  f.source.snapshot = async () => { await waiting; return snapshot; };
+  try {
+    await subscribeToTaskSession(f.socket, f.source);
+    await settle();
+    f.change("presence");
+    f.change("reply");
+    f.change("snapshot");
+    f.change("reply");
+    f.change("presence");
+    release();
+    await settle();
+    assert.deepEqual(f.socket.sent.map((data) => JSON.parse(data).type), ["snapshot", "snapshot"]);
+  } finally { release(); f.socket.close(); }
+});
+
+test("presence notifications still recheck membership before reading or sending", async () => {
+  const f = fixture();
+  try {
+    await subscribeToTaskSession(f.socket, f.source);
+    await settle();
+    f.revoke();
+    f.change("presence");
+    await settle();
+    assert.equal(f.socket.closeCode, 4401);
+    assert.equal(f.socket.sent.length, 1);
+  } finally { f.socket.close(); }
 });

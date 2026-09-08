@@ -1,7 +1,7 @@
 import type { WebSocket } from "ws";
-import type { SessionEventHub } from "./session-events.ts";
+import type { SessionEventHub, SessionEventKind } from "./session-events.ts";
 import type { AgentReply } from "./task-session.ts";
-import type { TaskSessionSnapshot } from "./task-session-store.ts";
+import type { TaskSessionPresence, TaskSessionSnapshot } from "./task-session-store.ts";
 import { publicTaskSessionSnapshot } from "./task-session-snapshot.ts";
 
 /** Own a read-only socket, its database subscription, and bounded reconnect lifetime together. */
@@ -12,12 +12,13 @@ export async function subscribeToTaskSession(socket: Pick<WebSocket, "close" | "
   authorized: () => Promise<boolean>;
   snapshot: () => Promise<TaskSessionSnapshot>;
   reply: () => Promise<AgentReply | null>;
+  presence: () => Promise<TaskSessionPresence>;
   events: Pick<SessionEventHub, "subscribe">;
 }) {
   let stopped = false;
   let unsubscribe: (() => void) | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  let pending: "snapshot" | "reply" | undefined;
+  const pending = new Set<SessionEventKind>();
   let reading = false;
 
   function cleanup() {
@@ -39,13 +40,18 @@ export async function subscribeToTaskSession(socket: Pick<WebSocket, "close" | "
     if (reading || stopped) return;
     reading = true;
     try {
-      while (pending && !stopped) {
-        const kind = pending;
-        pending = undefined;
+      while (pending.size && !stopped) {
+        const kind = pending.has("snapshot") ? "snapshot" : pending.has("reply") ? "reply" : "presence";
+        // A snapshot subsumes both deltas. Reply and presence must never replace
+        // each other, including notifications arriving while a read is in flight.
+        if (kind === "snapshot") pending.clear();
+        else pending.delete(kind);
         if (!await source.authorized()) { close(4401); return; }
         const event = kind === "snapshot"
           ? { type: "snapshot", snapshot: publicTaskSessionSnapshot(await source.snapshot()) }
-          : { type: "reply", sessionId: source.sessionId, reply: await source.reply() };
+          : kind === "reply"
+            ? { type: "reply", sessionId: source.sessionId, reply: await source.reply() }
+            : { type: "presence", sessionId: source.sessionId, presence: await source.presence() };
         if (stopped || socket.readyState !== 1) return;
         if (socket.bufferedAmount > 1_048_576) { close(1013); return; }
         socket.send(JSON.stringify(event));
@@ -56,8 +62,9 @@ export async function subscribeToTaskSession(socket: Pick<WebSocket, "close" | "
       reading = false;
     }
   }
-  function refresh(kind: "snapshot" | "reply") {
-    if (pending !== "snapshot") pending = kind;
+  function refresh(kind: SessionEventKind) {
+    if (kind === "snapshot") pending.clear();
+    if (!pending.has("snapshot")) pending.add(kind);
     void drain();
   }
   try {

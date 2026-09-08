@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, gte, sql } from "drizzle-orm";
+import { and, desc, eq, getTableColumns, gte, sql } from "drizzle-orm";
 import { customAlphabet } from "nanoid";
 
 import { db } from "@/db";
@@ -29,6 +29,7 @@ export type TaskSessionSnapshot = {
   members: TeamMember[];
   typingMembers: MemberId[];
 };
+export type TaskSessionPresence = Pick<TaskSessionSnapshot, "activeMembers" | "members" | "typingMembers">;
 
 const ACTIVE_WINDOW_MS = 12_000;
 const randomSuffix = customAlphabet("abcdefghijklmnopqrstuvwxyz0123456789", 6);
@@ -210,7 +211,7 @@ export async function heartbeat(
       set: { lastSeen: new Date(now), typing },
     });
 
-  await db.execute(sessionNotification(sessionId));
+  await db.execute(sessionNotification(sessionId, "presence"));
 }
 
 export async function applyTaskSessionAction(
@@ -277,9 +278,8 @@ export async function applyTaskSessionAction(
     };
   });
 
-  const snapshot = await getTaskSessionSnapshot(sessionId, now);
   return {
-    snapshot: { ...snapshot, session: applied.session },
+    snapshot: { ...await getTaskSessionPresence(sessionId, now), session: applied.session },
     startedRun: applied.startedRun,
   };
 }
@@ -363,7 +363,7 @@ export async function appendHiveReply(
       .where(eq(taskSessions.id, sessionId));
     await transaction.execute(sessionNotification(sessionId));
   });
-  return getTaskSessionSnapshot(sessionId, now);
+  return getPublicTaskSessionSnapshot(sessionId, now);
 }
 
 export async function checkpointAgentReply(sessionId: string, replyId: string, body: string, sequence: number) {
@@ -422,7 +422,7 @@ export async function finishTaskWorkspaceRestore(sessionId: string, operationId:
     await transaction.update(taskSessions).set(sessionValues(next)).where(eq(taskSessions.id, sessionId));
     await transaction.execute(sessionNotification(sessionId));
   });
-  return getTaskSessionSnapshot(sessionId);
+  return getPublicTaskSessionSnapshot(sessionId);
 }
 
 /** Streaming does not repeatedly transfer files, diffs, or private Codex checkpoints. */
@@ -433,6 +433,17 @@ export async function getAgentReply(sessionId: string) {
   return row?.reply ?? null;
 }
 
+/** UI reads discard private recovery payloads in Postgres, before network transfer. */
+export async function getPublicTaskSessionSnapshot(sessionId: string, now = Date.now()): Promise<TaskSessionSnapshot> {
+  const [row] = await db.select({
+    ...getTableColumns(taskSessions),
+    workspace: sql<TaskSessionState["workspace"]>`(${taskSessions.workspace} - 'checkpoints') #- '{agentSession,resumeFrom}'`.as("workspace"),
+  }).from(taskSessions).where(eq(taskSessions.id, sessionId));
+  if (!row) throw new Error(`Session ${sessionId} could not be loaded.`);
+  return { session: sessionState(row), ...await getTaskSessionPresence(sessionId, now) };
+}
+
+/** Server-only recovery readers need the complete checkpoint data. Never use for UI synchronization. */
 export async function getTaskSessionSnapshot(
   sessionId: string,
   now = Date.now(),
@@ -445,8 +456,13 @@ export async function getTaskSessionSnapshot(
     throw new Error(`Session ${sessionId} could not be loaded.`);
   }
 
+  return { session: sessionState(storedSession), ...await getTaskSessionPresence(sessionId, now) };
+}
+
+/** Presence never loads the task's transcript, workspace, or native recovery history. */
+export async function getTaskSessionPresence(sessionId: string, now = Date.now()): Promise<TaskSessionPresence> {
   const activePresence = await db
-    .select()
+    .select({ memberId: taskSessionPresence.memberId, typing: taskSessionPresence.typing })
     .from(taskSessionPresence)
     .where(
       and(
@@ -469,7 +485,6 @@ export async function getTaskSessionSnapshot(
     .sort((left, right) => memberName(left).localeCompare(memberName(right)));
 
   return {
-    session: sessionState(storedSession),
     activeMembers,
     members,
     typingMembers,

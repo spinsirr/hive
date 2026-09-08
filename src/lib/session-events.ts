@@ -3,17 +3,17 @@ import { Client, type Notification } from "pg";
 
 import { isTaskSessionId } from "./task-session-id.ts";
 
-type EventKind = "snapshot" | "reply";
+export type SessionEventKind = "snapshot" | "reply" | "presence";
 type Subscription = {
   sessionId: string;
-  onChange: (kind: EventKind) => void;
+  onChange: (kind: SessionEventKind) => void;
   onDisconnect: () => void;
 };
 
 const CHANNEL = "hive_session_events";
 
 /** Execute inside the mutation transaction: delivery happens only after commit. */
-export function sessionNotification(sessionId: string, kind: EventKind = "snapshot") {
+export function sessionNotification(sessionId: string, kind: SessionEventKind = "snapshot") {
   return sql`select pg_notify(${CHANNEL}, ${JSON.stringify({ sessionId, kind })})`;
 }
 
@@ -49,7 +49,7 @@ export class SessionEventHub {
           let event: { sessionId?: unknown; kind?: unknown };
           try { event = JSON.parse(notification.payload); } catch { return; }
           if (!event || typeof event !== "object") return;
-          if (!isTaskSessionId(event.sessionId) || (event.kind !== "snapshot" && event.kind !== "reply")) return;
+          if (!isTaskSessionId(event.sessionId) || (event.kind !== "snapshot" && event.kind !== "reply" && event.kind !== "presence")) return;
           for (const listener of this.subscriptions) {
             if (listener.sessionId === event.sessionId) listener.onChange(event.kind);
           }

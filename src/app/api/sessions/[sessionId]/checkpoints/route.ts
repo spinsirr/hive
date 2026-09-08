@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { getSessionMember, HIVE_SESSION_COOKIE } from "@/lib/auth-session";
 import { isTaskSessionId } from "@/lib/task-session-id";
-import { getTaskSessionSnapshot, isTaskSessionMember, startTaskWorkspaceRestore, finishTaskWorkspaceRestore } from "@/lib/task-session-store";
+import { getTaskSessionSnapshot, getPublicTaskSessionSnapshot, isTaskSessionMember, startTaskWorkspaceRestore, finishTaskWorkspaceRestore } from "@/lib/task-session-store";
 import { readWorkspaceCheckpoints, WorkspaceReadError } from "@/lib/workspace-browser";
 import { restoreWorkspaceRequest, WorkspaceRestoreError } from "@/lib/workspace-restore-state";
 import { restoreSandboxCheckpoint } from "@/lib/workspace-restore";
@@ -38,7 +38,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ se
   try {
     const operation = await startTaskWorkspaceRestore(sessionId, parsed.data, member);
     started = operation.started;
-    if (!started) return NextResponse.json(publicTaskSessionSnapshot(await getTaskSessionSnapshot(sessionId)), { headers });
+    if (!started) return NextResponse.json(publicTaskSessionSnapshot(await getPublicTaskSessionSnapshot(sessionId)), { headers });
     // Do not couple a destructive operation to a browser tab closing. All
     // provider calls are bounded; the durable fence outlives this 60s worker.
     await restoreSandboxCheckpoint(operation.session, AbortSignal.timeout(45_000));

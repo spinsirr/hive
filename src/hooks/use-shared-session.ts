@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { AgentReply, TaskSessionAction } from "@/lib/task-session";
-import type { TaskSessionSnapshot } from "@/lib/task-session-store";
+import type { TaskSessionPresence, TaskSessionSnapshot } from "@/lib/task-session-store";
 import { receiveAgentReply, receiveTaskSessionSnapshot } from "@/lib/task-session-snapshot";
 
 type ClientTaskSessionAction = Exclude<
@@ -107,9 +107,16 @@ export function useSharedSession(sessionId: string, initialSnapshot: TaskSession
         try {
           const event = JSON.parse(message.data) as
             | { type: "snapshot"; snapshot: TaskSessionSnapshot }
-            | { type: "reply"; sessionId: string; reply: AgentReply | null };
+            | { type: "reply"; sessionId: string; reply: AgentReply | null }
+            | { type: "presence"; sessionId: string; presence: TaskSessionPresence };
           if (event.type === "snapshot") publish(event.snapshot);
           if (event.type === "reply") setSnapshot((previous) => receiveAgentReply(previous, event.sessionId, event.reply));
+          if (event.type === "presence") setSnapshot((previous) => event.sessionId === previous.session.sessionId ? {
+            ...previous,
+            activeMembers: event.presence.activeMembers,
+            typingMembers: event.presence.typingMembers,
+            members: event.presence.members,
+          } : previous);
           setSyncing(false);
           setSyncError(false);
         } catch {

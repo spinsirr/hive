@@ -18,6 +18,7 @@ mock.module(new URL("../src/lib/auth-session.ts", import.meta.url).href, { named
 mock.module(new URL("../src/lib/task-session-store.ts", import.meta.url).href, { namedExports: {
   isTaskSessionMember: async () => admitted,
   getTaskSessionSnapshot: async () => snapshot(),
+  getPublicTaskSessionSnapshot: async () => snapshot(),
   withTaskWorkspaceRead: async (_id, read) => { if (session.workspace.restore) throw new WorkspaceRestoreError(409, "Workspace is being restored."); return read(session); },
   startTaskWorkspaceRestore: async (_id, request, author) => {
     const previous = session; session = beginWorkspaceRestore(session, request, author);

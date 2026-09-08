@@ -17,7 +17,7 @@ import {
   appendHiveReply,
   applyTaskSessionAction,
   checkpointAgentReply,
-  getTaskSessionSnapshot,
+  getPublicTaskSessionSnapshot,
   heartbeat,
   isTaskSessionMember,
 } from "@/lib/task-session-store";
@@ -55,7 +55,7 @@ export async function GET(request: NextRequest, context: TaskSessionRouteContext
   if (!auth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  return sessionResponse(await getTaskSessionSnapshot(auth.sessionId));
+  return sessionResponse(await getPublicTaskSessionSnapshot(auth.sessionId));
 }
 
 export async function POST(request: NextRequest, context: TaskSessionRouteContext) {
