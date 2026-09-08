@@ -6,7 +6,7 @@ Hive is a multiplayer coding agent: two or more teammates share one agent conver
 
 **Live app:** [hive-roan-mu.vercel.app](https://hive-roan-mu.vercel.app/)
 
-**Release boundary — September 7–8:** `396d80f` is deployed, including file caching, wider inline threads and instant conversation entry. Two real accounts have now verified frozen whole-thread queuing and a real checkpoint round trip in a separate acceptance task. Gateway 429 responses interrupted the coding work before tests ran; successful implementation and agent continuation after rollback are still acceptance gaps. The approved formal task was left untouched. See the dated [presentation evidence](docs/PRESENTATION_NOTES.md#evidence-log).
+**Release boundary — September 8:** `f3f602f` deployed bounded Gateway recovery on top of the file-cache, inline-thread and conversation-entry fixes. A post-restore continuation still hit 429 after five successful model calls and two delayed retries. Two real accounts have verified frozen whole-thread queuing and a real checkpoint round trip, but the independent coding task has not passed its requested checks. The approved formal task was left untouched. See the dated [presentation evidence](docs/PRESENTATION_NOTES.md#evidence-log).
 
 ## Try the app
 
@@ -138,6 +138,8 @@ The initial incremental-text check failed because the SDK's JSONL path supplied 
 
 `pnpm test` also checks native-event translation through the real HarnessAgent and reply writer, including fresh-process resume and partial command retention on failure. Gateway policy tests cover bounded retries, cancellation and accepted-stream interruptions; the harness boundary excludes raw sandbox logs from request diagnostics.
 
+The real Runs-component regression distinguishes process evidence from a test verdict: exit zero displays **Exit 0**, not **Passed**. Nonzero codes and incomplete commands remain distinct, and output stays available verbatim. A command can swallow its own failure, so neither an HTTP 200 model call nor a zero shell exit code proves the requested tests passed.
+
 Opt-in diagnostics use loopback fixtures, not a paid model or real credentials:
 
 ```bash
@@ -152,6 +154,8 @@ Longer model runs have returned 429; a later successful continuation does not es
 At the September 7, 23:23 UTC preflight, the formal task's Runs view read **No commands in this turn** and its workspace was **Approved**. That task remains untouched. With explicit owner authorization, a separate acceptance task admitted a real second account and attached the repository after creation. Two replies stayed human-only, were queued together during a read-only run, and were applied after it ended. A third reply added after queuing remained outside the frozen two-reply steer. The second account also reloaded while a continuation was visibly working and recovered its transcript without resending the request.
 
 Two Gateway 429 responses prevented completion of the new coding task. The sandbox retains one real accessible-label change and a successful locked dependency install, but no new regression test or successful test/typecheck command. Real Restore operations returned the workspace to its clean baseline and then to the partial-work checkpoint: the diff, dependency directory and recorded commands changed with the selected checkpoint, while all three replies and the two-reply steering boundary remained. The restored failed run did not become approvable or restart automatically. Native Codex continuation after rollback and restoration with a nonempty pending queue were not exercised against the model. Those limits, fresh passing command evidence and a timed rehearsal remain explicit acceptance boundaries.
+
+After the recovery transport deployed, one authorized continuation ran from the restored partial-work checkpoint at **2026-09-08 02:36–02:38 UTC**. Five model calls returned 200 before three requests returned 429, with **17.455s** and **33.764s** of backoff. The turn stopped at its retry limit. Runs exposed two malformed edit commands whose errors were masked with `|| true`; Diff still contained only the prior source line, and no test/typecheck command ran. A post-restore native turn was therefore attempted, but successful context-aware completion remains unverified. No model or billing setting changed during that attempt.
 
 `pnpm typecheck` generates Next.js route types before running TypeScript, so it also works in a freshly cloned workspace that has not run a build or development server.
 

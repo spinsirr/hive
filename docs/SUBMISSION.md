@@ -2,7 +2,7 @@
 
 Draft prepared for owner review. Not yet submitted; the remaining live acceptance checks and reviewer access are not complete.
 
-Release note: latest application release `396d80f` deployed successfully on September 7. The canonical dashboard, public [UI demo](https://hive-roan-mu.vercel.app/demo), file navigation/cache and conversation entry have bounded UI verification. A separate owner-authorized task now has real two-account Thread/queue acceptance and a checkpoint filesystem/evidence round trip. Two Gateway 429 responses interrupted its coding task before tests/typecheck; successful completion and native continuation after rollback remain unverified. Deployment authorization does not authorize repository publication or external submission.
+Release note: `f3f602f` deployed bounded Gateway recovery on September 8. The canonical dashboard, public [UI demo](https://hive-roan-mu.vercel.app/demo), file navigation/cache and conversation entry have bounded UI verification. The separate owner-authorized task has real two-account Thread/queue acceptance and a checkpoint filesystem/evidence round trip. Its post-restore continuation still stopped on 429 after two delayed retries; no requested test/typecheck command ran. Successful coding completion after rollback remains unverified. Deployment authorization does not authorize repository publication or external submission.
 
 ## Four submission items
 
