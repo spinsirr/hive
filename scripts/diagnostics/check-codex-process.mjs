@@ -1,6 +1,7 @@
 // Opt-in integration: the pinned real Codex process against a loopback-only
 // Responses fixture. No account credentials or paid model are used.
-// node scripts/diagnostics/check-codex-process.mjs /path/to/isolated/sdk-install
+// node scripts/diagnostics/check-codex-process.mjs /path/to/isolated/sdk-install [openai/gpt-5.1-codex-mini]
+// Omitting the model retains the original Luna model-switch regression.
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
@@ -11,6 +12,7 @@ import os from "node:os";
 import { runCodexAppServerTurn } from "../../src/lib/codex-bridge/app-server.mjs";
 
 const installation = process.argv[2];
+const resumeModel = process.argv[3] ?? "openai/gpt-5.6-luna";
 assert.ok(installation, "Pass an isolated installation of @openai/codex-sdk@0.149.1");
 const sdkEntry = await realpath(path.join(installation, "node_modules/@openai/codex-sdk/package.json"));
 const require = createRequire(sdkEntry);
@@ -53,13 +55,27 @@ const provider = createServer(async (request, response) => {
     send({ type: "response.created", response: { id: `fixture-${requestNumber}` } });
     if (requestNumber === 2) {
       assert.match(JSON.stringify(body.input), /HIVE-NATIVE-MEMORY-27/, "The resumed native history must contain the first turn");
-      // The pinned CLI exposes Luna's tools in the prompt, through code mode,
-      // instead of the older JSON-schema tools array. Exercise that real path.
-      assert.match(JSON.stringify(body.input), /declare const tools: \{ exec_command/);
-      send({ type: "response.output_item.done", item: {
-        type: "custom_tool_call", call_id: "native-command", name: "exec", namespace: "functions",
-        input: 'text(await tools.exec_command({ cmd: "printf native-check", yield_time_ms: 1000 }));',
-      } });
+      if (resumeModel === "openai/gpt-5.6-luna") {
+        // Luna's pinned native tools are embedded in the prompt, in code mode.
+        assert.match(JSON.stringify(body.input), /declare const tools: \{ exec_command/);
+        send({ type: "response.output_item.done", item: {
+          type: "custom_tool_call", call_id: "native-command", name: "exec", namespace: "functions",
+          input: 'text(await tools.exec_command({ cmd: "printf native-check", yield_time_ms: 1000 }));',
+        } });
+      } else {
+        assert.equal(resumeModel, "openai/gpt-5.1-codex-mini");
+        const tools = body.tools.flatMap((tool) => tool.type === "namespace"
+          ? tool.tools.map((nested) => ({ ...nested, namespace: tool.name })) : [tool]);
+        const shell = tools.find((tool) => ["exec_command", "shell_command", "shell"].includes(tool.name));
+        assert.ok(shell, `No shell tool in ${tools.map((tool) => tool.name).join(", ")}`);
+        const args = shell.name === "exec_command" ? { cmd: "printf native-check", yield_time_ms: 1000 }
+          : shell.name === "shell" ? { command: ["/bin/sh", "-c", "printf native-check"] }
+            : { command: "printf native-check" };
+        send({ type: "response.output_item.done", item: {
+          type: "function_call", call_id: "native-command", name: shell.name,
+          ...(shell.namespace ? { namespace: shell.namespace } : {}), arguments: JSON.stringify(args),
+        } });
+      }
     } else {
       if (requestNumber === 4) {
         assert.deepEqual(body, requests[2], "Only the rejected model request may be retried, not a new turn");
@@ -97,7 +113,7 @@ try {
     const started = Date.now();
     let caught;
     try { await runCodexAppServerTurn({
-      start: { model: turnNumber === 0 ? "gpt-5-mini" : "openai/gpt-5.6-luna", reasoningEffort: "low", prompt: turnNumber === 0 ? "Remember HIVE-NATIVE-MEMORY-27." : "Run the check.", webSearch: false },
+      start: { model: turnNumber === 0 ? "gpt-5-mini" : resumeModel, reasoningEffort: "low", prompt: turnNumber === 0 ? "Remember HIVE-NATIVE-MEMORY-27." : "Run the check.", webSearch: false },
       workdir: fixtureDirectory, threadId,
       onThread(id) { if (threadId) assert.equal(id, threadId); threadId = id; },
       launch(workdir) {
@@ -133,7 +149,7 @@ try {
   assert.equal(requestNumber, 8);
   assert.equal(requests[0].model, "openai/gpt-5-mini");
   for (const request of requests.slice(1)) {
-    assert.equal(request.model, "openai/gpt-5.6-luna", "A resumed native thread must use the newly selected coding model");
+    assert.equal(request.model, resumeModel, "A resumed native thread must use the newly selected coding model");
     assert.equal(request.reasoning.effort, "low", "Changing models must preserve the explicit reasoning level");
   }
   assert.equal(launches, 4, "One native process per requested turn, with no restart on failure");
