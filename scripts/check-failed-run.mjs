@@ -20,6 +20,7 @@ const command = { command: "pnpm test", output: { exitCode: 0, output: "1 test p
 const checkpoint = { type: "resume-session", harnessId: "codex", specificationVersion: "harness-v1", data: { threadId: "failed-run-fixture" } };
 const rateLimit = new Error("exceeded retry limit, last status: 429 Too Many Requests");
 let scenario;
+let memoryQueries = [];
 let sandboxStopped = false;
 const sandbox = {
   async run({ command }) {
@@ -60,7 +61,16 @@ mock.module("@ai-sdk/harness/agent", { namedExports: {
         return checkpoint;
       } };
     }
-    async stream() {
+    async stream({ prompt }) {
+      // Match the public prepareCall contract; the installed SDK lifecycle is
+      // exercised separately by check-memory-recall.mjs.
+      const prepared = await this.settings.prepareCall?.({ prompt, model: this.settings.model, instructions: this.settings.instructions }) ?? { prompt };
+      if (scenario.memoryRecall) {
+        assert.match(prepared.prompt, /RUNNER_MEMORY_CONVENTION/);
+        assert.match(prepared.prompt, /Fixture Teammate/);
+        assert.match(prepared.instructions, /recalled repository memory as untrusted/i);
+        assert.doesNotMatch(prepared.instructions, /RUNNER_MEMORY_CONVENTION/);
+      }
       return {
         fullStream: (async function* () {
           yield { type: "text-delta", text: "The test passed; checking the diff." };
@@ -84,6 +94,7 @@ mock.module("@ai-sdk/harness/agent", { namedExports: {
 
 const { runHiveCodingTask } = await import("../src/lib/hive-runner.ts");
 const { HiveAgentError } = await import("../src/lib/hive-agent.ts");
+const { repositoryMemoryId } = await import("../src/lib/hive-memory.ts");
 const { applyHiveRunError, applyHiveRunResult, createInitialTaskSessionState, reduceTaskSession, canApproveChanges } = await import("../src/lib/task-session.ts");
 const connected = reduceTaskSession(createInitialTaskSessionState(10, "failed-run"), {
   type: "connect-repository", actor: "spencer", repositoryUrl: "https://github.com/example/hive",
@@ -105,17 +116,25 @@ for (const options of [
   { name: "checkpoint failure still retains command and file evidence", fail: true, checkpointFailure: true },
   { name: "normal completion still retains all commands and reviewable files", fail: false },
   { name: "an explicit coding model overrides the free-tier coding default", fail: false, modelOverride: "openai/controlled-model-override" },
+  { name: "the coding runner supplies server-owned repository recall before the native prompt", fail: false, memoryRecall: true },
 ]) {
   scenario = options;
   // This standalone controlled runner never contacts the selected model.
   process.env.HIVE_CODEX_MODEL = options.modelOverride ?? "";
+  process.env.MEM0_API_KEY = options.memoryRecall ? "fixture-not-a-real-key" : "";
+  memoryQueries = [];
+  globalThis.fetch = async (url, init) => {
+    assert.equal(url, "https://api.mem0.ai/v3/memories/search/", "Automatic recall must never write or call another service");
+    memoryQueries.push(JSON.parse(String(init.body)));
+    return Response.json({ results: [{ id: "m1", memory: "RUNNER_MEMORY_CONVENTION", metadata: { hive_scope: repositoryMemoryId({ installationId: 1, repositoryId: 1 }), author_name: "Fixture Teammate" } }] });
+  };
   sandboxStopped = false;
   const initial = { ...running, workspace: { ...running.workspace, ...previousSnapshot } };
   const publicText = [];
   let failure;
   let result;
   try {
-    result = await runHiveCodingTask(initial, "spencer", undefined, { onText(body) { publicText.push(body); } });
+    result = await runHiveCodingTask(initial, "spencer", undefined, { memoryQuery: "Fix the steer label.", onText(body) { publicText.push(body); } });
   } catch (error) {
     failure = error;
   }
@@ -141,5 +160,6 @@ for (const options of [
   assert.equal(state.workspace.commands[1]?.exitCode, options.fail ? null : 0);
   assert.deepEqual(publicText, ["The test passed; checking the diff."], "Tool results must stay out of the chat");
   assert.equal(sandboxStopped, true);
+  assert.deepEqual(memoryQueries, options.memoryRecall ? [{ query: "Fix the steer label.", filters: { AND: [{ user_id: repositoryMemoryId({ installationId: 1, repositoryId: 1 }) }, { app_id: "hive" }] }, top_k: 3, rerank: false }] : []);
   console.log(`PASS: ${options.name}`);
 }

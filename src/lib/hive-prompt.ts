@@ -27,9 +27,12 @@ export function buildHiveRunInput(
         ? { kind: "workspace-annotation" as const }
         : undefined);
   let steer: string | undefined;
+  // Memory search uses the selected contribution, never the expanded team prompt.
+  let memoryQuery = action.type === "send-message" ? action.body : undefined;
 
   if (source?.kind === "message-thread") {
     if (!activeSteer) throw new Error("The steered thread is no longer available.");
+    memoryQuery = session.title;
     steer = [`Steer requested by: ${actorName}`, `Run started by: ${resolveMember(action.actor, members).name}`, activeSteer.body].join("\n\n");
   } else if (source?.kind === "message-annotation") {
     const message = session.messages.find(
@@ -41,6 +44,7 @@ export function buildHiveRunInput(
     if (!message || !annotation) {
       throw new Error("The steered annotation is no longer available.");
     }
+    memoryQuery = activeSteer?.body ?? annotation.body;
     steer = [
       "Promoted annotation. Authorship below comes from saved team records. Do not infer the annotation author from the parent message or the teammate starting this run.",
       `Annotation author: ${resolveMember(annotation.authorId, members).name}`,
@@ -57,19 +61,21 @@ export function buildHiveRunInput(
       (message) => message.id === source.messageId,
     );
     if (!message) throw new Error("The queued message is no longer available.");
+    memoryQuery = activeSteer?.body ?? message.body;
     steer = [
       `Message author: ${message.name}`,
       `Run started by: ${resolveMember(action.actor, members).name}`,
       `Message to execute:\n${activeSteer?.body ?? message.body}`,
     ].join("\n\n");
   } else if (source?.kind === "workspace-annotation") {
+    memoryQuery = activeSteer?.body ?? session.annotation.text;
     steer = [
       `Steer requested by: ${actorName}`,
       `Annotation to execute:\n${activeSteer?.body ?? session.annotation.text}`,
     ].join("\n\n");
   }
 
-  return { actor, actorName, steer };
+  return { actor, actorName, steer, memoryQuery };
 }
 
 export function buildHivePrompt(

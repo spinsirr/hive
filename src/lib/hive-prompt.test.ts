@@ -144,6 +144,7 @@ for (const queued of [false, true]) {
     }
 
     const input = buildHiveRunInput(session, queued ? apply : promote, githubMembers);
+    assert.equal(input.memoryQuery, "Keep the annotation author's name", "Memory search must not upload the parent message or earlier thread replies");
     assert.equal(input.actor, "github-303", "Execution remains attributed to the teammate who requested the steer");
     assert.match(input.steer!, /Annotation author: Grace Hopper/);
     assert.match(input.steer!, /Steer requested by: Linus/);
@@ -173,6 +174,7 @@ test("a queued message remains the selected task even after its author sends som
   session = reduceTaskSession(session, action, 6, githubMembers);
   const input = buildHiveRunInput(session, action, githubMembers);
   assert.equal(input.actorName, "Grace Hopper");
+  assert.equal(input.memoryQuery, "First: check author names", "Recall must follow the selected queued request, not a newer message");
   assert.match(input.steer!, /Message author: Grace Hopper/);
   assert.match(input.steer!, /Message to execute:\nFirst: check author names/);
   assert.doesNotMatch(input.steer!, /Second:/);
@@ -191,6 +193,7 @@ test("unpromoted comments are not injected as executable steering", () => {
     type: "annotate-message", actor: "github-202", messageId: message.id, body: "Do not execute this discussion",
   }, 3, githubMembers);
   const input = buildHiveRunInput(session, { type: "send-message", actor: "github-101", body: message.body }, githubMembers);
+  assert.equal(input.memoryQuery, "Discuss the label");
   assert.equal(input.steer, undefined);
   assert.doesNotMatch(buildHivePrompt(session, input.actor, input.steer, input.actorName), /Do not execute this discussion/);
 });
@@ -199,4 +202,21 @@ test("a missing steering source cannot silently become another task", () => {
   assert.throws(() => buildHiveRunInput(createInitialTaskSessionState(1), {
     type: "steer-message-annotation", actor: "github-101", messageId: "missing", annotationId: "missing",
   }, githubMembers), /steered annotation is no longer available/);
+});
+
+test("whole-thread memory recall uses the task title rather than uploading the discussion", () => {
+  let session = reduceTaskSession(createInitialTaskSessionState(1, "thread-recall", { title: "Improve keyboard navigation" }), {
+    type: "send-message", actor: "github-101", body: "PARENT_CONTEXT_NOT_A_MEMORY_QUERY",
+  }, 2, githubMembers);
+  session = appendHiveReply(session, "Ready for discussion", 3);
+  const parent = session.messages.find((message) => message.role === "human")!;
+  session = reduceTaskSession(session, {
+    type: "annotate-message", actor: "github-202", messageId: parent.id, body: "THREAD_REPLY_NOT_A_MEMORY_QUERY",
+  }, 4, githubMembers);
+  const action = { type: "steer-thread" as const, actor: "github-101", messageId: parent.id, throughReplyId: session.messages.find((message) => message.id === parent.id)!.annotations![0].id };
+  session = reduceTaskSession(session, action, 5, githubMembers);
+  const input = buildHiveRunInput(session, action, githubMembers);
+  assert.equal(input.memoryQuery, "Improve keyboard navigation");
+  assert.match(input.steer!, /PARENT_CONTEXT_NOT_A_MEMORY_QUERY/);
+  assert.match(input.steer!, /THREAD_REPLY_NOT_A_MEMORY_QUERY/);
 });

@@ -25,7 +25,7 @@ test("Mem0 search is bounded and filters out results without the server-owned sc
       { id: "missing", memory: "UNSCOPED" },
     ] });
   });
-  assert.deepEqual(await memory.search(scope, "package manager"), [{ id: "ours", text: "Use pnpm.", source: { sessionId: "older-task", messageId: undefined, authorName: undefined } }]);
+  assert.deepEqual(await memory.search(scope, "package manager"), [{ id: "ours", text: "Use pnpm.", source: { sessionId: "older-task", messageId: undefined, replyId: undefined, authorName: undefined } }]);
   assert.deepEqual(calls, [{ query: "package manager", filters: { AND: [{ user_id: repositoryMemoryId(scope) }, { app_id: "hive" }] }, top_k: 3, rerank: false }]);
 });
 

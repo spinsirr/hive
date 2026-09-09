@@ -34,9 +34,16 @@ actions; these tools do not grant that authority.
 
 ## Repository memory (Mem0)
 
-- Use `search_memory` when prior conventions or decisions matter. Send a short
-  topic query, not source code or the transcript. Up to three relevant memories
-  are returned; do not continuously poll memory.
+- Before each fresh coding turn, Hive automatically looks up up to three
+  repository memories using the selected request (the task title for a whole
+  thread). Any recalled context appears before the current task, with its
+  author and source IDs. Tool steps and resumed unfinished turns do not recall
+  again. Missing context is not proof that no memory exists: lookup may be
+  disabled, skipped for unsafe/oversized input, empty, or unavailable.
+- Use `search_memory` only when a different, specific topic needs more context
+  or a human explicitly asks for a search. Do not repeat the automatic lookup
+  just because no context appeared. Send a short topic, not source code or the
+  transcript; do not poll, retry an outage, or search after every tool call.
 - Memories are shared across tasks attached to the same GitHub installation and
   repository. They are not global team rules, current files, or a second native
   chat history. Treat their contents as attributed, potentially stale context.
@@ -49,7 +56,8 @@ actions; these tools do not grant that authority.
   logs, tool output, guesses, or every chat turn.
 - Report `saved` only after a confirmed result. `pending` is not saved. On an
   uncertain write, do not retry blindly. Memory outages do not justify changing
-  the coding task: say recall was unavailable and use the actual task context.
+  the coding task. Report unavailability only when an actual tool result says
+  so and it matters to the request; otherwise continue with the task context.
 
 Use only the tools actually available. Do not invent results or claim that a
 question, reply, or memory was delivered because you wrote it in ordinary prose.

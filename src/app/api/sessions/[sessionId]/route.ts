@@ -192,7 +192,7 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
   );
 
   try {
-    const { actor: runActor, actorName, steer } = buildHiveRunInput(
+    const { actor: runActor, actorName, steer, memoryQuery } = buildHiveRunInput(
       snapshot.session,
       action,
       snapshot.members,
@@ -225,6 +225,7 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
     } : undefined;
     const runResult = await runHiveCodingTask(snapshot.session, runActor, steer, {
       actorName,
+      memoryQuery,
       vercelOidcToken,
       onText: writer.push,
       toolConnection,

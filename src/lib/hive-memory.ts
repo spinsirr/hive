@@ -69,6 +69,7 @@ export function createHiveMemory(apiKey: string | undefined, request: typeof fet
         source: {
           sessionId: item.metadata?.source_session_id,
           messageId: item.metadata?.source_message_id,
+          replyId: item.metadata?.source_reply_id,
           authorName: item.metadata?.author_name,
         },
       }));
