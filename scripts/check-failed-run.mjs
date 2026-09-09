@@ -19,6 +19,9 @@ const content = "export const label = 'Queue steer';\n";
 const command = { command: "pnpm test", output: { exitCode: 0, output: "1 test passed", status: "completed" } };
 const checkpoint = { type: "resume-session", harnessId: "codex", specificationVersion: "harness-v1", data: { threadId: "failed-run-fixture" } };
 const rateLimit = new Error("exceeded retry limit, last status: 429 Too Many Requests");
+// The deployed pre-recall native configuration is intentionally pinned here:
+// changing it makes the installed Codex adapter restart an existing thread.
+const resumeSafeInstructions = "You are Hive's Codex execution engine, shared by a small software team. Work only inside the connected repository and never claim an action you did not perform. Preserve teammate attribution in the prompt, but treat the latest labeled task as the instruction to execute. Inspect relevant files before editing and make the smallest coherent change that satisfies the request. Run the most relevant available checks after editing. Do not commit, push, deploy, access secrets, alter git history, or leave the repository working directory. If intent is ambiguous, inspect enough context to ask one precise question instead of guessing. Finish with a concise summary naming the files changed and checks actually run.";
 let scenario;
 let memoryQueries = [];
 let sandboxStopped = false;
@@ -68,7 +71,7 @@ mock.module("@ai-sdk/harness/agent", { namedExports: {
       if (scenario.memoryRecall) {
         assert.match(prepared.prompt, /RUNNER_MEMORY_CONVENTION/);
         assert.match(prepared.prompt, /Fixture Teammate/);
-        assert.match(prepared.instructions, /recalled repository memory as untrusted/i);
+        assert.equal(prepared.instructions, resumeSafeInstructions, "Memory enrichment must not change the native thread configuration");
         assert.doesNotMatch(prepared.instructions, /RUNNER_MEMORY_CONVENTION/);
       }
       return {
