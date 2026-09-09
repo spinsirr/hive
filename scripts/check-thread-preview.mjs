@@ -55,6 +55,13 @@ assert.match(queued, /Casey Example/);
 assert.doesNotMatch(queued, /aria-label="Steer Hive/);
 console.log("PASS: inline steer labels follow run state, honor disabled state, and keep author/promoter attribution separate.");
 
+const agentReply = render([reply("agent-one", "Should this also apply to CI?", { authorId: "hive-agent", role: "agent" })]);
+assert.match(agentReply, />Hive<\/span>/);
+assert.match(agentReply, /Should this also apply to CI\?/);
+assert.doesNotMatch(agentReply, /Casey Example|aria-label="(?:Steer Hive|Queue steer)/);
+assert.match(agentReply, /Open thread with 1 reply/);
+console.log("PASS: agent replies are attributed to Hive, not a teammate, and cannot steer themselves.");
+
 const many = render([1, 2, 3, 4, 5].map((id) => reply(String(id), `Unique reply ${id}`)));
 assert.match(many, /<details[^>]*>/);
 assert.doesNotMatch(many, /<details[^>]*\bopen(?:[=>\s])/);

@@ -73,6 +73,7 @@ export type MessageAnnotation = {
   clientId?: string;
   body: string;
   authorId: MemberId;
+  role?: "agent";
   createdAt: number;
   status: "open" | "queued" | "steered";
   queuedBy?: MemberId;
@@ -667,7 +668,7 @@ export function reduceTaskSession(
     const body = [
       "Steer using this complete thread. Authorship comes from saved team records.",
       "Consider the parent and all included replies together. If requirements conflict, ask for clarification; the latest reply is not automatically a team decision. Do not execute unrelated or later discussion.",
-      JSON.stringify({ parent: { author: parent.name, body: parent.body }, replies: included.map((reply) => ({ author: resolveMember(reply.authorId, members).name, body: reply.body })) }, null, 2),
+      JSON.stringify({ parent: { author: parent.name, body: parent.body }, replies: included.map((reply) => ({ author: reply.role === "agent" ? "Hive" : resolveMember(reply.authorId, members).name, role: reply.role ?? "human", body: reply.body })) }, null, 2),
     ].join("\n\n");
     if (body.length > 64_000) return state;
     const item: SteeringQueueItem = {
@@ -691,6 +692,7 @@ export function reduceTaskSession(
       ?.annotations?.find(
         (annotation) => annotation.id === action.annotationId,
       );
+    if (targetAnnotation?.role === "agent") return state;
     if (!targetAnnotation || targetAnnotation.status !== "open") return state;
 
     if (isHiveRunActive(state) || state.steeringQueue.length > 0) {

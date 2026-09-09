@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Check, FolderGit2, Plus } from "lucide-react";
+import { ArrowRight, Check, Eye, FolderGit2, Plus } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
@@ -58,14 +58,14 @@ function NewTask({ createAction }: { createAction: (formData: FormData) => Promi
   );
 }
 
-export function TaskDashboard({ tasks, memberName, memberInitials, loadedAt, createAction, homeHref = "/", onOpenTask }: {
+export function TaskDashboard({ tasks, memberName, memberInitials, loadedAt, createAction, homeHref = "/", onPreviewTask }: {
   tasks: DashboardTask[];
   memberName: string;
   memberInitials: string;
   loadedAt: number;
   createAction: (formData: FormData) => Promise<void>;
   homeHref?: string;
-  onOpenTask?: (task: DashboardTask) => void;
+  onPreviewTask?: (task: DashboardTask) => void;
 }) {
   const [filter, setFilter] = useState<DashboardTask["lifecycle"]>("active");
   const visible = dashboardTasks(tasks, filter);
@@ -91,8 +91,8 @@ export function TaskDashboard({ tasks, memberName, memberInitials, loadedAt, cre
       <div className="mx-auto max-w-5xl px-5 py-9 sm:px-8 sm:py-12">
         <div className="mb-8 flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold tracking-[-0.04em]">Tasks</h1>
-            <p className="mt-1.5 text-sm text-[#737373]">Your shared work with Hive.</p>
+            <h1 className="text-2xl font-semibold tracking-[-0.04em]">{onPreviewTask ? "Sample tasks" : "Tasks"}</h1>
+            <p className="mt-1.5 text-sm text-[#737373]">{onPreviewTask ? "Explore the dashboard. These are not live tasks." : "Your shared work with Hive."}</p>
           </div>
           <NewTask createAction={async (formData) => {
             await createAction(formData);
@@ -131,6 +131,7 @@ export function TaskDashboard({ tasks, memberName, memberInitials, loadedAt, cre
                       <p className="flex items-center gap-2 text-sm font-medium tracking-[-0.015em]">
                         {task.lifecycle === "completed" ? <Check aria-hidden="true" className="size-3.5 shrink-0 text-[#888]" /> : null}
                         <span className="truncate" title={task.title}>{task.title}</span>
+                        {onPreviewTask ? <span className="shrink-0 rounded bg-[#f2f2f2] px-1.5 py-0.5 text-[10px] font-normal tracking-normal text-[#737373]">Preview</span> : null}
                       </p>
                       <p className="mt-1 truncate text-[11px] text-[#888] sm:hidden">{task.repositoryName ?? "No repository attached"}</p>
                     </div>
@@ -139,13 +140,13 @@ export function TaskDashboard({ tasks, memberName, memberInitials, loadedAt, cre
                       <span className="truncate">{task.repositoryName ?? "Not attached"}</span>
                     </span>
                     <time className="text-[11px] text-[#888]" dateTime={new Date(task.updatedAt).toISOString()}>{taskUpdatedLabel(task.updatedAt, loadedAt)}</time>
-                    <ArrowRight aria-hidden="true" className="hidden size-3.5 text-[#aaa] group-hover:text-[#171717] sm:block" />
+                    {onPreviewTask ? <Eye aria-hidden="true" className="hidden size-3.5 text-[#aaa] group-hover:text-[#171717] sm:block" /> : <ArrowRight aria-hidden="true" className="hidden size-3.5 text-[#aaa] group-hover:text-[#171717] sm:block" />}
                   </>
                 );
                 return (
                   <li key={task.id}>
-                    {onOpenTask ? (
-                      <button className={rowClassName} onClick={() => onOpenTask(task)} type="button">{content}</button>
+                    {onPreviewTask ? (
+                      <button aria-label={`Preview sample task: ${task.title}`} className={rowClassName} onClick={() => onPreviewTask(task)} type="button">{content}</button>
                     ) : (
                       <Link className={rowClassName} href={`/sessions/${task.id}`}>{content}</Link>
                     )}

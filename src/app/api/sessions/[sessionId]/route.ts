@@ -9,6 +9,7 @@ import { hiveErrorCopy } from "@/lib/hive-error-copy";
 import { isClientSubmissionId } from "@/lib/message-draft";
 import { runHiveCodingTask } from "@/lib/hive-runner";
 import { buildHiveRunInput } from "@/lib/hive-prompt";
+import { createHiveToolToken, hiveToolEndpoint } from "@/lib/hive-tool-token";
 import type { TaskSessionAction } from "@/lib/task-session";
 import { isTaskSessionId } from "@/lib/task-session-id";
 import { publicTaskSessionSnapshot } from "@/lib/task-session-snapshot";
@@ -18,7 +19,6 @@ import {
   applyTaskSessionAction,
   checkpointAgentReply,
   getPublicTaskSessionSnapshot,
-  heartbeat,
   isTaskSessionMember,
 } from "@/lib/task-session-store";
 import type { TaskSessionSnapshot } from "@/lib/task-session-store";
@@ -69,12 +69,6 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
   const payload: unknown = await request.json().catch(() => null);
   if (!payload || typeof payload !== "object" || !("type" in payload)) {
     return NextResponse.json({ error: "Invalid session action" }, { status: 400 });
-  }
-
-  if (payload.type === "heartbeat") {
-    const typing = "typing" in payload && payload.typing === true;
-    await heartbeat(sessionId, member.id, typing);
-    return new NextResponse(null, { status: 204 });
   }
 
   if (
@@ -225,10 +219,17 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
       );
     }
 
+    const toolSecret = process.env.HIVE_INVITE_SECRET?.trim();
+    const callbackUrl = process.env.GITHUB_APP_CALLBACK_URL?.trim();
+    const toolConnection = toolSecret && callbackUrl ? {
+      url: hiveToolEndpoint(sessionId, callbackUrl),
+      token: createHiveToolToken({ sessionId, memberId: member.id, runId: replyId }, toolSecret),
+    } : undefined;
     const runResult = await runHiveCodingTask(snapshot.session, runActor, steer, {
       actorName,
       vercelOidcToken,
       onText: writer.push,
+      toolConnection,
     });
     await writer.close();
     return sessionResponse(

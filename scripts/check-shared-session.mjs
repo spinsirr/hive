@@ -17,9 +17,11 @@ class Socket {
   static OPEN = 1;
   static CONNECTING = 0;
   readyState = 0;
+  sent = [];
   constructor(url) { this.url = url; sockets.push(this); }
   open() { this.readyState = 1; this.onopen?.(); }
   receive(value) { this.onmessage?.({ data: JSON.stringify(value) }); }
+  send(value) { this.sent.push(JSON.parse(value)); }
   close(code = 1000) { this.readyState = 3; this.onclose?.({ code }); }
 }
 globalThis.WebSocket = Socket;
@@ -30,8 +32,7 @@ let refresh;
 globalThis.fetch = async (url, options) => {
   requests.push({ url, options });
   if (options?.method === "POST") {
-    assert.equal(JSON.parse(options.body).type, "heartbeat", "these checks must never launch agent work");
-    return new Response(null, { status: 204 });
+    throw new Error("Presence and typing must never issue HTTP POST requests");
   }
   return refresh();
 };
@@ -42,9 +43,11 @@ const initial = { session: createInitialTaskSessionState(1, "shared-qa"), member
 initial.session.workspace.liveReply = { id: "reply-qa", body: "Hello", sequence: 1, startedAt: 1 };
 initial.session.workspace.files = [{ path: "README.md", content: "Retained workspace" }];
 const presence = { activeMembers: ["github-101"], typingMembers: ["github-101"], members: [{ id: "github-101", name: "Ada", shortName: "Ada", initials: "AD" }] };
+initial.members = presence.members;
 
 try {
   const view = renderHook(() => useSharedSession("shared-qa", initial));
+  assert.equal(tick, undefined, "the hook must not install an HTTP heartbeat interval");
   await act(async () => { sockets[0].open(); sockets[0].receive({ type: "snapshot", snapshot: initial }); });
   const sessionBefore = view.result.current.snapshot.session;
   await act(async () => { sockets[0].receive({ type: "presence", sessionId: "shared-qa", presence }); });
@@ -59,14 +62,20 @@ try {
     sockets[0].receive({ type: "presence", sessionId: "another-task", presence: { ...presence, activeMembers: [], typingMembers: [] } });
     sockets[0].receive({ type: "reply", sessionId: "shared-qa", reply: { ...initial.session.workspace.liveReply, body: "Hello team", sequence: 2 } });
     sockets[0].receive({ type: "presence", sessionId: "shared-qa", presence: { ...presence, typingMembers: [] } });
-    tick();
   });
   assert.deepEqual(view.result.current.snapshot.activeMembers, ["github-101"]);
   assert.deepEqual(view.result.current.snapshot.typingMembers, []);
   assert.equal(view.result.current.snapshot.session.workspace.liveReply.body, "Hello team");
   assert.equal(view.result.current.snapshot.session.version, initial.session.version);
   assert.equal(requests.filter(({ options }) => options?.method !== "POST").length, 0);
-  console.log("PASS: presence cannot erase a text delta, change task version, or apply to a different task; periodic heartbeats still work.");
+  assert.equal(requests.length, 0);
+  await act(async () => { view.result.current.setTyping(true); view.result.current.setTyping(true); });
+  assert.deepEqual(sockets[0].sent, [{ type: "typing", typing: true }]);
+  assert.equal(requests.length, 0);
+  console.log("PASS: presence preserves task data; typing is deduplicated and sent through WebSocket, with no HTTP heartbeat.");
+
+  await act(async () => { view.result.current.receiveSnapshot(structuredClone(initial)); });
+  assert.deepEqual(view.result.current.snapshot.activeMembers, ["github-101"], "an HTTP result must not overwrite live connection state");
 
   const recovered = structuredClone(view.result.current.snapshot);
   recovered.session.version += 1;
@@ -75,6 +84,8 @@ try {
   refresh = () => new Promise((resolve) => { releaseOld = resolve; });
   await act(async () => {
     sockets[0].close(1006);
+    view.result.current.setTyping(false);
+    view.result.current.setTyping(true);
     dom.window.dispatchEvent(new dom.window.Event("online"));
   });
   assert.equal(sockets.length, 2);
@@ -88,6 +99,10 @@ try {
   assert.equal(view.result.current.snapshot.session.workspace.files[0].content, "Retained workspace");
   assert.equal(view.result.current.syncing, false);
   assert.equal(view.result.current.syncError, false);
+  assert.deepEqual(sockets[1].sent, [{ type: "typing", typing: true }], "reconnect publishes the latest typing state once");
+  const beforeFocus = requests.length;
+  await act(async () => { dom.window.dispatchEvent(new dom.window.Event("focus")); });
+  assert.equal(requests.length, beforeFocus, "focusing an already-live task does not fetch another snapshot");
   console.log("PASS: reconnect recovers a missed message once; a late HTTP snapshot cannot roll back the conversation, workspace or reply.");
 } finally {
   cleanup();

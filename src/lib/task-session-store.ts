@@ -1,10 +1,12 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, getTableColumns, gte, sql } from "drizzle-orm";
+import { and, desc, eq, getTableColumns, sql } from "drizzle-orm";
 import { customAlphabet } from "nanoid";
 
 import { db } from "@/db";
-import { taskSessionMembers, taskSessionPresence, taskSessions, users } from "@/db/schema";
+import { taskSessionMembers, taskSessions, users } from "@/db/schema";
 import { sessionNotification } from "@/lib/session-events";
+import { assertHiveToolRun, hiveThreadReply, type HiveToolContext } from "@/lib/hive-tool-context";
+import type { HiveToolScope } from "@/lib/hive-tool-token";
 import { beginWorkspaceRestore, completeWorkspaceRestore, failWorkspaceRestore, WorkspaceRestoreError, type RestoreWorkspaceRequest } from "@/lib/workspace-restore-state";
 import {
   applyHiveRunError,
@@ -14,7 +16,6 @@ import {
   didStartHiveRun,
   type HiveRunResult,
   type HiveSessionCheckpoint,
-  isMemberId,
   type MemberId,
   reduceTaskSession,
   resolveMember,
@@ -29,9 +30,6 @@ export type TaskSessionSnapshot = {
   members: TeamMember[];
   typingMembers: MemberId[];
 };
-export type TaskSessionPresence = Pick<TaskSessionSnapshot, "activeMembers" | "members" | "typingMembers">;
-
-const ACTIVE_WINDOW_MS = 12_000;
 const randomSuffix = customAlphabet("abcdefghijklmnopqrstuvwxyz0123456789", 6);
 
 function sessionValues(session: TaskSessionState) {
@@ -74,6 +72,50 @@ function sessionState(row: typeof taskSessions.$inferSelect): TaskSessionState {
     workspace: row.workspace,
     updatedAt: row.updatedAt.getTime(),
   };
+}
+
+// Agent tools never load code artifacts, credentials, or the native recovery checkpoint.
+const agentToolColumns = {
+  sessionId: taskSessions.id, title: taskSessions.title,
+  lifecycle: taskSessions.lifecycle, version: taskSessions.version, stage: taskSessions.stage,
+  messages: taskSessions.messages, repository: taskSessions.repository,
+  steeringQueue: taskSessions.steeringQueue, activeSteer: taskSessions.activeSteer,
+  workspace: sql<HiveToolContext["workspace"]>`jsonb_build_object(
+    'status', ${taskSessions.workspace}->'status',
+    'restore', ${taskSessions.workspace}->'restore',
+    'lastRestore', ${taskSessions.workspace}->'lastRestore',
+    'liveReply', jsonb_build_object('id', ${taskSessions.workspace}->'liveReply'->'id')
+  )`.as("workspace"),
+};
+
+export async function readHiveToolContext(scope: HiveToolScope): Promise<HiveToolContext> {
+  const [row] = await db.select(agentToolColumns).from(taskSessions).where(eq(taskSessions.id, scope.sessionId));
+  if (!row) throw new Error("Task not found.");
+  const context = { ...row, repository: row.repository ?? undefined, activeSteer: row.activeSteer ?? undefined, members: await getSessionMembers(scope.sessionId) };
+  assertHiveToolRun(context, scope);
+  return context;
+}
+
+export async function appendHiveToolReply(scope: HiveToolScope, messageId: string, body: string, requestId: string) {
+  return db.transaction(async (transaction) => {
+    const [row] = await transaction.select(agentToolColumns).from(taskSessions).where(eq(taskSessions.id, scope.sessionId)).for("update");
+    if (!row) throw new Error("Task not found.");
+    const members = await transaction.select({ memberId: taskSessionMembers.memberId }).from(taskSessionMembers).where(and(eq(taskSessionMembers.sessionId, scope.sessionId), eq(taskSessionMembers.memberId, scope.memberId)));
+    const context = { ...row, repository: row.repository ?? undefined, activeSteer: row.activeSteer ?? undefined, members: members.map(({ memberId }) => resolveMember(memberId)) };
+    assertHiveToolRun(context, scope);
+    const parent = row.messages.find((message) => message.id === messageId && !message.status);
+    if (!parent) throw new Error("Thread not found.");
+    const replyId = `hive-${scope.runId}-${requestId}`;
+    const existing = parent.annotations?.find((reply) => reply.id === replyId);
+    if (existing) return { messageId, replyId: existing.id };
+    const reply = hiveThreadReply(body, replyId);
+    await transaction.update(taskSessions).set({
+      messages: row.messages.map((message) => message.id === messageId ? { ...message, annotations: [...(message.annotations ?? []), reply] } : message),
+      version: row.version + 1, updatedAt: new Date(),
+    }).where(eq(taskSessions.id, scope.sessionId));
+    await transaction.execute(sessionNotification(scope.sessionId));
+    return { messageId, replyId };
+  });
 }
 
 async function getSessionMembers(sessionId: string): Promise<TeamMember[]> {
@@ -194,26 +236,6 @@ export async function listTaskSessions(memberId: MemberId) {
   }));
 }
 
-export async function heartbeat(
-  sessionId: string,
-  memberId: MemberId,
-  typing = false,
-  now = Date.now(),
-) {
-  if (!(await isTaskSessionMember(sessionId, memberId))) {
-    throw new Error("Session member not found.");
-  }
-  await db
-    .insert(taskSessionPresence)
-    .values({ sessionId, memberId, lastSeen: new Date(now), typing })
-    .onConflictDoUpdate({
-      target: [taskSessionPresence.sessionId, taskSessionPresence.memberId],
-      set: { lastSeen: new Date(now), typing },
-    });
-
-  await db.execute(sessionNotification(sessionId, "presence"));
-}
-
 export async function applyTaskSessionAction(
   sessionId: string,
   action: TaskSessionAction,
@@ -258,19 +280,6 @@ export async function applyTaskSessionAction(
 
     await transaction.execute(sessionNotification(sessionId));
 
-    await transaction
-      .insert(taskSessionPresence)
-      .values({
-        sessionId,
-        memberId: action.actor,
-        lastSeen: new Date(now),
-        typing: false,
-      })
-      .onConflictDoUpdate({
-        target: [taskSessionPresence.sessionId, taskSessionPresence.memberId],
-        set: { lastSeen: new Date(now) },
-      });
-
     return {
       session: nextSession,
       // Grant execution inside the row lock, not by comparing request timestamps.
@@ -279,7 +288,7 @@ export async function applyTaskSessionAction(
   });
 
   return {
-    snapshot: { ...await getTaskSessionPresence(sessionId, now), session: applied.session },
+    snapshot: await snapshotWithMembers(applied.session),
     startedRun: applied.startedRun,
   };
 }
@@ -363,7 +372,7 @@ export async function appendHiveReply(
       .where(eq(taskSessions.id, sessionId));
     await transaction.execute(sessionNotification(sessionId));
   });
-  return getPublicTaskSessionSnapshot(sessionId, now);
+  return getPublicTaskSessionSnapshot(sessionId);
 }
 
 export async function checkpointAgentReply(sessionId: string, replyId: string, body: string, sequence: number) {
@@ -434,19 +443,18 @@ export async function getAgentReply(sessionId: string) {
 }
 
 /** UI reads discard private recovery payloads in Postgres, before network transfer. */
-export async function getPublicTaskSessionSnapshot(sessionId: string, now = Date.now()): Promise<TaskSessionSnapshot> {
+export async function getPublicTaskSessionSnapshot(sessionId: string): Promise<TaskSessionSnapshot> {
   const [row] = await db.select({
     ...getTableColumns(taskSessions),
     workspace: sql<TaskSessionState["workspace"]>`(${taskSessions.workspace} - 'checkpoints') #- '{agentSession,resumeFrom}'`.as("workspace"),
   }).from(taskSessions).where(eq(taskSessions.id, sessionId));
   if (!row) throw new Error(`Session ${sessionId} could not be loaded.`);
-  return { session: sessionState(row), ...await getTaskSessionPresence(sessionId, now) };
+  return snapshotWithMembers(sessionState(row));
 }
 
 /** Server-only recovery readers need the complete checkpoint data. Never use for UI synchronization. */
 export async function getTaskSessionSnapshot(
   sessionId: string,
-  now = Date.now(),
 ): Promise<TaskSessionSnapshot> {
   const storedSession = await db.query.taskSessions.findFirst({
     where: eq(taskSessions.id, sessionId),
@@ -456,37 +464,15 @@ export async function getTaskSessionSnapshot(
     throw new Error(`Session ${sessionId} could not be loaded.`);
   }
 
-  return { session: sessionState(storedSession), ...await getTaskSessionPresence(sessionId, now) };
+  return snapshotWithMembers(sessionState(storedSession));
 }
 
-/** Presence never loads the task's transcript, workspace, or native recovery history. */
-export async function getTaskSessionPresence(sessionId: string, now = Date.now()): Promise<TaskSessionPresence> {
-  const activePresence = await db
-    .select({ memberId: taskSessionPresence.memberId, typing: taskSessionPresence.typing })
-    .from(taskSessionPresence)
-    .where(
-      and(
-        eq(taskSessionPresence.sessionId, sessionId),
-        gte(taskSessionPresence.lastSeen, new Date(now - ACTIVE_WINDOW_MS)),
-      ),
-    );
-
-  const members = await getSessionMembers(sessionId);
-  const memberName = (memberId: MemberId) =>
-    resolveMember(memberId, members).name;
-  const activeMembers = activePresence
-    .map(({ memberId }) => memberId)
-    .filter(isMemberId)
-    .sort((left, right) => memberName(left).localeCompare(memberName(right)));
-  const typingMembers = activePresence
-    .filter(({ typing }) => typing)
-    .map(({ memberId }) => memberId)
-    .filter(isMemberId)
-    .sort((left, right) => memberName(left).localeCompare(memberName(right)));
-
+/** Durable reads contain the roster. Only live connections can assert who is online. */
+async function snapshotWithMembers(session: TaskSessionState): Promise<TaskSessionSnapshot> {
   return {
-    activeMembers,
-    members,
-    typingMembers,
+    session,
+    members: await getSessionMembers(session.sessionId),
+    activeMembers: [],
+    typingMembers: [],
   };
 }

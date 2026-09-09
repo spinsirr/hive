@@ -4,7 +4,8 @@ import test from "node:test";
 import type { WebSocket } from "ws";
 import type { SessionEventKind } from "./session-events.ts";
 
-import { subscribeToTaskSession } from "./session-live.ts";
+import { LIVE_PING_MS, subscribeToTaskSession } from "./session-live.ts";
+import type { LivePresence } from "./session-presence.ts";
 import { createInitialTaskSessionState } from "./task-session.ts";
 
 class Socket extends EventEmitter {
@@ -12,6 +13,10 @@ class Socket extends EventEmitter {
   bufferedAmount = 0;
   sent: string[] = [];
   closeCode?: number;
+  pings = 0;
+  terminated = false;
+  ping() { this.pings++; }
+  terminate() { this.terminated = true; this.close(); }
   send(data: unknown) { this.sent.push(String(data)); }
   close(code?: number) { this.closeCode = code; this.readyState = 3; this.emit("close"); }
 }
@@ -31,18 +36,22 @@ function fixture() {
   let allowed = true;
   let unsubscribed = 0;
   let change: (kind: SessionEventKind) => void = () => undefined;
+  let onPresence: (presence: LivePresence) => void = () => undefined;
+  const typing: boolean[] = [];
   const source = {
     sessionId: session.sessionId,
+    memberId: "github-101",
     authorized: async () => allowed,
     snapshot: async () => ({ session, members: [], activeMembers: [], typingMembers: [] }),
     reply: async () => reply,
-    presence: async () => ({ members: [], activeMembers: [], typingMembers: [] }),
-    events: { subscribe: async (listener: { onChange: typeof change }) => {
+    events: { subscribe: async (listener: { onChange: typeof change; onPresence: typeof onPresence }) => {
       change = listener.onChange;
-      return () => { unsubscribed++; };
+      onPresence = listener.onPresence;
+      return { unsubscribe: () => { unsubscribed++; }, setTyping: (value: boolean) => { typing.push(value); } };
     } },
   };
-  return { socket, source, change: (kind: SessionEventKind) => change(kind),
+  return { socket, source, typing, change: (kind: SessionEventKind | "presence") => kind === "presence"
+    ? onPresence({ activeMembers: ["github-101"], typingMembers: [] }) : change(kind),
     revoke: () => { allowed = false; }, unsubscribed: () => unsubscribed };
 }
 
@@ -86,13 +95,29 @@ test("leaving during database setup releases the late subscription", async () =>
   let ready!: () => void;
   let released = false;
   const waiting = new Promise<void>((resolve) => { ready = resolve; });
-  f.source.events.subscribe = async () => { await waiting; return () => { released = true; }; };
+  f.source.events.subscribe = async () => { await waiting; return { unsubscribe: () => { released = true; }, setTyping: () => {} }; };
   const connected = subscribeToTaskSession(f.socket, f.source);
   f.socket.close();
   ready();
   await connected;
   assert.equal(released, true);
   assert.equal(f.socket.sent.length, 0);
+});
+
+test("leaving during authorization does not start a snapshot read afterwards", async () => {
+  const f = fixture();
+  let allow!: (allowed: boolean) => void;
+  let reads = 0;
+  const snapshot = await f.source.snapshot();
+  f.source.authorized = () => new Promise((resolve) => { allow = resolve; });
+  f.source.snapshot = async () => { reads++; return snapshot; };
+  await subscribeToTaskSession(f.socket, f.source);
+  f.socket.close();
+  allow(true);
+  await settle();
+  assert.equal(reads, 0);
+  assert.equal(f.socket.sent.length, 0);
+  assert.equal(f.unsubscribed(), 1);
 });
 
 test("slow viewers reconnect instead of accumulating unlimited output", async () => {
@@ -152,5 +177,56 @@ test("presence notifications still recheck membership before reading or sending"
     await settle();
     assert.equal(f.socket.closeCode, 4401);
     assert.equal(f.socket.sent.length, 1);
+  } finally { f.socket.close(); }
+});
+
+test("typing is the only accepted browser input and is attributed to the authenticated connection", async () => {
+  const f = fixture();
+  try {
+    await subscribeToTaskSession(f.socket, f.source);
+    await settle();
+    f.socket.emit("message", Buffer.from(JSON.stringify({ type: "typing", typing: true })), false);
+    await settle();
+    assert.deepEqual(f.typing, [true]);
+    f.socket.emit("message", JSON.stringify({ type: "typing", typing: true }));
+    await settle();
+    assert.deepEqual(f.typing, [true], "unchanged input does not touch presence again");
+    f.socket.emit("message", JSON.stringify({ type: "typing", typing: false, actor: "github-102" }));
+    assert.equal(f.socket.closeCode, 1008);
+  } finally { f.socket.close(); }
+});
+
+test("revoked members cannot publish typing", async () => {
+  const f = fixture();
+  try {
+    await subscribeToTaskSession(f.socket, f.source);
+    await settle();
+    f.revoke();
+    f.socket.emit("message", JSON.stringify({ type: "typing", typing: true }));
+    await settle();
+    assert.equal(f.socket.closeCode, 4401);
+    assert.deepEqual(f.typing, []);
+  } finally { f.socket.close(); }
+});
+
+test("idle socket probes neither authorize nor read task data; a missed pong releases presence", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
+  const f = fixture();
+  let reads = 0;
+  f.source.authorized = async () => { reads++; return true; };
+  try {
+    await subscribeToTaskSession(f.socket, f.source);
+    await settle();
+    const before = reads;
+    t.mock.timers.tick(LIVE_PING_MS);
+    assert.equal(f.socket.pings, 1);
+    f.socket.emit("pong");
+    t.mock.timers.tick(LIVE_PING_MS);
+    assert.equal(f.socket.pings, 2);
+    assert.equal(reads, before);
+    assert.equal(f.socket.sent.length, 1);
+    t.mock.timers.tick(LIVE_PING_MS);
+    assert.equal(f.socket.terminated, true);
+    assert.equal(f.unsubscribed(), 1);
   } finally { f.socket.close(); }
 });

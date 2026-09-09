@@ -36,6 +36,7 @@ export function createHiveCodex(
         ["bridge.mjs", path.join(process.cwd(), "src/lib/codex-bridge/bridge.mjs")],
         ["app-server.mjs", path.join(process.cwd(), "src/lib/codex-bridge/app-server.mjs")],
         ["gateway-transport.mjs", path.join(process.cwd(), "src/lib/codex-bridge/gateway-transport.mjs")],
+        ["hive-collaboration/SKILL.md", path.join(process.cwd(), "src/lib/codex-bridge/hive-collaboration/SKILL.md")],
       ];
       const files = await Promise.all(assets.map(async ([name, source]) => ({
         path: `${recipe.bootstrapDir}/${name}`,

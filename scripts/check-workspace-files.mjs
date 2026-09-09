@@ -37,7 +37,6 @@ mock.module(new URL("../src/lib/task-session-store.ts", import.meta.url).href, {
   isTaskSessionMember: async () => admitted,
   getTaskSessionSnapshot: async () => ({ session }),
   getPublicTaskSessionSnapshot: async () => ({ session }),
-  heartbeat: async () => {},
   checkpointAgentReply: async () => {},
   applyTaskSessionAction: async (_id, action, actor, now) => {
     const previous = session;

@@ -256,7 +256,7 @@ export async function runHiveCodingTask(
   taskSession: TaskSessionState,
   actor: MemberId,
   steer?: string,
-  auth?: { actorName?: string; vercelOidcToken?: string; onText?: (body: string) => void },
+  auth?: { actorName?: string; vercelOidcToken?: string; onText?: (body: string) => void; toolConnection?: { url: string; token: string } },
 ) {
   if (taskSession.workspace.restore) throw new HiveAgentError("Finish restoring the workspace before starting Hive.", new Error("Workspace restore in progress."));
   if (!taskSession.repository) {
@@ -331,6 +331,14 @@ export async function runHiveCodingTask(
         reasoningEffort: "low",
         webSearch: false,
         codexConfig: { model_verbosity: "low" },
+        // Only a short-lived, run-scoped capability enters the VM. The Mem0
+        // credential and database access remain in the authenticated host route.
+        ...(auth?.toolConnection ? { mcpServers: { hive: {
+          url: auth.toolConnection.url,
+          http_headers: { Authorization: `Bearer ${auth.toolConnection.token}` },
+          startup_timeout_sec: 10,
+          tool_timeout_sec: 15,
+        } } } : {}),
       }, (attributes) => {
         console.info("Hive Gateway request", { taskSessionId: taskSession.sessionId, ...attributes });
       }),

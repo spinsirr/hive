@@ -29,7 +29,7 @@ const attrs = { statusCode: 429, requestId: "req-fixture", retryAfterMs: 1000, o
 report({ kind: "event", subsystem: "hive.gateway", attrs });
 assert.deepEqual(records, [attrs]);
 const recipe = await harness.getBootstrap();
-for (const name of ["runtime.mjs", "bridge.mjs", "app-server.mjs", "gateway-transport.mjs"]) {
+for (const name of ["runtime.mjs", "bridge.mjs", "app-server.mjs", "gateway-transport.mjs", "hive-collaboration/SKILL.md"]) {
   const assets = recipe.files.filter((file) => file.path === `.harness-bootstrap/codex/${name}`);
   assert.equal(assets.length, 1, `Ship exactly one ${name}`);
   assert.ok(assets[0].content.length > 100);

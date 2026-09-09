@@ -114,6 +114,7 @@ export const githubInstallations = pgTable("github_installations", {
     .defaultNow(),
 });
 
+// Retired runtime table. Preserve existing databases; dropping data requires a separate migration approval.
 export const taskSessionPresence = pgTable(
   "task_session_presence",
   {

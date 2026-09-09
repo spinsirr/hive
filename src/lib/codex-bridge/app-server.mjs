@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { createInterface } from "node:readline";
+import { fileURLToPath } from "node:url";
 import { startGatewayTransport } from "./gateway-transport.mjs";
 
 // The sandbox recipe pins the CLI via @openai/codex-sdk. Use that installation,
@@ -131,6 +132,9 @@ async function runNativeTurn({
   const send = (message) => {
     if (!closed && !child.stdin.destroyed) child.stdin.write(`${JSON.stringify(message)}\n`);
   };
+  const startThread = () => send({ id: 1, method: resumedThreadId ? "thread/resume" : "thread/start", params: {
+    ...settings, ...(resumedThreadId ? { threadId: resumedThreadId } : {}),
+  } });
   const kill = () => {
     if (!closed) {
       // Terminate only the process group created by this turn, including the CLI child.
@@ -177,9 +181,13 @@ async function runNativeTurn({
         if (message.error) throw new Error(message.error.message || "Codex request failed.");
         if (message.id === 0) {
           send({ method: "initialized", params: {} });
-          send({ id: 1, method: resumedThreadId ? "thread/resume" : "thread/start", params: {
-            ...settings, ...(resumedThreadId ? { threadId: resumedThreadId } : {}),
-          } });
+          if (start.mcpServers?.hive) {
+            // Native skill input only loads discovered skills. Register the
+            // bundled root for this process, without editing repository files.
+            send({ id: 4, method: "skills/extraRoots/set", params: { extraRoots: [fileURLToPath(new URL(".", import.meta.url))] } });
+          } else startThread();
+        } else if (message.id === 4) {
+          startThread();
         } else if (message.id === 1) {
           threadId = message.result?.thread?.id;
           if (!threadId || (resumedThreadId && threadId !== resumedThreadId)) {
@@ -189,7 +197,12 @@ async function runNativeTurn({
           emit({ type: "bridge-thread", threadId });
           send({ id: 2, method: "turn/start", params: {
             threadId,
-            input: [{ type: "text", text: start.prompt, text_elements: [] }],
+            input: [
+              { type: "text", text: start.prompt, text_elements: [] },
+              // Explicit native skill input preserves an existing thread. The
+              // generic adapter's skills replacement would request a restart.
+              ...(start.mcpServers?.hive ? [{ type: "skill", name: "hive-collaboration", path: fileURLToPath(new URL("./hive-collaboration/SKILL.md", import.meta.url)) }] : []),
+            ],
             ...(start.reasoningEffort ? { effort: start.reasoningEffort } : {}),
             ...(start.responseFormat?.type === "json" && start.responseFormat.schema
               ? { outputSchema: start.responseFormat.schema } : {}),

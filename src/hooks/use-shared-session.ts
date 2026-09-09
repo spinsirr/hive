@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { AgentReply, TaskSessionAction } from "@/lib/task-session";
-import type { TaskSessionPresence, TaskSessionSnapshot } from "@/lib/task-session-store";
+import type { TaskSessionSnapshot } from "@/lib/task-session-store";
+import type { LivePresence } from "@/lib/session-presence";
 import { receiveAgentReply, receiveTaskSessionSnapshot } from "@/lib/task-session-snapshot";
 
 type ClientTaskSessionAction = Exclude<
@@ -23,27 +24,17 @@ export function useSharedSession(sessionId: string, initialSnapshot: TaskSession
   const [syncError, setSyncError] = useState(false);
   const typingRef = useRef(false);
   const connectedRef = useRef(false);
+  const socketRef = useRef<WebSocket | null>(null);
 
-  const publish = useCallback((nextSnapshot: TaskSessionSnapshot) => {
-    setSnapshot((current) => receiveTaskSessionSnapshot(current, nextSnapshot));
+  const publish = useCallback((nextSnapshot: TaskSessionSnapshot, fromLive = false) => {
+    setSnapshot((current) => {
+      const next = receiveTaskSessionSnapshot(current, nextSnapshot);
+      // HTTP responses contain durable task data, not authoritative live connections.
+      return fromLive ? next : { ...next, activeMembers: current.activeMembers, typingMembers: current.typingMembers };
+    });
     setSyncing(!connectedRef.current);
     setSyncError(false);
   }, []);
-
-  const heartbeat = useCallback(async () => {
-    try {
-      const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "heartbeat", typing: typingRef.current }),
-      });
-      if (response.status === 401) window.location.reload();
-      if (!response.ok) throw new Error("Session heartbeat failed");
-      // A successful presence write does not mean the live subscription is connected.
-    } catch {
-      setSyncError(true);
-    }
-  }, [sessionId]);
 
   const post = useCallback(async (payload: object) => {
     try {
@@ -72,14 +63,12 @@ export function useSharedSession(sessionId: string, initialSnapshot: TaskSession
       if (response.status === 401) window.location.reload();
       if (!response.ok) throw new Error("Session refresh failed");
       const nextSnapshot = (await response.json()) as TaskSessionSnapshot;
-      setSnapshot((current) => receiveTaskSessionSnapshot(current, nextSnapshot));
-      setSyncing(!connectedRef.current);
-      setSyncError(false);
+      publish(nextSnapshot);
     } catch {
       setSyncing(true);
       setSyncError(true);
     }
-  }, [sessionId]);
+  }, [publish, sessionId]);
 
   useEffect(() => {
     let stopped = false;
@@ -95,12 +84,14 @@ export function useSharedSession(sessionId: string, initialSnapshot: TaskSession
       clearTimeout(retry);
       const current = new WebSocket(url);
       socket = current;
+      socketRef.current = current;
       connecting = setTimeout(() => current.close(), 15_000);
       current.onopen = () => {
         if (stopped || current !== socket) { current.close(); return; }
         clearTimeout(connecting);
         connectedRef.current = true;
         delay = 500;
+        if (typingRef.current) current.send(JSON.stringify({ type: "typing", typing: true }));
       };
       current.onmessage = (message: MessageEvent<string>) => {
         if (stopped || current !== socket) return;
@@ -108,14 +99,13 @@ export function useSharedSession(sessionId: string, initialSnapshot: TaskSession
           const event = JSON.parse(message.data) as
             | { type: "snapshot"; snapshot: TaskSessionSnapshot }
             | { type: "reply"; sessionId: string; reply: AgentReply | null }
-            | { type: "presence"; sessionId: string; presence: TaskSessionPresence };
-          if (event.type === "snapshot") publish(event.snapshot);
+            | { type: "presence"; sessionId: string; presence: LivePresence };
+          if (event.type === "snapshot") publish(event.snapshot, true);
           if (event.type === "reply") setSnapshot((previous) => receiveAgentReply(previous, event.sessionId, event.reply));
           if (event.type === "presence") setSnapshot((previous) => event.sessionId === previous.session.sessionId ? {
             ...previous,
             activeMembers: event.presence.activeMembers,
             typingMembers: event.presence.typingMembers,
-            members: event.presence.members,
           } : previous);
           setSyncing(false);
           setSyncError(false);
@@ -127,6 +117,7 @@ export function useSharedSession(sessionId: string, initialSnapshot: TaskSession
         if (stopped || current !== socket) return;
         clearTimeout(connecting);
         connectedRef.current = false;
+        setSnapshot((previous) => ({ ...previous, activeMembers: [], typingMembers: [] }));
         setSyncing(true);
         if (event.code === 4401) { window.location.reload(); return; }
         setSyncError(!navigator.onLine);
@@ -136,30 +127,26 @@ export function useSharedSession(sessionId: string, initialSnapshot: TaskSession
       current.onerror = () => current.close();
     }
     function reconnect() {
+      if (socket?.readyState === WebSocket.OPEN) return;
       connect();
       void refresh();
     }
 
     connect();
-    void heartbeat();
-    const heartbeatTimer = window.setInterval(
-      () => void heartbeat(),
-      5_000,
-    );
     window.addEventListener("online", reconnect);
     window.addEventListener("focus", reconnect);
 
     return () => {
       stopped = true;
       connectedRef.current = false;
+      socketRef.current = null;
       clearTimeout(retry);
       clearTimeout(connecting);
-      window.clearInterval(heartbeatTimer);
       window.removeEventListener("online", reconnect);
       window.removeEventListener("focus", reconnect);
       socket?.close();
     };
-  }, [heartbeat, publish, refresh, sessionId]);
+  }, [publish, refresh, sessionId]);
 
   const dispatch = useCallback(
     (action: SessionDispatchAction) => post(action),
@@ -169,8 +156,11 @@ export function useSharedSession(sessionId: string, initialSnapshot: TaskSession
   const setTyping = useCallback((typing: boolean) => {
     if (typingRef.current === typing) return;
     typingRef.current = typing;
-    void heartbeat();
-  }, [heartbeat]);
+    const socket = socketRef.current;
+    if (socket?.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type: "typing", typing }));
+    }
+  }, []);
 
   return { snapshot, syncing, syncError, dispatch, setTyping, receiveSnapshot: publish };
 }

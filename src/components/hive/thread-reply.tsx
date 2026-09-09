@@ -12,7 +12,7 @@ export function ThreadReply({ reply, members, disabled, queueing, onSteer, showT
   onSteer: () => void;
   showTimestamp?: boolean;
 }) {
-  const author = resolveMember(reply.authorId, members);
+  const author = reply.role === "agent" ? { name: "Hive", shortName: "Hive", initials: "H" } : resolveMember(reply.authorId, members);
   const promoter = reply.steeredBy ?? reply.queuedBy;
   return (
     <article className="flex min-w-0 gap-2.5">
@@ -23,7 +23,7 @@ export function ThreadReply({ reply, members, disabled, queueing, onSteer, showT
           {showTimestamp ? <time className="text-[10px] text-[#999]" dateTime={new Date(reply.createdAt).toISOString()}>{new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(reply.createdAt)}</time> : null}
         </div>
         <p className="mt-1 whitespace-pre-wrap break-words text-[13px] leading-6 text-[#414141] [overflow-wrap:anywhere]">{reply.body}</p>
-        {reply.status === "open" ? (
+        {reply.role === "agent" ? null : reply.status === "open" ? (
           <Button aria-label={`${queueing ? "Queue steer" : "Steer Hive"} for ${author.shortName}'s reply`} className="mt-1 h-6 px-1.5 text-[11px] text-[#737373]" disabled={disabled} onClick={onSteer} size="sm" variant="ghost">{queueing ? "Queue steer" : "Steer Hive"}</Button>
         ) : (
           <p className="mt-1 flex items-center gap-1 text-[11px] text-[#737373]">{reply.status === "steered" ? <Check className="size-3" /> : null}{reply.status === "queued" ? "Queued" : "Steered"}{promoter ? ` by ${resolveMember(promoter, members).shortName}` : ""}</p>
