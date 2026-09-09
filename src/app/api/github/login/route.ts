@@ -1,7 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 import { getSessionMember, HIVE_SESSION_COOKIE } from "@/lib/auth-session";
-import { getInstallationRepositories } from "@/lib/github-app";
 import { canonicalGitHubLoginUrl } from "@/lib/github-login-origin";
 import {
   createGitHubOAuthState,
@@ -44,7 +43,6 @@ export async function GET(request: NextRequest) {
           { status: 404 },
         );
       }
-      await getInstallationRepositories(installationId);
     }
     const { maxAge, nonce, state } = createGitHubOAuthState({
       installationId: installationId ?? undefined,

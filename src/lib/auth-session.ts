@@ -5,11 +5,8 @@ import { createHash, randomBytes } from "node:crypto";
 import { and, eq, gt } from "drizzle-orm";
 
 import { db } from "@/db";
-import { authSessions, taskSessions, users } from "@/db/schema";
-import { getGitHubAppOwnerId } from "@/lib/github-app";
+import { authSessions, users } from "@/db/schema";
 import type { GitHubUserPayload } from "@/lib/github-oauth";
-import { verifySessionInviteToken } from "@/lib/session-invite";
-import { requireTeamAdmission } from "@/lib/team-admission";
 import type { TeamMember } from "@/lib/task-session";
 
 export const HIVE_SESSION_COOKIE = "hive_session";
@@ -42,25 +39,12 @@ function memberFromUser(user: typeof users.$inferSelect): TeamMember {
 
 export async function createUserSession(
   githubUser: GitHubUserPayload,
-  returnTo: string,
   now = new Date(),
 ) {
-  await requireTeamAdmission(githubUser.id, returnTo, {
-    isTeamMember: async (githubUserId) => Boolean(
-      await db.query.users.findFirst({
-        columns: { id: true },
-        where: eq(users.githubUserId, githubUserId),
-      }),
-    ),
-    isAppOwner: async (githubUserId) => githubUserId === await getGitHubAppOwnerId(),
-    sessionExists: async (sessionId) => Boolean(
-      await db.query.taskSessions.findFirst({
-        columns: { id: true },
-        where: eq(taskSessions.id, sessionId),
-      }),
-    ),
-    verifyInvite: verifySessionInviteToken,
-  });
+  // Authentication creates an identity, never membership in somebody else's task.
+  if (!Number.isSafeInteger(githubUser.id) || githubUser.id <= 0 || !githubUser.login?.trim()) {
+    throw new Error("GitHub did not return a valid user identity.");
+  }
 
   const name = displayName(githubUser);
   const member: TeamMember = {

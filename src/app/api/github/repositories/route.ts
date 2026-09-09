@@ -1,10 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 import { getSessionMember, HIVE_SESSION_COOKIE } from "@/lib/auth-session";
-import {
-  hasGitHubInstallation,
-  listTeamRepositories,
-} from "@/lib/github-connection-store";
+import { GitHubUserAuthorizationError, listGitHubUserRepositories } from "@/lib/github-oauth";
+import { GITHUB_USER_COOKIE, readGitHubUserToken } from "@/lib/github-user-session";
 import { isTaskSessionId } from "@/lib/task-session-id";
 import {
   applyTaskSessionAction,
@@ -48,11 +46,15 @@ async function authenticatedRequest(request: NextRequest) {
     };
   }
 
-  return { githubUserId, member, sessionId };
+  const accessToken = await readGitHubUserToken(
+    request.cookies.get(GITHUB_USER_COOKIE)?.value,
+    request.cookies.get(HIVE_SESSION_COOKIE)?.value,
+  );
+  return { accessToken, githubUserId, member, sessionId };
 }
 
 function publicRepositories(
-  repositories: Awaited<ReturnType<typeof listTeamRepositories>>,
+  repositories: Awaited<ReturnType<typeof listGitHubUserRepositories>>,
 ) {
   return repositories.map((repository) => ({
     id: repository.id,
@@ -62,34 +64,40 @@ function publicRepositories(
   }));
 }
 
+function reconnectResponse() {
+  return NextResponse.json({ needsAuthorization: true, repositories: [], error: "Reconnect GitHub to choose a repository." }, {
+    status: 409, headers: { "Cache-Control": "private, no-store" },
+  });
+}
+
 export async function GET(request: NextRequest) {
   const auth = await authenticatedRequest(request);
   if ("response" in auth) return auth.response;
+  if (!auth.accessToken) return reconnectResponse();
 
   try {
-    if (!(await hasGitHubInstallation())) {
-      return NextResponse.json(
-        { needsInstallation: true, repositories: [] },
-        { headers: { "Cache-Control": "no-store" } },
-      );
-    }
-    const repositories = await listTeamRepositories();
+    const repositories = await listGitHubUserRepositories(auth.accessToken);
     return NextResponse.json(
-      { needsInstallation: false, repositories: publicRepositories(repositories) },
+      { needsInstallation: repositories.length === 0, repositories: publicRepositories(repositories) },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
+    if (error instanceof GitHubUserAuthorizationError) return reconnectResponse();
     console.error("GitHub repository list failed", error);
     return NextResponse.json(
-      { error: "Hive could not load the team repositories." },
+      { error: "Hive could not load your GitHub repositories." },
       { status: 502 },
     );
   }
 }
 
 export async function POST(request: NextRequest) {
+  if (request.headers.get("origin") !== request.nextUrl.origin) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
   const auth = await authenticatedRequest(request);
   if ("response" in auth) return auth.response;
+  if (!auth.accessToken) return reconnectResponse();
 
   const payload: unknown = await request.json().catch(() => null);
   const repositoryId =
@@ -112,13 +120,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const repositories = await listTeamRepositories();
+    const repositories = await listGitHubUserRepositories(auth.accessToken);
     const repository = repositories.find(
       (candidate) => candidate.id === repositoryId,
     );
     if (!repository) {
       return NextResponse.json(
-        { error: "That repository is not authorized for this team." },
+        { error: "That repository is not authorized for your GitHub account." },
         { status: 403 },
       );
     }
@@ -145,6 +153,7 @@ export async function POST(request: NextRequest) {
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
+    if (error instanceof GitHubUserAuthorizationError) return reconnectResponse();
     console.error("GitHub repository attachment failed", error);
     return NextResponse.json(
       { error: "Hive could not attach that repository." },

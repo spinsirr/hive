@@ -14,9 +14,9 @@ Hive brings those teammates into the task while the code is being made. The dist
 
 ## Try the shared task
 
-Reviewers need an **Invite** link and GitHub sign-in. The homepage alone does not admit a new account, and making the code repository public does not grant application access.
+First-time visitors can sign in with GitHub and create their own tasks. A new account starts with an empty dashboard. To review or collaborate on someone else's task, open its **Invite** link; signing in alone does not grant access to existing tasks.
 
-1. Create a task and invite a teammate. Attach one authorized repository whenever the team is ready to work on code.
+1. Create a task and invite a teammate. Attach one repository authorized for your GitHub account whenever the task is ready for code.
 2. Talk to Hive, or use a leading `@teammate` mention for human-only discussion.
 3. Open **Reply** on a message. Replies stay discussion until someone chooses **Steer Hive** or **Steer thread**.
 4. While Hive runs, new agent-directed input queues. Apply the next steer explicitly when the current run ends.
@@ -31,7 +31,7 @@ The public `/demo` route uses the real dashboard component with invented, page-l
 | Layer | Responsibility |
 | --- | --- |
 | Next.js | Full-stack UI, authenticated routes, and task actions, deployed on Vercel. |
-| GitHub OAuth + GitHub App | Human identity and invitations; separate repository-scoped installation tokens for Sandbox access. |
+| GitHub OAuth + GitHub App | Human identity and live user-scoped repository discovery; separate repository-scoped installation tokens for Sandbox access. |
 | Neon Postgres via Vercel Marketplace | Canonical conversation, membership, queue, lifecycle, and private recovery state. Row locks serialize accepted input. |
 | AI SDK Harness + Codex | Existing coding runtime that inspects, edits, and runs real repository commands. |
 | Vercel AI Gateway + Sandbox | Model access through Vercel OIDC and isolated execution of the selected repository. |
@@ -56,7 +56,9 @@ The [runner](src/lib/hive-runner.ts), [restore path](src/lib/workspace-restore.t
 - **Show honest failures.** Runs displays process exit codes and original output, not an inferred test verdict. It shows the latest turn, so a later text-only reply can correctly show no commands.
 - **Bound the submission.** No PR creation, sandbox branch push, issue triage, uploads, or multi-team administration. Vercel Workflow remains deferred. The owner's subsequent, narrow request for repository memory is described below; it is not yet a verified live capability. Browser reconnection and caught-failure checkpoints do not guarantee automatic recovery after hard worker termination.
 
-GitHub sign-in uses invitation-only admission. Joining a task admits a member to the team's authorized repository pool, not just that task's repository. Installation tokens are short-lived and scoped to the selected clone. Keep credentials server-side and non-production deployments protected.
+Task membership and GitHub repository access are separate. An invitation shares only that task's conversation and attached working copy, not the inviter's other tasks or repository pool. Repository listing and attachment both query GitHub using the current user's access token, including when several users share an App installation. The user's encrypted, HttpOnly GitHub cookie is bound to one Hive login, expires within eight hours (or sooner if GitHub specifies), and is cleared on logout. Missing, expired or revoked authorization asks for **Reconnect GitHub**; it never falls back to App-wide access. The existing OAuth client secret derives a purpose-specific encryption key; invitation signing is unchanged and no new secret or database migration is required. [GitHub's user-scoped repository API](https://docs.github.com/en/rest/apps/installations#list-repositories-accessible-to-the-user-access-token).
+
+Installation tokens remain short-lived and scoped to the selected clone. The GitHub user token is never sent to the Sandbox, placed in a task transcript, or included in a repository API response. Keep non-production deployments protected.
 
 ## Run locally
 
@@ -68,7 +70,7 @@ pnpm db:migrate
 vercel dev
 ```
 
-Open [localhost:3000](http://localhost:3000). The verified GitHub App owner can bootstrap the team; other accounts require invitations. The App must be public to authorize other GitHub users—this is separate from the code repository's visibility.
+Open [localhost:3000](http://localhost:3000) and sign in to create a task. The App must be public to authorize other GitHub users—this is separate from the code repository's visibility. Use **Connect your GitHub** or **Manage GitHub access** in an unattached task to select repositories for the App.
 
 Register the App's Setup URL as `https://your-domain.example/api/github/setup` and callback as `https://your-domain.example/api/github/callback`. For local sign-in, use the localhost callback from `.env.example`. Login begins on the configured callback origin so the host-only OAuth nonce survives the round trip.
 
@@ -93,7 +95,9 @@ pnpm typecheck
 pnpm exec next build --webpack
 ```
 
-`pnpm test` includes 158 unit tests plus controlled runner, route, native-stream, and real-component regressions. Coverage includes authorship, invitation admission, deduplication, queue boundaries, frozen Threads, IME input, file-read safety, paired restore, reconnect ordering, connection-owned presence, multi-tab deduplication, instance expiry, caching, scrolling, scoped MCP tools and Mem0 request/response boundaries. External services are doubled in these local checks; the MCP client and transport are real.
+`pnpm test` includes unit tests plus controlled runner, route, native-stream, and real-component regressions. Coverage includes authorship, invitation signing, deduplication, queue boundaries, frozen Threads, IME input, file-read safety, paired restore, reconnect ordering, connection-owned presence, multi-tab deduplication, instance expiry, caching, scrolling, scoped MCP tools and Mem0 request/response boundaries. External services are doubled in these local checks; the MCP client and transport are real.
+
+For onboarding and authorization, set `HIVE_ONBOARDING_TEST_DATABASE_URL` to a **local loopback** Postgres server with database-creation permission, then run `pnpm test:onboarding`. It creates and drops only its uniquely named fixture database. Actual OAuth routes, session persistence, task creation, task pages and protected APIs verify first signup, empty dashboard, task invitations, user-scoped GitHub listing/attachment, credential expiry and account isolation. GitHub HTTP is controlled; no real account, Neon database, Sandbox or model is contacted. This is not a substitute for a fresh-account production walkthrough.
 
 For real Postgres/live-route egress regression coverage, set `HIVE_EGRESS_TEST_DATABASE_URL` to a **local loopback** Postgres server with a role that can create databases, then run `pnpm test:session-egress`. The check creates and removes its own uniquely named fixture database. It does not load `.env.local`, contact Neon, use real accounts, or call a model. It measures 31 seconds of idle connections, verifies typing and multi-tab presence without presence-table/task reads, and retains SQL-side exclusion of private recovery data. See the [September 8 incident](docs/PRESENTATION_NOTES.md#september-8--neon-egress-incident) for historical measurements and production availability limits.
 

@@ -5,11 +5,11 @@ Hive gives a small software team one shared coding agent for one concrete task a
 ## Language
 
 **Team**:
-The long-lived group of people who share GitHub access and create task sessions.
+The people collaborating through explicit task invitations. There is no global team-wide repository grant or multi-team administration surface.
 _Avoid_: Room, tenant, workspace
 
 **Member**:
-A GitHub-authenticated person who belongs to the team and is explicitly admitted to a task session.
+A GitHub-authenticated person. Creating a task admits its creator; joining someone else's task requires an invitation.
 _Avoid_: Persona, actor, user seat
 
 **Task Session**:
@@ -17,7 +17,7 @@ A bounded collaboration around one intended outcome, with one shared conversatio
 _Avoid_: Room, channel, project, long-lived workspace
 
 **Repository Access**:
-The set of GitHub repositories authorized for the team through GitHub App installations.
+The intersection of the current person's GitHub access and the GitHub App's installed repository access. Joining a task does not inherit the inviter's repository pool.
 _Avoid_: Connector, repository binding
 
 **Attached Repository**:

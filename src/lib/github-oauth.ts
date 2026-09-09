@@ -24,6 +24,7 @@ type InstallStatePayload = {
 
 type OAuthTokenPayload = {
   access_token?: string;
+  expires_in?: number;
   error?: string;
 };
 
@@ -173,7 +174,13 @@ export async function exchangeGitHubOAuthCode(code: string) {
   if (!response.ok || !payload.access_token || payload.error) {
     throw new Error("GitHub rejected the OAuth authorization code.");
   }
-  return payload.access_token;
+  return { accessToken: payload.access_token, expiresIn: payload.expires_in };
+}
+
+export class GitHubUserAuthorizationError extends Error {
+  constructor() {
+    super("Reconnect GitHub to choose a repository.");
+  }
 }
 
 async function githubUserRequest<T>(accessToken: string, path: string) {
@@ -185,6 +192,7 @@ async function githubUserRequest<T>(accessToken: string, path: string) {
       "X-GitHub-Api-Version": GITHUB_API_VERSION,
     },
   });
+  if (response.status === 401) throw new GitHubUserAuthorizationError();
   if (!response.ok) {
     throw new Error("The GitHub user cannot access this App installation.");
   }
@@ -202,28 +210,51 @@ export async function authorizeGitHubInstallation(
   user: GitHubUserPayload;
   repositories: GitHubInstallationRepository[];
 }> {
-  const [user, payload] = await Promise.all([
+  const [user, repositories] = await Promise.all([
     getGitHubUser(accessToken),
-    githubUserRequest<InstallationRepositoriesPayload>(
-      accessToken,
-      `/user/installations/${installationId}/repositories?per_page=100`,
-    ),
+    getGitHubUserInstallationRepositories(accessToken, installationId),
   ]);
+  return { user, repositories };
+}
 
-  if (payload.total_count > payload.repositories.length) {
-    throw new Error(
-      "Hive currently supports up to 100 repositories per installation.",
+async function getGitHubUserInstallationRepositories(
+  accessToken: string,
+  installationId: number,
+): Promise<GitHubInstallationRepository[]> {
+  const repositories: InstallationRepositoriesPayload["repositories"] = [];
+  for (let page = 1; ; page++) {
+    const payload = await githubUserRequest<InstallationRepositoriesPayload>(
+      accessToken,
+      `/user/installations/${installationId}/repositories?per_page=100&page=${page}`,
     );
+    repositories.push(...payload.repositories);
+    if (repositories.length >= payload.total_count || payload.repositories.length === 0) break;
   }
+  return repositories.map((repository) => ({
+    id: repository.id,
+    name: repository.full_name,
+    cloneUrl: repository.clone_url,
+    defaultBranch: repository.default_branch,
+    visibility: repository.private ? "private" : "public",
+  }));
+}
 
-  return {
-    user,
-    repositories: payload.repositories.map((repository) => ({
-      id: repository.id,
-      name: repository.full_name,
-      cloneUrl: repository.clone_url,
-      defaultBranch: repository.default_branch,
-      visibility: repository.private ? "private" : "public",
-    })),
-  };
+export async function listGitHubUserRepositories(accessToken: string) {
+  const installations: Array<{ id: number }> = [];
+  for (let page = 1; ; page++) {
+    const payload = await githubUserRequest<{
+      installations: Array<{ id: number }>;
+      total_count: number;
+    }>(accessToken, `/user/installations?per_page=100&page=${page}`);
+    installations.push(...payload.installations);
+    if (installations.length >= payload.total_count || payload.installations.length === 0) break;
+  }
+  // The user endpoint returns the intersection of App and user permissions.
+  // An installation token alone would expose other members' private repositories.
+  const repositories = [];
+  for (const { id } of installations) {
+    const accessible = await getGitHubUserInstallationRepositories(accessToken, id);
+    repositories.push(...accessible.map((repository) => ({ ...repository, installationId: id })));
+  }
+  return repositories.sort((left, right) => left.name.localeCompare(right.name));
 }

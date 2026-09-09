@@ -100,6 +100,7 @@ export const taskSessionMembers = pgTable(
   ],
 );
 
+// Historical installation records; no longer an authorization source. Keep data intact.
 export const githubInstallations = pgTable("github_installations", {
   id: bigint("id", { mode: "number" }).primaryKey(),
   installedBy: text("installed_by")

@@ -1,6 +1,6 @@
 # Hive — Submission packet
 
-Spencer confirmed the existing two-paragraph summary on September 8, 2026. Its wording is retained unchanged. The dated coding/recovery checks below passed, but this packet is **not ready to send**: current production availability is blocked as recorded in the [availability gate](GOAL.md#completion-checklist), and the timed rehearsal and publication/reviewer access gates remain open. This confirmation does not authorize repository publication or external sending. Nothing has been submitted.
+Spencer confirmed the existing two-paragraph summary on September 8, 2026. Its wording is retained unchanged. The dated coding/recovery checks below passed, but this packet is **not ready to send**: the timed rehearsal and publication/reviewer access gates remain open. Current availability and the separate, still-unverified Mem0 addition are tracked in the [readiness checklist](GOAL.md#completion-checklist). This confirmation does not authorize repository publication or external sending. Nothing has been submitted.
 
 The [September 8 scope freeze](GOAL.md#submission-scope-freeze--september-8) defers Workflow and additional features. Recovery acceptance refers to the dated browser-reconnection, caught-failure continuation and paired-restore checks below, not automatic recovery after hard worker termination.
 
@@ -11,7 +11,7 @@ Recorded coding acceptance: `a13b3a1` deployed successfully, removing duplicate 
 | Item | Location | Before sending |
 | --- | --- | --- |
 | GitHub repository and commit history | [spinsirr/hive](https://github.com/spinsirr/hive) | Keep private until the owner explicitly approves publication. Then verify access while signed out. |
-| Live application | [hive-roan-mu.vercel.app](https://hive-roan-mu.vercel.app/) | Clear the availability gate, then supply a task invitation and test a reviewer's fresh GitHub sign-in and real task access. Homepage/demo HTTP 200 is insufficient. |
+| Live application | [hive-roan-mu.vercel.app](https://hive-roan-mu.vercel.app/) | Verify fresh GitHub sign-in and creation of an independent task. Also supply an invitation for the prepared shared task; homepage/demo HTTP 200 is insufficient. |
 | Written overview | [README](../README.md) | Reconcile the verification section with the final deployed release. |
 | One-to-two-paragraph summary | Below | Existing wording confirmed by Spencer on September 8, 2026. External sending still requires separate approval. |
 

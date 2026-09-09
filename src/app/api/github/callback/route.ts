@@ -12,8 +12,12 @@ import {
   HIVE_SESSION_COOKIE,
   sessionCookieOptions,
 } from "@/lib/auth-session";
-import { saveGitHubInstallation } from "@/lib/github-connection-store";
-import { TeamInviteRequiredError } from "@/lib/team-admission";
+import {
+  GITHUB_USER_COOKIE,
+  GITHUB_USER_MAX_AGE,
+  githubUserCookieOptions,
+  sealGitHubUserToken,
+} from "@/lib/github-user-session";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -45,7 +49,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const accessToken = await exchangeGitHubOAuthCode(code);
+    const { accessToken, expiresIn } = await exchangeGitHubOAuthCode(code);
     const authorization = oauthState.installationId
       ? await authorizeGitHubInstallation(
           accessToken,
@@ -55,37 +59,27 @@ export async function GET(request: NextRequest) {
           repositories: [],
           user: await getGitHubUser(accessToken),
         };
-    const { expiresAt, member, token } = await createUserSession(
+    const { expiresAt, token } = await createUserSession(
       authorization.user,
-      oauthState.returnTo,
     );
-
-    if (oauthState.installationId) {
-      await saveGitHubInstallation(
-        oauthState.installationId,
-        member.id,
-      );
-    }
 
     const redirectUrl = new URL(oauthState.returnTo, request.url);
     const response = NextResponse.redirect(redirectUrl);
+    const githubMaxAge =
+      typeof expiresIn === "number" && Number.isFinite(expiresIn) && expiresIn > 0
+        ? Math.min(Math.floor(expiresIn), GITHUB_USER_MAX_AGE)
+        : GITHUB_USER_MAX_AGE;
+    response.cookies.set(
+      GITHUB_USER_COOKIE,
+      await sealGitHubUserToken(accessToken, token, githubMaxAge),
+      githubUserCookieOptions(request.nextUrl.protocol === "https:", githubMaxAge),
+    );
     response.cookies.set(HIVE_SESSION_COOKIE, token, {
       ...sessionCookieOptions(request.nextUrl.protocol === "https:"),
       expires: expiresAt,
     });
     return clearOAuthCookie(response);
   } catch (error) {
-    if (error instanceof TeamInviteRequiredError) {
-      const response = NextResponse.redirect(
-        new URL("/?signin=invite-required", request.url),
-      );
-      // Do not leave the previous account signed in after a denied account switch.
-      response.cookies.set(HIVE_SESSION_COOKIE, "", {
-        ...sessionCookieOptions(request.nextUrl.protocol === "https:"),
-        maxAge: 0,
-      });
-      return clearOAuthCookie(response);
-    }
     console.error("GitHub OAuth callback failed", error);
     return clearOAuthCookie(
       NextResponse.json(

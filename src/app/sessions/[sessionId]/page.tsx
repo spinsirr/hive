@@ -43,7 +43,7 @@ export default async function SessionPage({
   if (!member) {
     return (
       <HiveSignIn
-        description="This invitation joins you to the team and this task. Team members share authorized repository access."
+        description="Sign in with GitHub to join this task using your invitation. You’ll share its conversation and attached workspace, not anyone’s other tasks or repositories."
         returnTo={returnTo}
         title="Join this task"
       />

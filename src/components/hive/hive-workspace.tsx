@@ -485,6 +485,7 @@ function RepositorySetup({ sessionId }: { sessionId: string }) {
   const [loading, setLoading] = useState(false);
   const [connectingId, setConnectingId] = useState<number | null>(null);
   const [needsInstallation, setNeedsInstallation] = useState(false);
+  const [needsAuthorization, setNeedsAuthorization] = useState(false);
   const [error, setError] = useState("");
   const filteredRepositories = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -509,8 +510,14 @@ function RepositorySetup({ sessionId }: { sessionId: string }) {
       const payload = (await response.json()) as {
         error?: string;
         needsInstallation?: boolean;
+        needsAuthorization?: boolean;
         repositories?: RepositoryOption[];
       };
+      setNeedsAuthorization(payload.needsAuthorization === true);
+      if (payload.needsAuthorization) {
+        setRepositories(null);
+        return;
+      }
       if (!response.ok || !Array.isArray(payload.repositories)) {
         throw new Error(payload.error || "Repositories are unavailable.");
       }
@@ -543,7 +550,13 @@ function RepositorySetup({ sessionId }: { sessionId: string }) {
         window.location.reload();
         return;
       }
-      const payload = (await response.json()) as { error?: string };
+      const payload = (await response.json()) as { error?: string; needsAuthorization?: boolean };
+      if (payload.needsAuthorization) {
+        setNeedsAuthorization(true);
+        setRepositories(null);
+        setConnectingId(null);
+        return;
+      }
       if (!response.ok) {
         throw new Error(payload.error || "Repository connection failed.");
       }
@@ -562,11 +575,15 @@ function RepositorySetup({ sessionId }: { sessionId: string }) {
       <div className="w-full max-w-lg rounded-xl border border-[#dcdcdc] bg-white p-6 shadow-[0_10px_40px_rgba(0,0,0,0.05)]">
         <FolderGit2 className="size-7" />
         <h3 className="mt-5 text-lg font-semibold tracking-[-0.03em]">Attach a repository</h3>
-        <p className="mt-2 text-sm leading-6 text-[#737373]">The conversation can start without code. When the task is ready, attach one repository from the team&apos;s GitHub access.</p>
+        <p className="mt-2 text-sm leading-6 text-[#737373]">Choose a repository you can access on GitHub. Everyone invited to this task can work on its shared copy.</p>
 
-        {needsInstallation ? (
+        {needsAuthorization ? (
+          <a className="mt-5 inline-flex h-10 items-center gap-2 rounded-md bg-[#171717] px-4 text-sm font-medium text-white transition hover:bg-black" href={`/api/github/login?return_to=${encodeURIComponent(`/sessions/${sessionId}`)}`}>
+            <FolderGit2 className="size-4" /> Reconnect GitHub
+          </a>
+        ) : needsInstallation ? (
           <a className="mt-5 inline-flex h-10 items-center gap-2 rounded-md bg-[#171717] px-4 text-sm font-medium text-white transition hover:bg-black" href={`/api/github/install?session_id=${encodeURIComponent(sessionId)}`}>
-            <FolderGit2 className="size-4" /> Connect team GitHub
+            <FolderGit2 className="size-4" /> Connect your GitHub
           </a>
         ) : repositories ? (
           <div className="mt-5">
@@ -601,12 +618,13 @@ function RepositorySetup({ sessionId }: { sessionId: string }) {
               {filteredRepositories.length === 0 ? (
                 <p className="px-3 py-6 text-center text-xs text-[#888]">
                   {repositories.length === 0
-                    ? "No repositories are authorized for the team."
+                    ? "No repositories are authorized for your account."
                     : "No matching repositories."}
                 </p>
               ) : null}
             </div>
             <Button className="mt-2 h-8 px-2 text-[11px]" disabled={loading || connectingId !== null} onClick={() => void loadRepositories()} size="sm" variant="ghost">Refresh repositories</Button>
+            <a className="ml-2 text-[11px] text-[#666] underline underline-offset-4" href={`/api/github/install?session_id=${encodeURIComponent(sessionId)}`}>Manage GitHub access</a>
           </div>
         ) : (
           <Button className="mt-5 h-10 rounded-md px-4 text-sm" disabled={loading} onClick={() => void loadRepositories()}>
@@ -615,7 +633,7 @@ function RepositorySetup({ sessionId }: { sessionId: string }) {
           </Button>
         )}
         {error ? <p className="mt-3 text-xs leading-5 text-[#777]">{error}</p> : null}
-        <p className="mt-3 font-mono text-[9px] text-[#a1a1a1]">Team access · one repository per task · short-lived credential</p>
+        <p className="mt-3 text-xs leading-5 text-[#888]">Other tasks and repositories stay private.</p>
       </div>
     </div>
   );

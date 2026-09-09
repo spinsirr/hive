@@ -1,7 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 import { getSessionMember, HIVE_SESSION_COOKIE } from "@/lib/auth-session";
-import { getInstallationRepositories } from "@/lib/github-app";
 import { verifyGitHubInstallState } from "@/lib/github-oauth";
 import { isTaskSessionId } from "@/lib/task-session-id";
 import { isTaskSessionMember } from "@/lib/task-session-store";
@@ -36,23 +35,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Session not found" }, { status: 404 });
   }
 
-  try {
-    await getInstallationRepositories(installationId);
-
-    return NextResponse.redirect(
-      new URL(
-        `/api/github/login?installation_id=${installationId}&session_id=${encodeURIComponent(sessionId)}&return_to=${encodeURIComponent(`/sessions/${sessionId}?github=connected`)}`,
-        request.url,
-      ),
-    );
-  } catch (error) {
-    console.error("GitHub App setup failed", error);
-    return NextResponse.json(
-      {
-        error:
-          "Hive could not verify this GitHub App installation. Check the installation and server credentials.",
-      },
-      { status: 502 },
-    );
-  }
+  // The callback verifies user access; an App-level lookup is not authorization.
+  return NextResponse.redirect(
+    new URL(
+      `/api/github/login?installation_id=${installationId}&session_id=${encodeURIComponent(sessionId)}&return_to=${encodeURIComponent(`/sessions/${sessionId}?github=connected`)}`,
+      request.url,
+    ),
+  );
 }
