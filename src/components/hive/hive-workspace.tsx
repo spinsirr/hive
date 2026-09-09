@@ -74,13 +74,6 @@ type RepositoryOption = {
   visibility: "private" | "public";
 };
 
-const stageCopy: Record<RunStage, { label: string; detail: string }> = {
-  waiting: { label: "Ready", detail: "Ask Hive to inspect or change the connected repository." },
-  running: { label: "Hive is working", detail: "The shared coding workspace is executing real tools." },
-  review: { label: "Ready for review", detail: "Review the real git diff and command output." },
-  approved: { label: "Approved", detail: "The team approved the current workspace diff." },
-};
-
 const tabs: Array<{ key: WorkspaceTab; label: string; icon: typeof Code2 }> = [
   { key: "diff", label: "Diff", icon: Code2 },
   { key: "files", label: "Files", icon: FileCode2 },
@@ -685,36 +678,16 @@ function Workspace({ repository, sessionId, tab, workspace, onTabChange, fileCol
   );
 }
 
-function RunBar({ activeSteer, completed, reviewReady, runActive, queueCount, repository, stage, onAdvance }: { activeSteer?: ActiveSteer; completed: boolean; reviewReady: boolean; runActive: boolean; queueCount: number; repository?: RepositoryState; stage: RunStage; onAdvance: () => void }) {
-  const action = completed ? "Task complete" : runActive ? activeSteer ? "Applying queued steer" : "Hive is working" : queueCount > 0 ? "Steers queued" : reviewReady ? "Approve changes" : stage === "approved" ? "Approved" : "Send Hive a task";
-  const Icon = reviewReady || stage === "approved" ? Check : Play;
-  const disabled = !reviewReady;
-  const detail = completed
-    ? "This task is read-only until a teammate reopens it."
-    : !repository
-      ? "Planning mode · discuss intent now, attach code when the team is ready."
-      : queueCount > 0
-        ? runActive ? `${queueCount} steer${queueCount === 1 ? "" : "s"} waiting for this run to finish.` : "Apply the next steer from the conversation."
-        : stageCopy[stage === "review" && !reviewReady ? "waiting" : stage].detail;
+function ApprovalBar({ onApprove }: { onApprove: () => void }) {
   return (
-    <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-t border-[#ebebeb] bg-[#fafafa] px-3 sm:px-4">
-      <p className="min-w-0 truncate text-[11px] text-[#777]">
-        {detail}
-      </p>
-      {repository ? (
-        <Button
-          className="h-8 shrink-0 rounded-md bg-[#171717] px-3 text-xs text-white"
-          disabled={disabled}
-          onClick={onAdvance}
-          size="sm"
-        >
-          <Icon className="size-3.5" /> {action}
-        </Button>
-      ) : (
-        <span className="shrink-0 rounded border border-[#dedede] bg-white px-2 py-1 font-mono text-[9px] uppercase tracking-[0.12em] text-[#888]">
-          Planning
-        </span>
-      )}
+    <div className="flex h-12 shrink-0 items-center justify-end border-t border-[#ebebeb] bg-[#fafafa] px-3 sm:px-4">
+      <Button
+        className="h-8 shrink-0 rounded-md bg-[#171717] px-3 text-xs text-white"
+        onClick={onApprove}
+        size="sm"
+      >
+        <Check className="size-3.5" /> Approve changes
+      </Button>
     </div>
   );
 }
@@ -920,7 +893,7 @@ export function HiveWorkspace({
             <div className={cn("min-h-0 flex-1", threadMessage && "hidden")}>
               <Workspace active={!threadMessage} repository={repository} sessionId={sessionId} tab={shared.tab} workspace={workspace} checkpointRevision={session.version} onRestored={receiveSnapshot} onTabChange={shared.onTabChange} fileCollaboration={{ memberId: currentMember.id, deliveredIds: codeAnnotationIds, disabled: lifecycle === "completed" || workspaceLocked, onAnnotate: annotateCode }} />
             </div>
-            {!threadMessage ? <RunBar activeSteer={activeSteer} completed={lifecycle === "completed"} reviewReady={canApproveChanges(session)} runActive={runActive} queueCount={steeringQueue.length} repository={repository} stage={shared.stage} onAdvance={shared.onAdvance} /> : null}
+            {!threadMessage && canApproveChanges(session) ? <ApprovalBar onApprove={shared.onAdvance} /> : null}
             {threadMessage ? <MessageThread currentMember={currentMember.id} disabled={lifecycle === "completed" || workspaceLocked} key={threadMessage.id} members={teamMembers} message={threadMessage} onClose={closeThread} onReply={annotate} onSteerReply={steerMessageAnnotation} onSteerThread={steerThread} queue={steeringQueue} runActive={runActive} sessionId={sessionId} /> : null}
           </>
         }
