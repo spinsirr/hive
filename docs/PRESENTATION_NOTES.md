@@ -135,7 +135,7 @@ Start with two complementary requirements: Joseph defines the default accessible
 3. **5:00–6:00 — Discussion.** Type `@`, select Joseph and send `@josephmreb1 let's review the completed accessible-name change together.` Open **Reply** on that new message. Joseph and Spinsirr each send the read-only reply below. Both stay human-only; prepare Joseph's browser on this Thread before starting the check.
 4. **6:00–8:00 — Shared control.** Spinsirr sends the one combined check below. While it is visibly running, Joseph clicks **Queue thread** once, not the individual reply's **Queue steer**. Both browsers should show one queued item with two replies and Joseph as the promoter; Apply remains disabled. Add the optional third reply only after the queue snapshot exists, and show that it remains a discussion outside those two replies. If execution finishes too quickly, call it an immediate-steer case; do not rerun just to manufacture a queue window.
 5. **8:00–9:00 — Inspect, then apply.** When the check ends, inspect the actual command/output before Spinsirr clicks **Apply**. Verify that the resulting answer separates Joseph's behavior requirement from Spinsirr's validation requirement and does not execute the third reply. The reply-only turn has no commands; **No commands in this turn** is expected afterward. Runs does not display the earlier check on that turn; do not describe it as a history browser.
-6. **9:00–10:00 — Recovery boundary.** Open **Checkpoints** and explain the paired files/context boundary and disabled unmatched snapshots. Do not restore or reset to bring back an earlier Runs view: applying the reply-only steer changes the current turn by design. If idle with an empty queue and the collaborators agree, show Complete → refresh → Reopen. Skip it rather than pretending a running or incomplete task is finished.
+6. **9:00–10:00 — Recovery boundary.** Open **Checkpoints** and explain the paired files/context boundary and disabled unmatched snapshots. Do not restore or reset to bring back an earlier Runs view: applying the reply-only steer changes the current turn by design. Explain that a finished run or approved diff does not close the shared conversation; manual Complete/Reopen was removed in the September 9 simplification.
 
 **Joseph's read-only Thread reply:**
 
@@ -184,7 +184,7 @@ Keep the evidence distinctions visible: original two-account execution and no-re
 - Dynamic task list and `/sessions/[sessionId]` routes.
 - GitHub-authenticated humans with revocable, hashed database sessions.
 - Seven-day signed invite links and explicit task-session membership.
-- Durable transcript, presence, typing, Thread replies, frozen whole-thread steers, queue, lifecycle, and workspace state in Postgres.
+- Durable transcript, Thread replies, frozen whole-thread steers, queue, review, and workspace state in Postgres. Presence and typing follow live connections.
 - Row-locked mutations so concurrent teammate messages survive.
 - Conversation with Hive before repository attachment.
 - Team-level GitHub App installations and repository picker; one immutable repository per task.
@@ -746,6 +746,12 @@ Keep the evidence distinctions visible: original two-account execution and no-re
 - **Human-directed correction:** Spencer questioned **Send Hive a task** and asked to simplify the product. It looked like a second execution step despite being permanently disabled in that state. The conversation already owns task submission; the workspace should show the result and offer a real decision when needed.
 - Removed the duplicate prompt, passive state buttons and idle footer, including its reserved height. **Approve changes** appears only when the existing approval policy allows it. Conversation status, queued steering, recovery and task lifecycle controls are unchanged; no replacement menu or new execution path was added.
 - Local verification: all 149 unit tests and existing controlled regressions passed, including approval eligibility and queue behavior; lint and the production Webpack/TypeScript build passed. These are local checks, not a new live coding run or approval of the prepared task.
+
+### September 9 — Execution completion is not conversation closure
+
+- **Human-directed correction:** Spencer questioned why a teammate should click Complete when the agent reports its own result. We separated the end of an execution turn from closing the collaborative conversation. Removed Complete/Reopen, the associated write locks, and Active/Completed dashboard filters rather than introducing another completion workflow. Tasks remain focused on one outcome, with all accessible tasks ordered by their last update.
+- **Boundaries retained:** successful nonempty diffs still require human approval. A completed run or approved diff allows further discussion and explicit steering; it does not automatically approve work or start another run. Membership, ordered input, active-run tool access and checkpoint-restore fencing remain enforced.
+- **Data and verification:** existing task/history records and retired database fields are preserved without a migration or rewriting prior completion timestamps. Real local Postgres verified that a legacy-marked completed task remains listed, accepts authorized repository attachment and attributed discussion, and rejects retired API actions. Unit coverage verifies finish → approve → discuss → steer in the same task and native agent session; restored/unauthorized/stale-run boundaries remain covered. All 149 unit tests, controlled regressions, typecheck, lint and production Webpack build passed. This is local evidence, not a new production model run.
 
 ## Questions to prepare for
 

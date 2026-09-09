@@ -17,12 +17,12 @@ function fixture(): HiveToolContext {
   workspace: { status: "running", liveReply: { id: scope.runId } }, members: [memberDirectory.spencer, memberDirectory.maya] };
 }
 
-test("tools reject stale runs, restores, completed tasks and revoked members", () => {
+test("tools reject stale or finished runs, restores and revoked members", () => {
   const context = fixture();
   assert.doesNotThrow(() => assertHiveToolRun(context, scope));
   for (const changed of [
     { ...context, sessionId: "other-task" }, { ...context, stage: "waiting" as const },
-    { ...context, lifecycle: "completed" as const }, { ...context, members: [] },
+    { ...context, stage: "review" as const }, { ...context, stage: "approved" as const }, { ...context, members: [] },
     { ...context, workspace: { ...context.workspace, liveReply: { id: "another-run" } } },
     { ...context, workspace: { ...context.workspace, restore: { id: "restore", snapshotId: "checkpoint", by: memberDirectory.spencer, startedAt: 1, retryAfter: 2, status: "restoring" as const } } },
   ]) assert.throws(() => assertHiveToolRun(changed, scope));

@@ -1,13 +1,12 @@
 export type DashboardTask = {
   id: string;
   title: string;
-  lifecycle: "active" | "completed";
   repositoryName: string | null;
   updatedAt: number;
 };
 
-export function dashboardTasks(tasks: DashboardTask[], lifecycle: DashboardTask["lifecycle"]) {
-  return tasks.filter((task) => task.lifecycle === lifecycle).sort((a, b) => b.updatedAt - a.updatedAt);
+export function dashboardTasks(tasks: DashboardTask[]) {
+  return tasks.toSorted((a, b) => b.updatedAt - a.updatedAt);
 }
 
 // Use the server's load time on both sides of hydration. This is a snapshot,

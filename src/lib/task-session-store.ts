@@ -36,10 +36,8 @@ function sessionValues(session: TaskSessionState) {
   return {
     id: session.sessionId,
     title: session.title,
-    lifecycle: session.lifecycle,
     createdBy: session.createdBy,
     createdAt: new Date(session.createdAt),
-    completedAt: session.completedAt ? new Date(session.completedAt) : null,
     version: session.version,
     revision: session.revision,
     stage: session.stage,
@@ -57,10 +55,8 @@ function sessionState(row: typeof taskSessions.$inferSelect): TaskSessionState {
   return {
     sessionId: row.id,
     title: row.title,
-    lifecycle: row.lifecycle,
     createdBy: row.createdBy ?? "hive-system",
     createdAt: row.createdAt.getTime(),
-    completedAt: row.completedAt?.getTime(),
     version: row.version,
     revision: row.revision === 2 ? 2 : 1,
     stage: row.stage,
@@ -77,7 +73,7 @@ function sessionState(row: typeof taskSessions.$inferSelect): TaskSessionState {
 // Agent tools never load code artifacts, credentials, or the native recovery checkpoint.
 const agentToolColumns = {
   sessionId: taskSessions.id, title: taskSessions.title,
-  lifecycle: taskSessions.lifecycle, version: taskSessions.version, stage: taskSessions.stage,
+  version: taskSessions.version, stage: taskSessions.stage,
   messages: taskSessions.messages, repository: taskSessions.repository,
   steeringQueue: taskSessions.steeringQueue, activeSteer: taskSessions.activeSteer,
   workspace: sql<HiveToolContext["workspace"]>`jsonb_build_object(
@@ -221,7 +217,6 @@ export async function listTaskSessions(memberId: MemberId) {
     .select({
       id: taskSessions.id,
       title: taskSessions.title,
-      lifecycle: taskSessions.lifecycle,
       repository: taskSessions.repository,
       updatedAt: taskSessions.updatedAt,
     })

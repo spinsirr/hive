@@ -200,10 +200,8 @@ export type Annotation = {
 export type TaskSessionState = {
   sessionId: string;
   title: string;
-  lifecycle: "active" | "completed";
   createdBy: MemberId;
   createdAt: number;
-  completedAt?: number;
   version: number;
   revision: 1 | 2;
   stage: RunStage;
@@ -255,8 +253,6 @@ export type TaskSessionAction =
     }
   | { type: "steer-agent"; actor: MemberId }
   | { type: "advance-run"; actor: MemberId }
-  | { type: "complete-session"; actor: MemberId }
-  | { type: "reopen-session"; actor: MemberId }
   | { type: "reset"; actor: MemberId };
 
 export function createAgentSessionId(sessionId: string, now = Date.now()) {
@@ -275,7 +271,6 @@ export function createInitialTaskSessionState(
   return {
     sessionId,
     title: options.title?.trim() || "Untitled task",
-    lifecycle: "active",
     createdBy: options.createdBy ?? "hive-system",
     createdAt: now,
     version: 1,
@@ -357,16 +352,14 @@ export function conversationMessages(state: TaskSessionState): ChatMessage[] {
 }
 
 export function canApplyNextSteer(state: TaskSessionState): boolean {
-  return state.lifecycle === "active" &&
-    !state.workspace.restore &&
+  return !state.workspace.restore &&
     state.steeringQueue.length > 0 &&
     !state.activeSteer &&
     !isHiveRunActive(state);
 }
 
 export function canApproveChanges(state: TaskSessionState): boolean {
-  return state.lifecycle === "active" &&
-    !state.workspace.restore &&
+  return !state.workspace.restore &&
     Boolean(state.repository) &&
     state.stage === "review" &&
     state.workspace.status === "review" &&
@@ -418,30 +411,6 @@ export function reduceTaskSession(
 ): TaskSessionState {
   const actor = resolveMember(action.actor, members);
   if (state.workspace.restore) return state;
-  if (action.type === "reopen-session") {
-    if (state.lifecycle === "active") return state;
-    return {
-      ...state,
-      lifecycle: "active",
-      completedAt: undefined,
-      version: state.version + 1,
-      updatedAt: now,
-    };
-  }
-
-  if (state.lifecycle === "completed") return state;
-
-  if (action.type === "complete-session") {
-    if (isHiveRunActive(state) || state.steeringQueue.length > 0) return state;
-    return {
-      ...state,
-      lifecycle: "completed",
-      completedAt: now,
-      version: state.version + 1,
-      updatedAt: now,
-    };
-  }
-
   if (action.type === "reset") {
     const initialSession = createInitialTaskSessionState(now, state.sessionId, {
       title: state.title,

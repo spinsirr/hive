@@ -2,16 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { dashboardTasks, taskUpdatedLabel, type DashboardTask } from "./task-dashboard.ts";
 
-test("dashboard separates active and completed tasks and orders them by update without mutating the input", () => {
+test("dashboard keeps every task ordered by update without mutating the input", () => {
   const tasks: DashboardTask[] = [
-    { id: "first", title: "First", lifecycle: "active", updatedAt: 1, repositoryName: null },
-    { id: "finished", title: "Finished", lifecycle: "completed", updatedAt: 3, repositoryName: "team/repo" },
-    { id: "recent", title: "Recent", lifecycle: "active", updatedAt: 2, repositoryName: "team/repo" },
+    { id: "first", title: "First", updatedAt: 1, repositoryName: null },
+    { id: "finished", title: "Finished", updatedAt: 3, repositoryName: "team/repo" },
+    { id: "recent", title: "Recent", updatedAt: 2, repositoryName: "team/repo" },
   ];
-  assert.deepEqual(dashboardTasks(tasks, "active").map((task) => task.id), ["recent", "first"]);
-  assert.deepEqual(dashboardTasks(tasks, "completed").map((task) => task.id), ["finished"]);
+  assert.deepEqual(dashboardTasks(tasks).map((task) => task.id), ["finished", "recent", "first"]);
   assert.deepEqual(tasks.map((task) => task.id), ["first", "finished", "recent"]);
-  assert.deepEqual(dashboardTasks([], "active"), []);
+  assert.deepEqual(dashboardTasks([]), []);
 });
 
 test("dashboard timestamps use a stable load time and handle fresh or future updates", () => {

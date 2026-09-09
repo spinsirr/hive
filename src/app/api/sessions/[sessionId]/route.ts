@@ -82,8 +82,6 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
     payload.type !== "reorder-queued-steer" &&
     payload.type !== "steer-agent" &&
     payload.type !== "advance-run" &&
-    payload.type !== "complete-session" &&
-    payload.type !== "reopen-session" &&
     payload.type !== "reset"
   ) {
     return NextResponse.json({ error: "Unknown session action" }, { status: 400 });

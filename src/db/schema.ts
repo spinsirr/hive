@@ -44,6 +44,8 @@ export const authSessions = pgTable("auth_sessions", {
 export const taskSessions = pgTable("task_sessions", {
   id: text("id").primaryKey(),
   title: text("title").notNull().default("Untitled task"),
+  // Retired manual completion fields (2026-09-09). Preserve stored values;
+  // runtime state, authorization and writes no longer use these columns.
   lifecycle: text("lifecycle")
     .$type<"active" | "completed">()
     .notNull()
@@ -52,6 +54,7 @@ export const taskSessions = pgTable("task_sessions", {
   createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
     .notNull()
     .defaultNow(),
+  // Historical task completion only; workspace run timestamps remain active.
   completedAt: timestamp("completed_at", {
     mode: "date",
     withTimezone: true,

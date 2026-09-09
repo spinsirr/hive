@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildHiveRunInput } from "./hive-prompt.ts";
-import { appendHiveReply, createInitialTaskSessionState, isHiveRunActive, reduceTaskSession, type TaskSessionState } from "./task-session.ts";
+import { appendHiveReply, createInitialTaskSessionState, isHiveRunActive, reduceTaskSession, resolveMember, type TaskSessionState } from "./task-session.ts";
 
 function discussion(busy = false) {
   let session = reduceTaskSession(createInitialTaskSessionState(1), { type: "send-message", actor: "spencer", body: "Review the navigation" }, 2);
@@ -62,9 +62,9 @@ test("removing a queued thread makes it steerable again without deleting discuss
   assert.equal(reduceTaskSession(removed, action, 8).steeringQueue.length, 1);
 });
 
-test("unknown reply boundaries and completed tasks cannot trigger whole-thread execution", () => {
+test("unknown reply boundaries and restoring tasks cannot trigger whole-thread execution", () => {
   const { session, messageId, throughReplyId } = discussion();
   assert.equal(reduceTaskSession(session, { type: "steer-thread", actor: "maya", messageId, throughReplyId: "not-a-reply" }, 6), session);
-  const completed: TaskSessionState = { ...session, lifecycle: "completed" };
-  assert.equal(reduceTaskSession(completed, { type: "steer-thread", actor: "maya", messageId, throughReplyId }, 6), completed);
+  const restoring: TaskSessionState = { ...session, workspace: { ...session.workspace, restore: { id: "restore-one", snapshotId: "snapshot-one", by: resolveMember("spencer"), startedAt: 5, retryAfter: 90_005, status: "restoring" } } };
+  assert.equal(reduceTaskSession(restoring, { type: "steer-thread", actor: "maya", messageId, throughReplyId }, 6), restoring);
 });

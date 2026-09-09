@@ -148,6 +148,9 @@ try {
   await assert.rejects(requestCookies.run({ get: () => undefined }, () => createTaskSession(form)), /Unauthorized/);
   console.log("PASS: a first-time account creates its own task; creator spoofing and anonymous creation are denied.");
 
+  // Seed the retired fields in this disposable DB: no production rows are rewritten.
+  await pool.query("UPDATE task_sessions SET lifecycle = 'completed', completed_at = to_timestamp(1) WHERE id = $1", [ownTasks[0].id]);
+
   // An old global installation row must never grant a fresh signup repository access.
   const { db } = await import("../src/db/index.ts");
   const { githubInstallations } = await import("../src/db/schema.ts");
@@ -190,11 +193,38 @@ try {
   const { GET: files } = await import("../src/app/api/sessions/[sessionId]/files/route.ts");
   const { GET: checkpoints, POST: restore } = await import("../src/app/api/sessions/[sessionId]/checkpoints/route.ts");
   const { GET: live } = await import("../src/app/api/sessions/[sessionId]/live/route.ts");
+  const ownContext = { params: Promise.resolve({ sessionId: ownTasks[0].id }) };
+  const ownUrl = `https://hive.test/api/sessions/${ownTasks[0].id}`;
+  const ownHeaders = { cookie: browserCookie(newcomer), origin: "https://hive.test", "Content-Type": "application/json" };
+  const ownSnapshot = await (await snapshot(new NextRequest(ownUrl, { headers: ownHeaders }), ownContext)).json();
+  assert.equal("lifecycle" in ownSnapshot.session, false);
+  assert.equal("completedAt" in ownSnapshot.session, false);
+  assert.ok((await store.listTaskSessions(newcomer.member.id)).some((task) => task.id === ownTasks[0].id));
+  for (const type of ["complete-session", "reopen-session"]) {
+    const retired = await action(new NextRequest(ownUrl, { method: "POST", headers: ownHeaders, body: JSON.stringify({ type }) }), ownContext);
+    assert.equal(retired.status, 400, "Retired actions must not silently change the task");
+  }
+  const discussed = await action(new NextRequest(ownUrl, {
+    method: "POST", headers: ownHeaders,
+    body: JSON.stringify({ type: "annotate-message", messageId: ownSnapshot.session.messages[0].id, body: "Continue reviewing this task", clientId: randomUUID(), actor: owner.member.id }),
+  }), ownContext);
+  assert.equal(discussed.status, 200);
+  const discussion = (await discussed.json()).session;
+  assert.equal(discussion.stage, ownSnapshot.session.stage);
+  assert.equal(discussion.version, ownSnapshot.session.version + 1);
+  assert.equal(discussion.messages[0].annotations.at(-1).authorId, newcomer.member.id);
+  assert.equal(discussion.messages[0].annotations.at(-1).body, "Continue reviewing this task");
+  assert.deepEqual(discussion.workspace, ownSnapshot.session.workspace);
+  const legacy = await pool.query("SELECT lifecycle, completed_at FROM task_sessions WHERE id = $1", [ownTasks[0].id]);
+  assert.equal(legacy.rows[0].lifecycle, "completed");
+  assert.equal(legacy.rows[0].completed_at.getTime(), 1000);
+  console.log("PASS: retired completion fields do not hide or lock a task; repository attach and attributed discussion work without rewriting historical values, while old actions are rejected.");
+
   const foreignContext = { params: Promise.resolve({ sessionId: privateTask.sessionId }) };
   for (const [suffix, handler, method] of [["", snapshot, "GET"], ["", action, "POST"], ["/files?kind=directory", files, "GET"], ["/checkpoints", checkpoints, "GET"], ["/checkpoints", restore, "POST"], ["/live", live, "GET"]]) {
     const denied = await handler(new NextRequest(`https://hive.test/api/sessions/${privateTask.sessionId}${suffix}`, {
       method, headers: { cookie: browserCookie(newcomer), origin: "https://hive.test", "Content-Type": "application/json" },
-      ...(method === "POST" ? { body: JSON.stringify({ type: "complete-session", actor: owner.member.id }) } : {}),
+      ...(method === "POST" ? { body: JSON.stringify({ type: "advance-run", actor: owner.member.id }) } : {}),
     }), foreignContext);
     assert.ok([401, 403, 404].includes(denied.status), `${suffix || "/task"} must deny non-members`);
     assert.doesNotMatch(await denied.text(), /Owner's existing private task/);

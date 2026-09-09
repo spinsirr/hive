@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import { codeReferenceLabel, codeReferenceSchema } from "./code-reference.ts";
 import { buildHivePrompt, buildHiveRunInput } from "./hive-prompt.ts";
-import { applyHiveRunResult, createInitialTaskSessionState, reduceTaskSession } from "./task-session.ts";
+import { applyHiveRunResult, createInitialTaskSessionState, reduceTaskSession, resolveMember } from "./task-session.ts";
 
 const reference = { path: "src/main.tsx", startLine: 3, endLine: 5, quote: 'export const Main = () => {\n  return <button>Save</button>;\n};' };
 const action = { type: "annotate-code" as const, actor: "maya", body: "Add an accessible name, preserving keyboard focus", clientId: "43725302-b3ef-47b6-a717-70cc459d839f", reference };
@@ -56,11 +56,12 @@ for (const running of [false, true]) {
   });
 }
 
-test("code references reject traversal and oversized selections; completed or unattached tasks cannot annotate code", () => {
+test("code references reject traversal and oversized selections; restoring or unattached tasks cannot annotate code", () => {
   assert.equal(codeReferenceLabel({ ...reference, startLine: 5 }), "src/main.tsx:5");
   for (const change of [{ path: "../secret" }, { startLine: 0 }, { endLine: 2 }, { endLine: 103 }, { quote: "x".repeat(8_001) }]) assert.equal(codeReferenceSchema.safeParse({ ...reference, ...change }).success, false);
   const unattached = createInitialTaskSessionState(1);
   assert.equal(reduceTaskSession(unattached, action, 3), unattached);
-  const completed = reduceTaskSession(withRepository(), { type: "complete-session", actor: "spencer" }, 3);
-  assert.equal(reduceTaskSession(completed, action, 4), completed);
+  const session = withRepository();
+  const restoring = { ...session, workspace: { ...session.workspace, restore: { id: "restore-one", snapshotId: "snapshot-one", by: resolveMember("spencer"), startedAt: 3, retryAfter: 90_003, status: "restoring" as const } } };
+  assert.equal(reduceTaskSession(restoring, action, 4), restoring);
 });

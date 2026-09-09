@@ -47,7 +47,6 @@ export default async function Home({
       tasks={sessions.map((session) => ({
         id: session.id,
         title: session.title,
-        lifecycle: session.lifecycle,
         repositoryName: session.repository?.name ?? null,
         updatedAt: session.updatedAt,
       }))}

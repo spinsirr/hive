@@ -13,7 +13,7 @@ A GitHub-authenticated person. Creating a task admits its creator; joining someo
 _Avoid_: Persona, actor, user seat
 
 **Task Session**:
-A bounded collaboration around one intended outcome, with one shared conversation and at most one attached repository. In the interface, shorten this to “session” or “task.”
+A bounded collaboration around one intended outcome, with one shared conversation and at most one attached repository. In the interface, shorten this to “session” or “task.” Finishing a run or approving a diff does not close the task: members can continue discussing or steering without a manual Complete/Reopen step.
 _Avoid_: Room, channel, project, long-lived workspace
 
 **Repository Access**:

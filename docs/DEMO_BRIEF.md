@@ -23,7 +23,7 @@
 3. Show the actual two-file Diff and full file explorer. Expand the current combined check in Runs. Its recorded result is **125 sandbox-revision unit tests**, the controlled regressions and TypeScript passing, with **Exit 0**. These belong to the saved Sandbox checkout, not the current app release's local test suite. Say that the implementation was completed beforehand and required repair guidance.
 4. For the live-control portion, use a **new** human-only review Thread and the exact bounded prompts in the [full route](PRESENTATION_NOTES.md#demo-sequence-20-minutes). Two authors reply; one combined read-only check runs; Joseph queues the Thread while it is active; Spinsirr applies it only after inspecting the completed check.
 5. Stop the live portion at minute nine even if it fails or is still running. Preserve the real state and move to code. If it finishes before queuing, name it an immediate-steer case; do not repeat work to manufacture a queue window.
-6. Explain the Checkpoints boundary without restoring the prepared result. Complete → refresh → Reopen is optional when idle and the queue is empty; it was already verified in both accounts.
+6. Explain the Checkpoints boundary without restoring the prepared result. A finished run does not close the shared conversation; teammates can keep reviewing or steering without a Complete/Reopen step.
 
 **Runs changes with the turn.** Show and inspect the check before applying the reply-only steer. That later turn may show **No commands in this turn**, correctly. It does not mean earlier tests disappeared from reality, and it is not a run-history viewer. Do not reset or restore merely to make the old result appear again.
 

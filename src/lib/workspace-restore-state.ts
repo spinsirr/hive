@@ -13,7 +13,6 @@ export class WorkspaceRestoreError extends Error {
 
 export function workspaceRestoreBlockReason(session: TaskSessionState) {
   if (session.workspace.restore) return session.workspace.restore.status === "unconfirmed" ? "Restore needs confirmation. Retry the same checkpoint before continuing." : "Restoring workspace…";
-  if (session.lifecycle === "completed") return "Reopen this task before restoring a checkpoint.";
   if (isHiveRunActive(session) || session.activeSteer) return "Wait for Hive to finish before restoring a checkpoint.";
   return null;
 }

@@ -64,7 +64,6 @@ test("approval requires a current successful nonempty diff and no pending work",
   const cases: TaskSessionState[] = [
     { ...review, workspace: { ...review.workspace, diff: " \n " } },
     { ...review, workspace: { ...review.workspace, status: "error", error: "Rate limit reached." } },
-    { ...review, lifecycle: "completed" },
     { ...review, repository: undefined },
     { ...review, steeringQueue: [{ id: "pending", authorId: "maya", body: "Check focus", source: { kind: "message", messageId: "m1" }, queuedAt: 45, sourceLabel: "Teammate message" }] },
     { ...review, activeSteer: { id: "active", authorId: "maya", body: "Check focus", source: { kind: "message", messageId: "m1" }, queuedAt: 35, appliedAt: 45, sourceLabel: "Teammate message" } },
@@ -255,33 +254,23 @@ test("attaching a repository preserves the task transcript and existing Codex id
   assert.equal(ignoredReplacement.repository?.name, "team/project");
 });
 
-test("a completed task is immutable until a teammate reopens it", () => {
-  const initial = createInitialTaskSessionState(1, "completed-task", {
-    title: "Finish navigation polish",
-    createdBy: "spencer",
-  });
-  const completed = reduceTaskSession(
-    initial,
-    { type: "complete-session", actor: "spencer" },
-    2,
-  );
-  assert.equal(completed.lifecycle, "completed");
-  assert.equal(completed.completedAt, 2);
-
-  const ignored = reduceTaskSession(
-    completed,
-    { type: "send-message", actor: "spencer", body: "One more thing" },
-    3,
-  );
-  assert.equal(ignored.messages.length, completed.messages.length);
-
-  const reopened = reduceTaskSession(
-    completed,
-    { type: "reopen-session", actor: "spencer" },
-    4,
-  );
-  assert.equal(reopened.lifecycle, "active");
-  assert.equal(reopened.completedAt, undefined);
+test("finishing and approving a run leaves the same task open for discussion and another steer", () => {
+  const running = reduceTaskSession(connectedSession(), { type: "send-message", actor: "spencer", body: "Update navigation" }, 20);
+  const finished = finishInspection(running, "+ keyboard support");
+  assert.equal(isHiveRunActive(finished), false);
+  const approved = reduceTaskSession(finished, { type: "advance-run", actor: "spencer" }, 50);
+  assert.equal(approved.stage, "approved");
+  const parent = approved.messages.at(-1)!;
+  const discussed = reduceTaskSession(approved, { type: "annotate-message", actor: "maya", messageId: parent.id, body: "Also check touch targets" }, 60);
+  assert.equal(discussed.stage, "approved");
+  assert.deepEqual(discussed.workspace, approved.workspace);
+  const reply = discussed.messages.at(-1)!.annotations!.at(-1)!;
+  assert.equal(reply.authorId, "maya");
+  const steered = reduceTaskSession(discussed, { type: "steer-message-annotation", actor: "spencer", messageId: parent.id, annotationId: reply.id }, 70);
+  assert.equal(isHiveRunActive(steered), true);
+  assert.equal(steered.sessionId, approved.sessionId);
+  assert.equal(steered.workspace.agentSession!.id, approved.workspace.agentSession!.id);
+  assert.ok(steered.messages.some((message) => message.id === parent.id));
 });
 
 test("authenticated GitHub members keep real attribution and mentions human-only", () => {

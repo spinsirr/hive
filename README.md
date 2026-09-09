@@ -20,11 +20,11 @@ First-time visitors can sign in with GitHub and create their own tasks. A new ac
 2. Talk to Hive, or use a leading `@teammate` mention for human-only discussion.
 3. Open **Reply** on a message. Replies stay discussion until someone chooses **Steer Hive** or **Steer thread**.
 4. While Hive runs, new agent-directed input queues. Apply the next steer explicitly when the current run ends.
-5. Inspect **Diff**, browse **Files**, and expand the actual command output in **Runs**. Approve a successful nonempty diff, then complete the task; reopen it if work continues.
+5. Inspect **Diff**, browse **Files**, and expand the actual command output in **Runs**. Approve a successful nonempty diff; continue the conversation or steer again in the same task.
 
 **Steer thread freezes the discussion so far.** Authors remain distinct from the person promoting or applying it; later replies do not silently change the queued instruction.
 
-The public `/demo` route uses the real dashboard component with invented, page-local sample data. It supports Active / Completed, New task, and Empty state without a database or model. It is UI context, not execution evidence.
+The public `/demo` route uses the real dashboard component with invented, page-local sample data. It supports a recent-first task list, New task, and Empty state without a database or model. It is UI context, not execution evidence.
 
 ## How it works
 
@@ -32,7 +32,7 @@ The public `/demo` route uses the real dashboard component with invented, page-l
 | --- | --- |
 | Next.js | Full-stack UI, authenticated routes, and task actions, deployed on Vercel. |
 | GitHub OAuth + GitHub App | Human identity and live user-scoped repository discovery; separate repository-scoped installation tokens for Sandbox access. |
-| Neon Postgres via Vercel Marketplace | Canonical conversation, membership, queue, lifecycle, and private recovery state. Row locks serialize accepted input. |
+| Neon Postgres via Vercel Marketplace | Canonical conversation, membership, queue, review, and private recovery state. Row locks serialize accepted input. |
 | AI SDK Harness + Codex | Existing coding runtime that inspects, edits, and runs real repository commands. |
 | Vercel AI Gateway + Sandbox | Model access through Vercel OIDC and isolated execution of the selected repository. |
 | WebSockets, Streamdown, and Monaco | Shared live updates, incremental Markdown replies, and read-only source navigation with code annotations. |
@@ -41,7 +41,7 @@ The database transition grants one run; a browser timestamp is not a lock. Publi
 
 Three useful code boundaries:
 
-- [Task state machine](src/lib/task-session.ts): discussion, frozen Thread input, ordered steers, approval, and lifecycle.
+- [Task state machine](src/lib/task-session.ts): discussion, frozen Thread input, ordered steers, and approval.
 - [Task store](src/lib/task-session-store.ts): row-locked transitions, deduplicated submissions, and shared state.
 - [Prompt construction](src/lib/hive-prompt.ts): distinct authors, promoter, and execution starter without duplicating native agent history.
 
@@ -49,7 +49,7 @@ The [runner](src/lib/hive-runner.ts), [restore path](src/lib/workspace-restore.t
 
 ## Key decisions and limits
 
-- **One task per session.** One team, one late-attached repository, one mutating run at a time. The session is an outcome, not a permanent team room.
+- **One task per session.** One team, one late-attached repository, one mutating run at a time. The session is an outcome, not a permanent team room. A finished run or approved diff does not close the conversation; there is no manual Complete/Reopen step.
 - **Discussion is not execution.** Threads and selected-code annotations need explicit steering. The queue waits for a run boundary; teammates choose when to apply the next item.
 - **Rollback the work, not the team.** Restore pairs files with their native agent context, preserves discussion and pending steers, and invalidates approval. Three recovery points are normally retained; unmatched snapshots cannot be restored.
 - **Artifacts over summaries.** Files browses the existing worktree, including unchanged files. Monaco supports selection and annotations, not file saves. Credential files, Git internals, symlinks, binary files, and text over 512 KB are not previewed.
@@ -105,7 +105,7 @@ That database check also covers the signed agent-tool route, bounded bodies, ret
 
 Presence follows authenticated WebSocket connections, not a periodic HTTP request or a stored `last_seen` value. Native ping/pong checks the browser connection every 20 seconds without SQL. Existing Postgres `NOTIFY` relays only member IDs and typing flags across instances; each active instance/task renews its small announcement every 30 seconds, without table writes or repeated reads on receipt. Normal disconnects publish a leave; an ungraceful instance loss expires after 90 seconds. This is reduced database traffic, not zero database traffic. The retired presence table is unused but retained; no destructive migration is required. See [connection-presence evidence](docs/PRESENTATION_NOTES.md#september-8--connection-owned-presence).
 
-On September 8, the independent real-repository task completed `pnpm test && pnpm typecheck && git diff --check` with Exit 0. Its older Sandbox checkout passed **125 unit tests**, component regressions, TypeScript, and diff validation. Both real GitHub accounts inspected the two-file change and attributed response, then verified approval and Complete → refresh → Reopen. Earlier checks separately verified queued Threads, excluded later replies, native incremental text, offline recovery, and paired restore with pending input.
+On September 8, the independent real-repository task completed `pnpm test && pnpm typecheck && git diff --check` with Exit 0. Its older Sandbox checkout passed **125 unit tests**, component regressions, TypeScript, and diff validation. Both real GitHub accounts inspected the two-file change and attributed response, then verified approval and the then-existing Complete → refresh → Reopen flow. Manual task completion was [removed on September 9](docs/PRESENTATION_NOTES.md#september-9--execution-completion-is-not-conversation-closure). Earlier checks separately verified queued Threads, excluded later replies, native incremental text, offline recovery, and paired restore with pending input.
 
 The supervising AI operated both authenticated accounts and supplied a tested repair after earlier agent failures. This was not two independent human reviews or an autonomous first-pass success. Provider 429 risk remains; these checks do not prove hard-worker-crash or permanent-Sandbox-deletion recovery.
 

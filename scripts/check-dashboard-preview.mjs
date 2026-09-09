@@ -36,6 +36,8 @@ const { demoLoadedAt, demoTasks } = await import("../src/lib/ui-demo.ts");
 
 render(h(DashboardDemo));
 assert.ok(screen.getByRole("heading", { name: "Sample tasks" }));
+assert.equal(screen.queryByRole("group", { name: "Task status" }), null);
+assert.equal(within(screen.getByRole("region", { name: "Task list" })).getAllByRole("listitem").length, 4);
 assert.equal(screen.getByRole("link", { name: "Open Hive" }).getAttribute("href"), "/");
 const sample = screen.getByRole("button", { name: "Preview sample task: Work through the onboarding flow" });
 assert.ok(within(sample).getByText("Preview"));
@@ -60,6 +62,15 @@ render(h(TaskDashboard, {
 assert.ok(screen.getByRole("heading", { name: "Tasks" }));
 assert.equal(screen.getByRole("link", { name: /Polish the settings menu/ }).getAttribute("href"), "/sessions/real-task");
 assert.equal(screen.queryByText("Preview"), null);
+assert.equal(screen.queryByRole("group", { name: "Task status" }), null);
+cleanup();
+render(h(TaskDashboard, {
+  tasks: [], memberName: "Alex", memberInitials: "AL", loadedAt: demoLoadedAt,
+  createAction: async () => { throw new Error("This check must not create a task."); },
+}));
+assert.ok(screen.getByText("Start your first shared task"));
+assert.ok(screen.getByRole("button", { name: "New task" }));
+assert.equal(screen.queryByRole("button", { name: /Completed|Active/ }), null);
 cleanup();
 dom.window.close();
-console.log("PASS: the connected dashboard still links directly to real task sessions.");
+console.log("PASS: the dashboard keeps real task links and an honest empty state without manual status filters.");

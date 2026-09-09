@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Check, Eye, FolderGit2, Plus } from "lucide-react";
+import { ArrowRight, Eye, FolderGit2, Plus } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
@@ -8,7 +8,6 @@ import { CreateSessionButton } from "@/components/hive/create-session-button";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { dashboardTasks, taskUpdatedLabel, type DashboardTask } from "@/lib/task-dashboard";
-import { cn } from "@/lib/utils";
 
 function NewTask({ createAction }: { createAction: (formData: FormData) => Promise<void> }) {
   const [title, setTitle] = useState("");
@@ -67,9 +66,7 @@ export function TaskDashboard({ tasks, memberName, memberInitials, loadedAt, cre
   homeHref?: string;
   onPreviewTask?: (task: DashboardTask) => void;
 }) {
-  const [filter, setFilter] = useState<DashboardTask["lifecycle"]>("active");
-  const visible = dashboardTasks(tasks, filter);
-  const activeCount = tasks.filter((task) => task.lifecycle === "active").length;
+  const visible = dashboardTasks(tasks);
 
   return (
     <main className="min-h-dvh bg-[#fafafa] text-[#171717]">
@@ -94,28 +91,10 @@ export function TaskDashboard({ tasks, memberName, memberInitials, loadedAt, cre
             <h1 className="text-2xl font-semibold tracking-[-0.04em]">{onPreviewTask ? "Sample tasks" : "Tasks"}</h1>
             <p className="mt-1.5 text-sm text-[#737373]">{onPreviewTask ? "Explore the dashboard. These are not live tasks." : "Your shared work with Hive."}</p>
           </div>
-          <NewTask createAction={async (formData) => {
-            await createAction(formData);
-            setFilter("active");
-          }} />
+          <NewTask createAction={createAction} />
         </div>
 
-        <div aria-label="Task status" className="mb-4 flex gap-1" role="group">
-          {(["active", "completed"] as const).map((value) => (
-            <button
-              aria-pressed={filter === value}
-              className={cn("flex h-8 items-center gap-2 rounded-md px-3 text-xs transition-colors focus-visible:outline-2 focus-visible:outline-offset-2", filter === value ? "bg-[#ededed] font-medium text-[#171717]" : "text-[#737373] hover:bg-[#f2f2f2]")}
-              key={value}
-              onClick={() => setFilter(value)}
-              type="button"
-            >
-              {value === "active" ? "Active" : "Completed"}
-              <span className="font-mono text-[10px] text-[#888]">{value === "active" ? activeCount : tasks.length - activeCount}</span>
-            </button>
-          ))}
-        </div>
-
-        <section aria-label={`${filter === "active" ? "Active" : "Completed"} tasks`} className="overflow-hidden rounded-lg border border-[#e1e1e1] bg-white">
+        <section aria-label="Task list" className="overflow-hidden rounded-lg border border-[#e1e1e1] bg-white">
           <div aria-hidden="true" className="grid grid-cols-[minmax(0,1fr)_70px] gap-4 border-b border-[#ebebeb] bg-[#fcfcfc] px-5 py-3 text-[11px] text-[#888] sm:grid-cols-[minmax(0,1fr)_minmax(0,0.6fr)_80px_16px]">
             <span>Task</span>
             <span className="hidden sm:block">Repository</span>
@@ -129,7 +108,6 @@ export function TaskDashboard({ tasks, memberName, memberInitials, loadedAt, cre
                   <>
                     <div className="min-w-0">
                       <p className="flex items-center gap-2 text-sm font-medium tracking-[-0.015em]">
-                        {task.lifecycle === "completed" ? <Check aria-hidden="true" className="size-3.5 shrink-0 text-[#888]" /> : null}
                         <span className="truncate" title={task.title}>{task.title}</span>
                         {onPreviewTask ? <span className="shrink-0 rounded bg-[#f2f2f2] px-1.5 py-0.5 text-[10px] font-normal tracking-normal text-[#737373]">Preview</span> : null}
                       </p>
@@ -157,8 +135,8 @@ export function TaskDashboard({ tasks, memberName, memberInitials, loadedAt, cre
           ) : (
             <div className="grid min-h-60 place-items-center px-6 py-10 text-center">
               <div>
-                <p className="text-sm font-medium">{tasks.length === 0 && filter === "active" ? "Start your first shared task" : `No ${filter} tasks`}</p>
-                <p className="mt-2 max-w-xs text-xs leading-5 text-[#888]">{filter === "completed" ? "Completed tasks will appear here." : "Create a task, then invite a teammate to work with Hive."}</p>
+                <p className="text-sm font-medium">Start your first shared task</p>
+                <p className="mt-2 max-w-xs text-xs leading-5 text-[#888]">Create a task, then invite a teammate to work with Hive.</p>
               </div>
             </div>
           )}

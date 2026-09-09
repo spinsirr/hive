@@ -6,6 +6,8 @@ The [September 8 scope freeze](GOAL.md#submission-scope-freeze--september-8) def
 
 Recorded coding acceptance: `a13b3a1` deployed successfully, removing duplicate prompt context while retaining native Codex history and the owner's selected `openai/gpt-5.1-codex-mini`. On September 8 at 15:01–15:02 UTC, the independent task completed one real `pnpm test && pnpm typecheck && git diff --check` with Exit 0: 125 sandbox-revision unit tests, controlled regressions and TypeScript passed. Both real accounts inspected the two-file result and the attributed final answer, then verified shared approval and Complete → refresh → Reopen. Earlier Thread/queue and paired-restore checks include preservation of a nonempty queue. The supervising AI supplied a tested regression repair after earlier failures; this was an assisted completion, not an autonomous first-pass result. Recurring 429 risk remains despite the successful continuation. The public [UI demo](https://hive-roan-mu.vercel.app/demo) is still a dashboard preview, not execution evidence. Deployment authorization does not authorize billing changes, repository publication or external submission.
 
+The Complete/Reopen checks above are historical: Spencer [removed manual task completion on September 9](PRESENTATION_NOTES.md#september-9--execution-completion-is-not-conversation-closure). Current tasks remain open for discussion and steering after a run or approval.
+
 ## Four submission items
 
 | Item | Location | Before sending |

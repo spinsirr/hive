@@ -52,13 +52,12 @@ test("restore replaces files and native context together, preserves conversation
   assert.equal(beginWorkspaceRestore(restored, { ...request, version: session.version }, resolveMember("maya"), 70), restored);
 });
 
-test("stale, foreign, unpaired, completed and actively-running restore attempts are rejected", () => {
+test("stale, foreign, unpaired and actively-running restore attempts are rejected", () => {
   const session = fixture();
   const valid = { ...request, version: session.version };
   const rejected: Array<[TaskSessionState, typeof valid]> = [
     [session, { ...valid, version: 0 }],
     [session, { ...valid, snapshotId: "foreign-snapshot" }],
-    [{ ...session, lifecycle: "completed" }, valid],
     [{ ...session, stage: "running", workspace: { ...session.workspace, startedAt: 45, completedAt: undefined } }, valid],
     [{ ...session, workspace: { ...session.workspace, agentSession: { id: "other-agent", runtime: "codex" } } }, valid],
   ];
@@ -85,7 +84,7 @@ test("a failed or interrupted restore keeps the task fenced and only permits the
   const started = beginWorkspaceRestore(session, { ...request, version: session.version }, resolveMember("spencer"), 50);
   const failed = failWorkspaceRestore(started, request.id);
   assert.equal(failed.workspace.restore?.status, "unconfirmed");
-  assert.equal(reduceTaskSession(failed, { type: "complete-session", actor: "maya" }), failed);
+  assert.equal(reduceTaskSession(failed, { type: "advance-run", actor: "maya" }), failed);
   assert.throws(() => beginWorkspaceRestore(failed, { ...request, version: failed.version }, resolveMember("maya"), 60));
   assert.throws(() => beginWorkspaceRestore(failed, { ...request, id: "other-operation", version: failed.version }, resolveMember("maya"), 100_000));
   const retry = beginWorkspaceRestore(failed, { ...request, version: session.version }, resolveMember("maya"), 100_000);

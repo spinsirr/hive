@@ -19,7 +19,7 @@ export function DashboardDemo() {
     const task = newDemoTask(String(formData.get("title") ?? ""), crypto.randomUUID());
     if (!task) return;
     setTasks((current) => [task, ...current]);
-    setNotice(`“${task.title}” added to Active in this demo only.`);
+    setNotice(`“${task.title}” added in this demo only.`);
   }
 
   function showScenario(empty: boolean) {
@@ -59,7 +59,6 @@ export function DashboardDemo() {
             <DialogDescription>Sample task · Dashboard preview</DialogDescription>
           </DialogHeader>
           <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-3 py-2 text-xs">
-            <dt className="text-[#737373]">Status</dt><dd className="capitalize">{selectedTask?.lifecycle}</dd>
             <dt className="text-[#737373]">Repository</dt><dd>{selectedTask?.repositoryName ?? "Not attached"}</dd>
           </dl>
           <p className="text-xs leading-5 text-[#737373]">This is a dashboard preview, not a live task. Open Hive to access your real conversations and workspaces. Sample changes reset on refresh.</p>
