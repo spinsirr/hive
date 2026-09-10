@@ -57,6 +57,13 @@
       "when": 1788488545930,
       "tag": "0007_dazzling_centennial",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1789061020016,
+      "tag": "0008_wet_cloak",
+      "breakpoints": true
     }
   ]
 }

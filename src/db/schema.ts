@@ -103,6 +103,20 @@ export const taskSessionMembers = pgTable(
   ],
 );
 
+// Private credential vault. Never include this table in task snapshots or backups
+// exposed by the workspace UI. One account is bound to one authorized task.
+export const codexSubscriptions = pgTable("codex_subscriptions", {
+  accountHash: text("account_hash").primaryKey(),
+  sessionId: text("session_id").notNull().unique().references(() => taskSessions.id, { onDelete: "cascade" }),
+  ownerId: text("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  repositoryId: bigint("repository_id", { mode: "number" }).notNull(),
+  encryptedAuth: text("encrypted_auth").notNull(),
+  // A failed/abandoned refresh stays fenced until explicit reseeding. Never
+  // expire this lock and silently replay an older, possibly rotated token.
+  refreshLock: text("refresh_lock"),
+  updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true }).notNull().defaultNow(),
+});
+
 // Historical installation records; no longer an authorization source. Keep data intact.
 export const githubInstallations = pgTable("github_installations", {
   id: bigint("id", { mode: "number" }).primaryKey(),

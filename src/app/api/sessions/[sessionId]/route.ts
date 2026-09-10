@@ -8,6 +8,7 @@ import { runHiveConversation } from "@/lib/hive-conversation";
 import { hiveErrorCopy } from "@/lib/hive-error-copy";
 import { isClientSubmissionId } from "@/lib/message-draft";
 import { runHiveCodingTask } from "@/lib/hive-runner";
+import { prefersCodexSubscription } from "@/lib/codex-subscription-store";
 import { buildHiveRunInput } from "@/lib/hive-prompt";
 import { createHiveToolToken, hiveToolEndpoint } from "@/lib/hive-tool-token";
 import { MESSAGE_BODY_LIMIT, type TaskSessionAction } from "@/lib/task-session";
@@ -243,6 +244,7 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
       runId: replyId,
     } : undefined;
     const runResult = await runHiveCodingTask(snapshot.session, runActor, steer, {
+      preferSubscription: await prefersCodexSubscription(sessionId),
       actorName,
       memoryQuery,
       vercelOidcToken,

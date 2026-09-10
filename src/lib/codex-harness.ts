@@ -19,10 +19,13 @@ export function createHiveCodex(
         // The framework's global debug sink also prints raw console lines.
         // Forward only our structured request metadata, never sandbox logs.
         observability: {
-          debug: { enabled: true, level: "info", subsystems: ["hive.gateway", "hive.subagent"] },
+          debug: { enabled: true, level: "info", subsystems: ["hive.gateway", "hive.subagent", "hive.auth"] },
           report(event) {
             if (event.kind === "event" && event.subsystem === "hive.gateway") {
               onGatewayDiagnostic?.(event.attrs ?? {});
+            }
+            if (event.kind === "event" && event.subsystem === "hive.auth") {
+              onGatewayDiagnostic?.({ event: "authentication", ...event.attrs });
             }
             if (event.kind === "event" && event.subsystem === "hive.subagent") {
               const update = subagentUpdateSchema.safeParse(event.attrs);
@@ -41,6 +44,7 @@ export function createHiveCodex(
         ["runtime.mjs", path.join(process.cwd(), "node_modules/.cache/hive/codex-bridge.mjs")],
         ["bridge.mjs", path.join(process.cwd(), "src/lib/codex-bridge/bridge.mjs")],
         ["app-server.mjs", path.join(process.cwd(), "src/lib/codex-bridge/app-server.mjs")],
+        ["auth.mjs", path.join(process.cwd(), "src/lib/codex-bridge/auth.mjs")],
         ["subagents.mjs", path.join(process.cwd(), "src/lib/codex-bridge/subagents.mjs")],
         ["gateway-transport.mjs", path.join(process.cwd(), "src/lib/codex-bridge/gateway-transport.mjs")],
         ["hive-collaboration/SKILL.md", path.join(process.cwd(), "src/lib/codex-bridge/hive-collaboration/SKILL.md")],

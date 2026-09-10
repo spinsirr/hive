@@ -27,6 +27,9 @@ let session;
 let reducer;
 let codeRunInput;
 let codeRuns = 0;
+mock.module(new URL("../src/lib/codex-subscription-store.ts", import.meta.url).href, { namedExports: {
+  prefersCodexSubscription: async () => false,
+} });
 mock.module(new URL("../src/lib/auth-session.ts", import.meta.url).href, { namedExports: {
   HIVE_SESSION_COOKIE: "hive_session", getSessionMember: async () => member,
 } });

@@ -5,26 +5,27 @@ import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { startGatewayTransport } from "./gateway-transport.mjs";
 import { createSubagents, serveSubagents } from "./subagents.mjs";
+import { SubscriptionUnavailable, subscriptionPreferred, readSubscriptionTokens, subscriptionLimited, subscriptionFailureReason, codexProcessEnvironment } from "./auth.mjs";
 
 // The sandbox recipe pins the CLI via @openai/codex-sdk. Use that installation,
 // not a global CLI, and keep the task sandbox's existing Codex home and credentials.
-export function launchCodexAppServer(workdir) {
+export function launchCodexAppServer(workdir, subscription = false) {
   const sdkRequire = createRequire(import.meta.resolve("@openai/codex-sdk"));
   const cliPackage = sdkRequire.resolve("@openai/codex/package.json");
   const cli = path.join(path.dirname(cliPackage), sdkRequire(cliPackage).bin.codex);
-  return spawn(process.execPath, [cli, "app-server"], {
+  return spawn(process.execPath, [cli, "app-server", ...(subscription ? ["-c", 'cli_auth_credentials_store="ephemeral"'] : [])], {
     cwd: workdir,
-    env: process.env,
+    env: codexProcessEnvironment(subscription),
     stdio: ["pipe", "pipe", "pipe"],
     detached: true,
   });
 }
 
-function threadSettings(start, workdir) {
+function threadSettings(start, workdir, subscription = false) {
   const gatewayBaseUrl = process.env.AI_GATEWAY_BASE_URL;
-  const gateway = Boolean(process.env.AI_GATEWAY_API_KEY || gatewayBaseUrl);
+  const gateway = !subscription && Boolean(process.env.AI_GATEWAY_API_KEY || gatewayBaseUrl);
   if (gateway && !gatewayBaseUrl) throw new Error("AI Gateway base URL is missing.");
-  const baseUrl = gateway ? gatewayBaseUrl : process.env.OPENAI_BASE_URL;
+  const baseUrl = subscription ? undefined : gateway ? gatewayBaseUrl : process.env.OPENAI_BASE_URL;
   const model = gateway && start.model && !start.model.includes("/")
     ? `openai/${start.model}` : start.model;
   const config = {
@@ -34,6 +35,7 @@ function threadSettings(start, workdir) {
     model_reasoning_summary: "detailed",
     // Hive owns bounded delegation so native children cannot bypass its limits.
     features: { ...start.codexConfig?.features, multi_agent: false, multi_agent_v2: false },
+    ...(subscription ? { model_provider: "openai", cli_auth_credentials_store: "ephemeral" } : {}),
   };
   if (gateway && model?.startsWith("openai/")) config.model_supports_reasoning_summaries = true;
   if (baseUrl) {
@@ -75,7 +77,27 @@ export async function runCodexAppServerTurn(options) {
   const { start, turn, workdir } = options;
   if (start.tools?.length) throw new Error("Hive's Codex bridge does not accept host-executed tools.");
   turn.abortSignal.throwIfAborted();
-  const settings = threadSettings(start, workdir);
+  turn.emit({ type: "stream-start" });
+  let continuedThreadId = options.threadId;
+  let gatewayStart = start;
+  if (subscriptionPreferred(start)) {
+    try {
+      const tokens = await readSubscriptionTokens(start, turn.abortSignal);
+      return await runNativeTurn({ ...options, subscription: true, tokens, settings: threadSettings(start, workdir, true) });
+    } catch (error) {
+      if (!(error instanceof SubscriptionUnavailable)) throw error;
+      // Only preflight failures or a positively excluded, empty rejected turn
+      // can switch. A command, tool, text delta, or ambiguous failure cannot.
+      continuedThreadId = error.threadId || continuedThreadId;
+      if (!process.env.AI_GATEWAY_BASE_URL) throw error;
+      const model = start.mcpServers.hive.http_headers["X-Hive-Gateway-Model"];
+      if (typeof model !== "string" || !model.trim()) throw new Error("Gateway fallback model is missing.");
+      gatewayStart = { ...start, model };
+      turn.bridgeLog?.({ level: "warn", subsystem: "hive.auth", message: "Authentication fallback",
+        attrs: { source: "ai-gateway", reason: error.reason, model } });
+    }
+  }
+  const settings = threadSettings(gatewayStart, workdir);
   let gateway;
   try {
     if (process.env.AI_GATEWAY_BASE_URL) {
@@ -100,7 +122,7 @@ export async function runCodexAppServerTurn(options) {
       });
     }
     turn.abortSignal.throwIfAborted();
-    return await runNativeTurn({ ...options, settings });
+    return await runNativeTurn({ ...options, start: gatewayStart, threadId: continuedThreadId, settings });
   } finally {
     await gateway?.close();
   }
@@ -108,9 +130,9 @@ export async function runCodexAppServerTurn(options) {
 
 async function runNativeTurn({
   start, turn, workdir, settings, threadId: resumedThreadId, onThread,
-  launch = launchCodexAppServer,
+  launch = launchCodexAppServer, subscription = false, tokens,
 }) {
-  const child = launch(workdir);
+  const child = launch(workdir, subscription);
   const lines = createInterface({ input: child.stdout });
   const messages = lines[Symbol.asyncIterator]();
   const textByItem = new Map();
@@ -127,6 +149,7 @@ async function runNativeTurn({
   let tokenUsage;
   let processExit;
   let subagents;
+  let observedActivity = false;
   let closeSubagentServer;
   let rpcSequence = 0;
   const pendingRequests = new Map();
@@ -163,6 +186,11 @@ async function runNativeTurn({
   const startThread = () => send({ id: 1, method: resumedThreadId ? "thread/resume" : "thread/start", params: {
     ...settings, ...(resumedThreadId ? { threadId: resumedThreadId } : {}),
   } });
+  const prepareThread = () => {
+    if (subscription) turn.bridgeLog?.({ level: "info", subsystem: "hive.auth", message: "Authentication selected", attrs: { source: "chatgpt", model: settings.model } });
+    if (start.mcpServers?.hive) send({ id: 4, method: "skills/extraRoots/set", params: { extraRoots: [fileURLToPath(new URL(".", import.meta.url))] } });
+    else startThread();
+  };
   const kill = () => {
     if (!closed) {
       // Terminate only the process group created by this turn, including the CLI child.
@@ -175,7 +203,10 @@ async function runNativeTurn({
     abortTimer ??= setTimeout(kill, 4000);
   };
   turn.abortSignal.addEventListener("abort", abort, { once: true });
-  const emit = (event) => turn.emit(event);
+  const emit = (event) => {
+    if (["text-delta", "tool-call", "tool-result", "file-change"].includes(event.type)) observedActivity = true;
+    turn.emit(event);
+  };
   const appendText = (id, delta) => {
     if (!delta || completedItems.has(id)) return;
     if (!textByItem.has(id)) { textByItem.set(id, ""); emit({ type: "text-start", id }); }
@@ -193,14 +224,22 @@ async function runNativeTurn({
     completedItems.add(item.id);
   };
 
-  emit({ type: "stream-start" });
   send({ id: 0, method: "initialize", params: {
     clientInfo: { name: "hive", title: "Hive", version: "0.1.0" },
+    ...(subscription ? { capabilities: { experimentalApi: true } } : {}),
   } });
   try {
     for await (const line of messages) {
       const message = JSON.parse(line);
       if (message.method && message.id != null) {
+        if (subscription && message.method === "account/chatgptAuthTokens/refresh") {
+          try {
+            const refreshed = await readSubscriptionTokens(start, turn.abortSignal, true);
+            if (refreshed.chatgptAccountId !== tokens.chatgptAccountId) throw new Error("Account changed.");
+            send({ id: message.id, result: refreshed });
+          } catch { send({ id: message.id, error: { code: -32000, message: "Authentication refresh unavailable." } }); }
+          continue;
+        }
         // Approval/input requests are not silently granted or left hanging.
         send({ id: message.id, error: { code: -32601, message: "Interactive requests are not supported by Hive." } });
         if (subagents?.ownsThread(message.params?.threadId)) continue;
@@ -208,14 +247,22 @@ async function runNativeTurn({
       }
       if (!message.method) {
         if (String(message.id).startsWith("hive-subagent:")) continue;
-        if (message.error) throw new Error(message.error.message || "Codex request failed.");
+        if (message.error) {
+          if (subscription && message.id === 5) throw new SubscriptionUnavailable("authentication_unavailable");
+          if (subscription && message.id === 6) { prepareThread(); continue; }
+          throw new Error(message.error.message || "Codex request failed.");
+        }
         if (message.id === 0) {
           send({ method: "initialized", params: {} });
-          if (start.mcpServers?.hive) {
-            // Native skill input only loads discovered skills. Register the
-            // bundled root for this process, without editing repository files.
-            send({ id: 4, method: "skills/extraRoots/set", params: { extraRoots: [fileURLToPath(new URL(".", import.meta.url))] } });
-          } else startThread();
+          if (subscription) {
+            send({ id: 5, method: "account/login/start", params: { type: "chatgptAuthTokens", ...tokens } });
+          } else prepareThread();
+        } else if (message.id === 5 && subscription) {
+          if (message.result?.type !== "chatgptAuthTokens") throw new SubscriptionUnavailable("authentication_unavailable");
+          send({ id: 6, method: "account/rateLimits/read", params: {} });
+        } else if (message.id === 6 && subscription) {
+          if (subscriptionLimited(message.result)) throw new SubscriptionUnavailable("quota_unavailable");
+          prepareThread();
         } else if (message.id === 4) {
           startThread();
         } else if (message.id === 1) {
@@ -265,6 +312,7 @@ async function runNativeTurn({
       }
       if (message.method === "item/started" || message.method === "item/completed") {
         const item = params.item;
+        if (!["userMessage", "reasoning", "agentMessage"].includes(item.type)) observedActivity = true;
         const done = message.method === "item/completed";
         if (completedItems.has(item.id)) continue;
         if (item.type === "agentMessage") {
@@ -303,6 +351,19 @@ async function runNativeTurn({
     turn.abortSignal.throwIfAborted();
     if (!result) throw new Error(`Codex exited before completing its turn.${stderr ? ` ${stderr}` : ""}`);
     if (result.status !== "completed") {
+      const reason = subscription ? subscriptionFailureReason(result.error ?? failure) : null;
+      if (reason && !observedActivity && result.status === "failed" && threadId && turnId) {
+        // Preserve the original history. Continue from a native fork immediately
+        // before this positively identified, rejected empty turn, never replay
+        // completed work or use the deprecated destructive rollback API.
+        const read = await request("thread/read", { threadId, includeTurns: true });
+        const last = read?.thread?.turns?.at(-1);
+        if (last?.id === turnId && last.status === "failed" && Array.isArray(last.items) && last.items.every((item) => item.type === "userMessage" || item.type === "reasoning")) {
+          const fork = await request("thread/fork", { ...settings, threadId, beforeTurnId: turnId, deferGoalContinuation: true, ephemeral: false });
+          const forkId = fork?.thread?.id;
+          if (typeof forkId === "string" && forkId && forkId !== threadId) throw new SubscriptionUnavailable(reason, forkId);
+        }
+      }
       throw new Error(result.error?.message || failure?.message || `Codex turn ${result.status}.`);
     }
     if ([...commands.keys()].some((id) => !completedItems.has(id))) {
@@ -326,9 +387,11 @@ async function runNativeTurn({
       pending.reject(new Error("Codex has stopped."));
     }
     pendingRequests.clear();
-  }
-  if (processExit.code !== 0 || processExit.signal) {
-    throw new Error("Codex did not shut down cleanly; its history checkpoint could not be confirmed.");
+    // This also overrides a pending fallback: an unflushed native fork must
+    // never be resumed and replayed by another provider.
+    if (processExit.code !== 0 || processExit.signal) {
+      throw new Error("Codex did not shut down cleanly; its history checkpoint could not be confirmed.");
+    }
   }
   // Native tokenUsage.total includes previous turns and last is one model call,
   // not this whole turn. Keep raw counters without inventing per-turn totals.
