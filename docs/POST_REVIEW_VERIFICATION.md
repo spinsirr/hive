@@ -2,7 +2,7 @@
 
 Initial tested revision: `30f692e626c2a3de75645566ace2c286f84456f7` (Fable's pushed review fixes). The existing deployment was tested; that verification made no runtime changes, commits, pushes or deployments.
 
-**Latest status:** the owner subsequently requested the timestamp fix. The [local follow-up](#follow-up-local-timestamp-fix) now passes the original reproduction and the full test suite. It has not been deployed or rechecked on production. The results below retain the original test round's findings.
+**Latest status:** the owner subsequently requested the timestamp fix. The [local follow-up](#follow-up-local-timestamp-fix) passes the original reproduction and the full test suite; `e24bbab` deployed it and the [fresh-page production check](#follow-up-production-timestamp-check) passed. The original test round's findings below remain dated evidence, not the current timestamp verdict.
 
 ## Result
 
@@ -100,3 +100,9 @@ The real-component regression is now included in `pnpm test`. It passes four sce
 After the fix, `pnpm test` passed all 161 unit tests, 8 recall checks, the four new hydration scenarios and the remaining controlled regressions. Typecheck, lint and diff whitespace checks passed. Only the timestamp component and the test command were changed in runtime/configuration scope; the earlier test evidence remains intact. Production deployment and a fresh-page production check are still pending; no additional agent or Mem0 request was made.
 
 Build verification: the default `pnpm build` first failed to download Google Fonts in the restricted environment, then hit a Turbopack internal IPC port-binding permission error on the network-enabled retry. A supported one-off `pnpm exec next build --webpack` completed successfully, including TypeScript and static page generation. This did not change the configured bundler or production build command. The Webpack build is verified; a default Turbopack build is not claimed as passing in this environment.
+
+## Follow-up: production timestamp check
+
+On September 10, commit `e24bbab` deployed with the subagent addition through the existing GitHub/Vercel integration. Production deployment `EjVcNfz8URk2YJAGTuBYu7g39E4p` became Ready after the configured 48-second build; this is production build evidence, separate from the local bundler limitation above.
+
+The new `verify-live-subagent-collaborati-ugic3a` task's greeting, repository notice, prompt and failure were retained as **12:02, 12:05, 12:06 and 12:10 AM Pacific** on a fresh in-app page and reloaded Chrome page. Both reached Live and preserved the shared messages, rather than retaining UTC labels. This closes the observed refresh-time regression for this production check; the four zone/season cases remain local tests. The separate model execution ended on Gateway 429 and did not verify live subagents; see [the full result](SUBAGENTS.md#september-10-production-attempt).

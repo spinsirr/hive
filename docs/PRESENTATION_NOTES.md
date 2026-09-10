@@ -840,6 +840,10 @@ Keep the evidence distinctions visible: original two-account execution and no-re
 - **Provenance labels and diff numbers.** Recalled memories now label their origin as `sourceTaskId`/`sourceMessageId`/`sourceReplyId` with an explicit instruction to cite the task by `sourceTaskId`, addressing the observed `来源任务：initial-1` ("source task: initial-1") mislabel at the formatter (the model-side cause is plausible, not proven). Diff shows real old/new file line numbers instead of diff-line indices.
 - **Verification (local only):** `pnpm test` (unit tests plus controlled runner/route/component regressions), `pnpm lint`, `pnpm typecheck` and the Webpack production build pass on the changed tree; new regressions cover the reset guard, stalled-run recovery, timestamps, the message limit, best-effort checkpoints, local time formatting and diff numbering. These are local checks, not production acceptance; the deferred review items (connection-pool hold during Files reads, snapshot payload size, sandbox re-clone path) remain open in the review report.
 
+### September 10 — Subagent deployment and bounded live attempt
+
+The owner requested direct deployment and live testing. `e24bbab` deployed successfully; the new UI demo is online. In an independent task, two browsers sharing the owner's account retained the same prompt, running state, failure and refreshed local times. Five model calls succeeded before three Gateway 429 responses; bounded retries stopped and no child start was observed. Keep deployment, controlled native tests and passing live delegation as separate claims: child startup/Stop/result acceptance is still open. Existing presentation tasks were not reset or restored. See [deployment and request evidence](SUBAGENTS.md#september-10-production-attempt).
+
 ## Questions to prepare for
 
 - How is Hive different from tagging Claude in a shared channel?
