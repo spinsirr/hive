@@ -6,6 +6,7 @@ import { useCallback, useMemo, useState } from "react";
 import { Conversation, ConversationContent, ConversationScrollButton } from "@/components/ai-elements/conversation";
 import { AgentResponse } from "@/components/hive/agent-response";
 import { MentionInput } from "@/components/hive/mention-input";
+import { MessageTime } from "@/components/hive/message-time";
 import { ThreadReply } from "@/components/hive/thread-reply";
 import { Button } from "@/components/ui/button";
 import { useMessageDraft } from "@/hooks/use-message-draft";
@@ -61,7 +62,7 @@ export function MessageThread({ sessionId, message, members, currentMember, disa
       <Conversation className="min-h-0 flex-1">
         <ConversationContent className="gap-5 px-3 py-5 sm:px-5">
           <article className="border-b border-[#ebebeb] pb-5">
-            <div className="mb-2 flex items-center gap-2 text-xs"><span className="grid size-6 shrink-0 place-items-center rounded-full border border-[#dedede] bg-[#fafafa] text-[9px] font-medium">{message.initials}</span><span className="font-medium">{message.name}</span><span className="text-[#999]">{message.time}</span></div>
+            <div className="mb-2 flex items-center gap-2 text-xs"><span className="grid size-6 shrink-0 place-items-center rounded-full border border-[#dedede] bg-[#fafafa] text-[9px] font-medium">{message.initials}</span><span className="font-medium">{message.name}</span><MessageTime className="text-[#999]" message={message} /></div>
             <div className="min-w-0 break-words text-sm leading-6">
               {message.role === "agent" ? <AgentResponse>{message.body}</AgentResponse> : message.codeReference ? <><p className="break-all font-mono text-xs text-[#737373]">{codeReferenceLabel(message.codeReference)}</p><pre className="mt-2 max-h-52 overflow-auto font-mono text-xs leading-5">{message.codeReference.quote}</pre></> : <p className="whitespace-pre-wrap">{message.body}</p>}
             </div>

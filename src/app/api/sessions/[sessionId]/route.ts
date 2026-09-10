@@ -10,7 +10,7 @@ import { isClientSubmissionId } from "@/lib/message-draft";
 import { runHiveCodingTask } from "@/lib/hive-runner";
 import { buildHiveRunInput } from "@/lib/hive-prompt";
 import { createHiveToolToken, hiveToolEndpoint } from "@/lib/hive-tool-token";
-import type { TaskSessionAction } from "@/lib/task-session";
+import { MESSAGE_BODY_LIMIT, type TaskSessionAction } from "@/lib/task-session";
 import { isTaskSessionId } from "@/lib/task-session-id";
 import { publicTaskSessionSnapshot } from "@/lib/task-session-snapshot";
 import { WorkspaceRestoreError } from "@/lib/workspace-restore-state";
@@ -82,6 +82,7 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
     payload.type !== "reorder-queued-steer" &&
     payload.type !== "steer-agent" &&
     payload.type !== "advance-run" &&
+    payload.type !== "recover-stalled-run" &&
     payload.type !== "reset"
   ) {
     return NextResponse.json({ error: "Unknown session action" }, { status: 400 });
@@ -99,6 +100,9 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
     (!("body" in payload) || typeof payload.body !== "string" || !payload.body.trim())
   ) {
     return NextResponse.json({ error: "Message body is required" }, { status: 400 });
+  }
+  if (payload.type === "send-message" && "body" in payload && typeof payload.body === "string" && payload.body.trim().length > MESSAGE_BODY_LIMIT) {
+    return NextResponse.json({ error: `Messages can contain up to ${MESSAGE_BODY_LIMIT.toLocaleString("en-US")} characters.` }, { status: 400 });
   }
 
   if (
@@ -187,8 +191,11 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
       : undefined;
 
   const replyId = snapshot.session.workspace.liveReply!.id;
-  const writer = createReplyWriter((body, sequence) =>
-    checkpointAgentReply(sessionId, replyId, body, sequence),
+  // Progress checkpoints are best effort; the completed reply is saved below.
+  const writer = createReplyWriter(
+    (body, sequence) => checkpointAgentReply(sessionId, replyId, body, sequence),
+    250,
+    (error) => console.error("Hive reply checkpoint failed", { taskSessionId: sessionId, error }),
   );
 
   try {

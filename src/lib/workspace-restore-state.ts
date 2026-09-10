@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { isHiveRunActive, type TaskSessionState, type TeamMember } from "./task-session.ts";
+import { isHiveRunActive, timeLabel, type TaskSessionState, type TeamMember } from "./task-session.ts";
 
 export const restoreWorkspaceRequest = z.object({
   id: z.uuid(), snapshotId: z.string().min(1).max(200), version: z.number().int().nonnegative(),
@@ -55,7 +55,8 @@ export function completeWorkspaceRestore(session: TaskSessionState, operationId:
     messages: [...session.messages, {
       id: `restore-${operation.id}`, memberId: operation.by.id, name: operation.by.name, initials: operation.by.initials, role: "human",
       body: `Restored workspace and agent context to checkpoint ${checkpoint.id}. Team discussion and queued steers were kept; nothing was rerun.`,
-      time: new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" }).format(now),
+      time: timeLabel(now),
+      createdAt: now,
     }],
   };
 }

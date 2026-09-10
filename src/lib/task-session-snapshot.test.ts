@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createInitialTaskSessionState, reduceTaskSession } from "./task-session.ts";
+import { appendHiveReply, createInitialTaskSessionState, reduceTaskSession } from "./task-session.ts";
 import { publicTaskSessionSnapshot, receiveAgentReply, receiveTaskSessionSnapshot } from "./task-session-snapshot.ts";
 import type { TaskSessionSnapshot } from "./task-session-store.ts";
 
@@ -71,8 +71,10 @@ test("a late response from another task never replaces the current task", () => 
 
 test("reset advances the synchronization version even without an attached repository", () => {
   const before = snapshot();
-  const changed = reduceTaskSession(before.session, { type: "send-message", actor: "spencer", body: "Discuss the task" }, 2);
-  const reset = reduceTaskSession(changed, { type: "reset", actor: "spencer" }, 3);
+  const asked = reduceTaskSession(before.session, { type: "send-message", actor: "spencer", body: "Discuss the task" }, 2);
+  assert.equal(reduceTaskSession(asked, { type: "reset", actor: "spencer" }, 3), asked, "a planning turn in progress blocks reset");
+  const changed = appendHiveReply(asked, "Let us define the outcome first.", 3);
+  const reset = reduceTaskSession(changed, { type: "reset", actor: "spencer" }, 4);
   assert.equal(reset.version, changed.version + 1);
   assert.equal(receiveTaskSessionSnapshot({ ...before, session: changed }, { ...before, session: reset }).session, reset);
 });

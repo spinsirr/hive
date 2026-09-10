@@ -37,7 +37,7 @@ One reply, an entire thread, or a teammate message explicitly promoted into agen
 _Avoid_: Comment, hidden prompt
 
 **Run**:
-One agent execution turn against the attached repository.
+One agent execution turn against the attached repository. A run that has not reported for six minutes can be marked lost by a member; the discussion, partial output and queued steers stay and nothing reruns. Resetting a task is separate and deliberate: it requires confirmation and an idle task, and it erases the shared conversation for everyone.
 _Avoid_: Session, task
 
 **Workspace**:

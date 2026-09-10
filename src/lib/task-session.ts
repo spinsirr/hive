@@ -94,7 +94,10 @@ export type ChatMessage = {
   threadSteer?: { id: string; throughReplyId: string; replyCount: number; requestedBy: MemberId; requestedAt: number; status: "queued" | "steered" };
   status?: "error" | "streaming";
   codeReference?: CodeReference;
+  /** Server-zone label kept for messages saved before `createdAt` existed. */
   time: string;
+  /** Epoch milliseconds; viewers format this in their own time zone. */
+  createdAt?: number;
 };
 
 type RepositoryDetails = {
@@ -151,6 +154,15 @@ export type WorkspaceState = {
 };
 
 export const WORKSPACE_CHECKPOINT_LIMIT = 3;
+/** Longest conversation message. Thread replies (4,000) and code annotations (500) stay stricter. */
+export const MESSAGE_BODY_LIMIT = 8_000;
+/**
+ * A run that has not reported this long after starting has outlived the request
+ * hosting it (the session route's `maxDuration` is 300 s). Members may then mark
+ * it as lost; nothing reruns and the discussion/queue are kept.
+ */
+export const STALLED_RUN_AFTER_MS = 6 * 60_000;
+export const STALLED_RUN_ERROR = "Hive's execution process was lost before it reported a result.";
 export type SavedWorkspaceCheckpoint = {
   id: string;
   createdAt: number;
@@ -253,6 +265,7 @@ export type TaskSessionAction =
     }
   | { type: "steer-agent"; actor: MemberId }
   | { type: "advance-run"; actor: MemberId }
+  | { type: "recover-stalled-run"; actor: MemberId }
   | { type: "reset"; actor: MemberId };
 
 export function createAgentSessionId(sessionId: string, now = Date.now()) {
@@ -284,6 +297,7 @@ export function createInitialTaskSessionState(
         body: "What should we accomplish? We can clarify the task first and attach a GitHub repository whenever the team is ready to work on code.",
         role: "agent",
         time: timeLabel(now),
+        createdAt: now,
       },
     ],
     annotation: {
@@ -302,7 +316,8 @@ export function createInitialTaskSessionState(
   };
 }
 
-function timeLabel(now: number) {
+/** Fallback label only; it follows the server process time zone. Viewers format `createdAt`. */
+export function timeLabel(now: number) {
   return new Intl.DateTimeFormat("en-US", {
     hour: "numeric",
     minute: "2-digit",
@@ -319,6 +334,7 @@ function appendAgentMessage(state: TaskSessionState, body: string, now: number):
       body,
       role: "agent",
       time: timeLabel(now),
+      createdAt: now,
     },
   ];
 }
@@ -330,6 +346,12 @@ export function isHiveRunActive(state: TaskSessionState): boolean {
     state.workspace.completedAt === undefined;
 }
 
+/** True once an active run has outlived the request that could still report for it. */
+export function isHiveRunStalled(state: TaskSessionState, now = Date.now()): boolean {
+  return isHiveRunActive(state) &&
+    now - state.workspace.startedAt! >= STALLED_RUN_AFTER_MS;
+}
+
 function finishAgentReply(state: TaskSessionState, body: string, now: number): ChatMessage[] {
   const liveReply = state.workspace.liveReply;
   if (!liveReply) return appendAgentMessage(state, body, now);
@@ -337,9 +359,12 @@ function finishAgentReply(state: TaskSessionState, body: string, now: number): C
     id: liveReply.id,
     name: "Hive",
     initials: "AI",
-    body: liveReply.body || body,
+    // The completed text is authoritative; the streamed checkpoint is best effort
+    // and may lag if a progress save failed. Failures pass "" to keep partial text.
+    body: body || liveReply.body,
     role: "agent",
     time: timeLabel(liveReply.startedAt),
+    createdAt: liveReply.startedAt,
   }];
 }
 
@@ -411,7 +436,18 @@ export function reduceTaskSession(
 ): TaskSessionState {
   const actor = resolveMember(action.actor, members);
   if (state.workspace.restore) return state;
+  if (action.type === "recover-stalled-run") {
+    if (!isHiveRunStalled(state, now)) return state;
+    return applyHiveRunError(
+      state,
+      `${STALLED_RUN_ERROR} ${actor.shortName} marked the run as lost; partial output and queued steers were kept, and nothing was rerun.`,
+      now,
+    );
+  }
   if (action.type === "reset") {
+    // Reset is destructive for the whole team: never while Hive is working or
+    // while accepted input is still waiting to be applied.
+    if (isHiveRunActive(state) || state.activeSteer || state.steeringQueue.length > 0) return state;
     const initialSession = createInitialTaskSessionState(now, state.sessionId, {
       title: state.title,
       createdBy: state.createdBy,
@@ -441,6 +477,7 @@ export function reduceTaskSession(
           body: `${state.repository.name} is connected. What should we work on?`,
           role: "agent",
           time: timeLabel(now),
+          createdAt: now,
         },
       ],
     };
@@ -493,7 +530,7 @@ export function reduceTaskSession(
 
   if (action.type === "send-message") {
     const body = action.body.trim();
-    if (!body) return state;
+    if (!body || body.length > MESSAGE_BODY_LIMIT) return state;
     if (action.clientId && state.messages.some((message) =>
       message.role === "human" && message.memberId === action.actor && message.clientId === action.clientId,
     )) return state;
@@ -558,6 +595,7 @@ export function reduceTaskSession(
           role: "human",
           memberId: member.id,
           time: timeLabel(now),
+          createdAt: now,
         },
       ],
       updatedAt: now,
@@ -584,6 +622,7 @@ export function reduceTaskSession(
         role: "human",
         memberId: actor.id,
         time: timeLabel(now),
+        createdAt: now,
         annotations: [{ id: `annotation-${now}-${state.version + 1}`, clientId: action.clientId, body, authorId: actor.id, createdAt: now, status: "open" }],
       }],
       updatedAt: now,
@@ -1030,6 +1069,7 @@ export function applyHiveRunError(
         role: "agent",
         status: "error",
         time: timeLabel(now),
+        createdAt: now,
       },
     ],
     updatedAt: now,

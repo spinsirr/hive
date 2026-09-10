@@ -10,7 +10,10 @@ import {
   createInitialTaskSessionState,
   didStartHiveRun,
   isHiveRunActive,
+  isHiveRunStalled,
+  MESSAGE_BODY_LIMIT,
   reduceTaskSession,
+  STALLED_RUN_AFTER_MS,
   type TaskSessionState,
 } from "./task-session.ts";
 
@@ -687,4 +690,64 @@ test("a failed turn persists the latest Codex checkpoint", () => {
 
   assert.equal(failed.workspace.sandboxName, "hive-session-durable");
   assert.deepEqual(failed.workspace.agentSession?.resumeFrom, resumeFrom);
+});
+
+test("reset needs an idle task: never during a run, an applied steer, or with queued input", () => {
+  const running = reduceTaskSession(connectedSession(), { type: "send-message", actor: "spencer", body: "Update navigation" }, 20);
+  assert.equal(reduceTaskSession(running, { type: "reset", actor: "maya" }, 30), running, "an active run blocks reset");
+  const queued = reduceTaskSession(running, { type: "send-message", actor: "maya", body: "Also the footer" }, 31);
+  const finished = finishInspection(queued);
+  assert.equal(isHiveRunActive(finished), false);
+  assert.equal(reduceTaskSession(finished, { type: "reset", actor: "maya" }, 40), finished, "queued input blocks reset");
+  const applied = reduceTaskSession(finished, { type: "apply-next-steer", actor: "spencer" }, 50);
+  assert.ok(applied.activeSteer);
+  assert.equal(reduceTaskSession(applied, { type: "reset", actor: "maya" }, 60), applied, "an applied steer blocks reset");
+  const idle = finishInspection(reduceTaskSession(connectedSession(), { type: "send-message", actor: "spencer", body: "Inspect" }, 20));
+  assert.notEqual(reduceTaskSession(idle, { type: "reset", actor: "maya" }, 70), idle, "an idle task can still be reset");
+});
+
+test("a run that outlives its request can be marked lost without losing discussion or the queue", () => {
+  let running = reduceTaskSession(connectedSession(), { type: "send-message", actor: "spencer", body: "Long task" }, 20);
+  running = reduceTaskSession(running, { type: "send-message", actor: "maya", body: "Queued follow-up" }, 25);
+  running = { ...running, workspace: { ...running.workspace, liveReply: { id: "reply", body: "Partial", sequence: 1, startedAt: 20 } } };
+  const early = 20 + STALLED_RUN_AFTER_MS - 1;
+  assert.equal(isHiveRunStalled(running, early), false);
+  assert.equal(reduceTaskSession(running, { type: "recover-stalled-run", actor: "maya" }, early), running, "a live request must not be declared lost");
+  const late = 20 + STALLED_RUN_AFTER_MS;
+  assert.equal(isHiveRunStalled(running, late), true);
+  const recovered = reduceTaskSession(running, { type: "recover-stalled-run", actor: "maya" }, late);
+  assert.equal(isHiveRunActive(recovered), false);
+  assert.equal(recovered.workspace.status, "error");
+  assert.equal(recovered.workspace.liveReply, undefined);
+  assert.equal(recovered.workspace.agentSession?.id, running.workspace.agentSession?.id, "native identity survives");
+  assert.deepEqual(recovered.steeringQueue, running.steeringQueue, "queued steers are kept, not applied");
+  assert.equal(canApplyNextSteer(recovered), true);
+  assert.ok(recovered.messages.some((message) => message.id === "reply" && message.body === "Partial"), "partial output is kept");
+  const notice = recovered.messages.at(-1)!;
+  assert.equal(notice.status, "error");
+  assert.match(notice.body, /execution process was lost/);
+  assert.match(notice.body, /Maya marked the run as lost/);
+  assert.equal(reduceTaskSession(recovered, { type: "recover-stalled-run", actor: "maya" }, late + 1), recovered, "a recovered task is not lost twice");
+  const retried = reduceTaskSession(recovered, { type: "apply-next-steer", actor: "spencer" }, late + 2);
+  assert.equal(retried.activeSteer?.body, "Queued follow-up");
+});
+
+test("conversation messages carry a machine timestamp alongside the legacy label", () => {
+  const running = reduceTaskSession(connectedSession(), { type: "send-message", actor: "spencer", body: "Update navigation" }, 20);
+  assert.equal(running.messages.at(-1)?.createdAt, 20);
+  assert.equal(running.messages.at(-2)?.createdAt, 10, "the repository-connected notice");
+  assert.equal(running.messages[0]?.createdAt, 1, "the initial greeting");
+  assert.equal(finishInspection(running, "+ change").messages.at(-1)?.createdAt, 40);
+  assert.equal(applyHiveRunError(running, "boom", 45).messages.at(-1)?.createdAt, 45);
+  const streamed = { ...running, workspace: { ...running.workspace, liveReply: { id: "reply", body: "Partial", sequence: 1, startedAt: 22 } } };
+  assert.equal(finishInspection(streamed).messages.at(-1)?.createdAt, 22, "a streamed reply keeps the time it started");
+});
+
+test("oversized conversation messages are ignored rather than stored or executed", () => {
+  const connected = connectedSession();
+  const tooLong = reduceTaskSession(connected, { type: "send-message", actor: "spencer", body: "x".repeat(MESSAGE_BODY_LIMIT + 1) }, 20);
+  assert.equal(tooLong, connected);
+  const atLimit = reduceTaskSession(connected, { type: "send-message", actor: "spencer", body: "x".repeat(MESSAGE_BODY_LIMIT) }, 20);
+  assert.equal(atLimit.messages.at(-1)?.body.length, MESSAGE_BODY_LIMIT);
+  assert.equal(isHiveRunActive(atLimit), true);
 });

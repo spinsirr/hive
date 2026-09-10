@@ -3,12 +3,14 @@ export const hiveErrorCopy = {
   credit: "AI Gateway credit required.",
   disconnected: "AI Gateway isn’t connected.",
   generic: "Run failed. Try again.",
+  lost: "Hive's execution process was lost. Partial output and queued steers were kept; nothing was rerun.",
   model: "Model unavailable on this plan.",
   rateLimit: "Rate limit reached. Try again shortly.",
 } as const;
 
 export function displayHiveErrorMessage(message: string) {
   const normalized = message.toLowerCase();
+  if (normalized.includes("execution process was lost")) return hiveErrorCopy.lost;
   if (normalized.includes("billing verification")) return hiveErrorCopy.billing;
   if (
     normalized.includes("not available on this account tier") ||

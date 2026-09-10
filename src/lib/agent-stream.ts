@@ -19,31 +19,38 @@ export async function consumeAgentText<TPart extends { type: string; text?: stri
   return body;
 }
 
-/** Coalesce model deltas into ordered checkpoints, including the last pending chunk. */
+/**
+ * Coalesce model deltas into ordered progress checkpoints, including the last
+ * pending chunk. Checkpoints are best effort: a failed save is reported through
+ * `onSaveError`, later deltas try again, and the turn itself is never
+ * interrupted. The completed reply is persisted separately by the caller.
+ */
 export function createReplyWriter(
   save: (body: string, sequence: number) => Promise<void>,
   intervalMs = 250,
+  onSaveError: (error: unknown) => void = () => undefined,
 ) {
   let latest = "";
   let saved = "";
   let sequence = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let pending: Promise<void> | undefined;
-  let failure: unknown;
   let closed = false;
 
   function flush() {
     clearTimeout(timer);
     timer = undefined;
-    if (!pending && latest !== saved && !failure) {
+    if (!pending && latest !== saved) {
       const body = latest;
       const nextSequence = ++sequence;
+      let failed = false;
       pending = Promise.resolve().then(() => save(body, nextSequence))
         .then(() => { saved = body; })
-        .catch((error: unknown) => { failure = error; })
+        .catch((error: unknown) => { failed = true; onSaveError(error); })
         .finally(() => {
           pending = undefined;
-          if (!closed && !failure && latest !== saved) timer ??= setTimeout(() => void flush(), intervalMs);
+          // After a failure, wait for the next delta instead of retrying in a loop.
+          if (!closed && !failed && latest !== saved) timer ??= setTimeout(() => void flush(), intervalMs);
         });
     }
     return pending;
@@ -51,16 +58,18 @@ export function createReplyWriter(
 
   return {
     push(body: string) {
-      if (failure) throw failure;
       if (closed) throw new Error("Agent reply is already closed.");
       latest = body;
       timer ??= setTimeout(() => void flush(), intervalMs);
     },
+    /** Attempts one final save of the latest text; reports whether it was stored. */
     async close() {
       closed = true;
       clearTimeout(timer);
-      while ((pending || latest !== saved) && !failure) await flush();
-      if (failure) throw failure;
+      timer = undefined;
+      if (pending) await pending;
+      if (latest !== saved) await flush();
+      return { delivered: latest === saved };
     },
   };
 }

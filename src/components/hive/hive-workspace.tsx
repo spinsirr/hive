@@ -33,15 +33,18 @@ import { DiffPane } from "@/components/hive/diff-pane";
 import { MentionInput } from "@/components/hive/mention-input";
 import { MessageThread } from "@/components/hive/message-thread";
 import { MessageThreadPreview } from "@/components/hive/message-thread-preview";
+import { MessageTime } from "@/components/hive/message-time";
 import { WorkspaceSplit } from "@/components/hive/workspace-split";
 import { WorkspaceFiles } from "@/components/hive/workspace-files";
 import { WorkspaceCheckpoints } from "@/components/hive/workspace-checkpoints";
 import { RunsPane } from "@/components/hive/workspace-runs";
 import type { AnnotateCode } from "@/components/hive/code-annotation-composer";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useSharedSession } from "@/hooks/use-shared-session";
 import { useMessageDraft } from "@/hooks/use-message-draft";
+import { useStalledRun } from "@/hooks/use-stalled-run";
 import type { MessageSubmission } from "@/lib/message-draft";
 import { codeReferenceLabel } from "@/lib/code-reference";
 import { displayHiveErrorMessage } from "@/lib/hive-error-copy";
@@ -54,6 +57,8 @@ import {
   isHiveRunActive,
   conversationMessages,
   isDirectedAtTeammate,
+  MESSAGE_BODY_LIMIT,
+  STALLED_RUN_AFTER_MS,
   type MemberId,
   type RepositoryState,
   resolveMember,
@@ -139,7 +144,7 @@ function ProductHeader({
   members,
   repository,
   sessionTitle,
-  workspaceLocked,
+  resetDisabled,
   syncing,
   syncError,
   onCopyInvite,
@@ -152,7 +157,7 @@ function ProductHeader({
   members: TeamMember[];
   repository?: RepositoryState;
   sessionTitle: string;
-  workspaceLocked: boolean;
+  resetDisabled: boolean;
   syncing: boolean;
   syncError: boolean;
   onCopyInvite: () => void;
@@ -217,10 +222,10 @@ function ProductHeader({
         <Button
           aria-label="Reset session"
           className="size-8 rounded-md text-[#777]"
-          disabled={workspaceLocked}
+          disabled={resetDisabled}
           onClick={onReset}
           size="icon"
-          title="Reset shared session"
+          title={resetDisabled ? "Reset is unavailable while Hive is working or steers are waiting" : "Reset shared session"}
           variant="ghost"
         >
           <RotateCcw className="size-3.5" />
@@ -315,12 +320,14 @@ function SteeringQueue({ activeSteer, canApply, items, members, onApply, onMove,
   );
 }
 
-function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, runActive, queued, queuedBy, queuePosition, steered, steeredBy, steeringQueue, currentMember, disabled, members, messages, onAdvance, onOpenThread, onSteerReply, selectedThreadId, onMoveSteer, onRemoveSteer, onSteer, onSend, onTyping, stage, typingMembers, workspaceAnnotation, compact = false }: {
+function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, runActive, runStalled, onRecoverRun, queued, queuedBy, queuePosition, steered, steeredBy, steeringQueue, currentMember, disabled, members, messages, onAdvance, onOpenThread, onSteerReply, selectedThreadId, onMoveSteer, onRemoveSteer, onSteer, onSend, onTyping, stage, typingMembers, workspaceAnnotation, compact = false }: {
   sessionId: string;
   activeMembers: MemberId[];
   activeSteer?: ActiveSteer;
   canApplySteer: boolean;
   runActive: boolean;
+  runStalled: boolean;
+  onRecoverRun: () => void;
   queued: boolean;
   queuedBy?: MemberId;
   queuePosition?: number;
@@ -383,9 +390,7 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
                 >
                   <WifiOff className="size-3 shrink-0" />
                   <span>{displayHiveErrorMessage(message.body)}</span>
-                  <span className="text-[10px] text-[#b0b0b0]">
-                    {message.time}
-                  </span>
+                  <MessageTime className="text-[10px] text-[#b0b0b0]" message={message} />
                 </div>
               );
             }
@@ -394,7 +399,7 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
                 <div className={cn("flex items-center gap-2", isCurrentMember && "justify-end")}>
                   {message.role === "agent" ? <HiveMark className="size-5 rounded-full border border-[#dedede]" light /> : <span className="grid size-5 place-items-center rounded-full border border-[#dedede] bg-[#fafafa] text-[8px] font-semibold">{message.initials}</span>}
                   <span className="text-[12px] font-medium">{message.name}</span>
-                  <span className="text-[10px] text-[#999]">{message.time}</span>
+                  <MessageTime className="text-[10px] text-[#999]" message={message} />
                   {!disabled && message.status !== "streaming" ? (
                     <button
                       aria-label={`Reply in thread to ${message.name}'s message`}
@@ -414,7 +419,13 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
               </Message>
             );
           })}
-          {runActive && !activeSteer ? <p className="flex items-center gap-2 px-1 text-[11px] text-[#777]" role="status"><LoaderCircle className="size-3 animate-spin" /> Hive is working…</p> : null}
+          {runActive && runStalled ? (
+            <div className="flex flex-wrap items-center gap-2 rounded-md border border-[#e8e8e8] bg-[#fafafa] px-3 py-2 text-[11px] text-[#525252]" role="status">
+              <WifiOff className="size-3 shrink-0" />
+              <span className="min-w-0 flex-1">Hive hasn’t reported for over {STALLED_RUN_AFTER_MS / 60_000} minutes; its execution process was probably lost. Marking it lost keeps the discussion, partial output and queued steers, and reruns nothing.</span>
+              <Button className="h-7 rounded px-2 text-[11px]" disabled={disabled} onClick={onRecoverRun} size="sm" variant="outline">Mark run as lost</Button>
+            </div>
+          ) : runActive && !activeSteer ? <p className="flex items-center gap-2 px-1 text-[11px] text-[#777]" role="status"><LoaderCircle className="size-3 animate-spin" /> Hive is working…</p> : null}
           {otherTyping.length > 0 ? <p className="px-1 text-[11px] text-[#8f8f8f]">{otherTyping.map((memberId) => resolveMember(memberId, members).shortName).join(", ")} {otherTyping.length === 1 ? "is" : "are"} typing…</p> : null}
         </ConversationContent>
         <ConversationScrollButton />
@@ -426,6 +437,7 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
           <MentionInput
             currentMember={currentMember}
             disabled={disabled || !draft}
+            maxLength={MESSAGE_BODY_LIMIT}
             members={members}
             onChange={(value) => {
               messageDraft.edit(value);
@@ -695,6 +707,7 @@ export function HiveWorkspace({
   const [copied, setCopied] = useState(false);
   const [threadId, setThreadId] = useState<string | null>(null);
   const [threadTrigger, setThreadTrigger] = useState<HTMLElement | null>(null);
+  const [resetOpen, setResetOpen] = useState(false);
   const { dispatch, setTyping, snapshot, syncing, syncError, receiveSnapshot } = useSharedSession(sessionId, initialSnapshot);
   const { session, activeMembers, members, typingMembers } = snapshot;
   const teamMembers = useMemo(
@@ -716,7 +729,10 @@ export function HiveWorkspace({
     requestAnimationFrame(() => threadTrigger?.focus());
   }, [threadTrigger]);
   const runActive = isHiveRunActive(session);
+  const runStalled = useStalledRun(session);
   const workspaceLocked = Boolean(workspace.restore);
+  // Reset is irreversible for every member; require an idle task and a confirmation.
+  const resetDisabled = workspaceLocked || runActive || Boolean(activeSteer) || steeringQueue.length > 0;
   const canApplySteer = canApplyNextSteer(session);
   const steered = annotation.status === "steered";
   const queued = annotation.status === "queued";
@@ -786,11 +802,14 @@ export function HiveWorkspace({
       if (nextSnapshot?.session.stage === "review") setTab("diff");
     });
   }, [canApplySteer, dispatch]);
-  const reset = useCallback(() => {
+  const openReset = useCallback(() => setResetOpen(true), []);
+  const confirmReset = useCallback(() => {
+    setResetOpen(false);
     setPane("chat");
     setTab("diff");
     void dispatch({ type: "reset" });
   }, [dispatch]);
+  const recoverRun = useCallback(() => { void dispatch({ type: "recover-stalled-run" }); }, [dispatch]);
 
   const shared = useMemo<SharedProps>(() => ({
     sessionId,
@@ -798,6 +817,8 @@ export function HiveWorkspace({
     activeSteer,
     canApplySteer,
     runActive,
+    runStalled,
+    onRecoverRun: recoverRun,
     queued,
     queuedBy: annotation.queuedBy,
     queuePosition: queuePosition || undefined,
@@ -822,11 +843,23 @@ export function HiveWorkspace({
     onTyping: setTyping,
     onAdvance: advance,
     onTabChange: setTab,
-  }), [activeMembers, activeSteer, advance, openThread, steerMessageAnnotation, threadMessage?.id, annotation.queuedBy, annotation.steeredBy, annotation.text, canApplySteer, currentMember.id, workspaceLocked, messages, moveSteer, queuePosition, queued, removeSteer, runActive, send, sessionId, setTyping, stage, steer, steered, steeringQueue, tab, teamMembers, typingMembers]);
+  }), [activeMembers, activeSteer, advance, openThread, steerMessageAnnotation, threadMessage?.id, annotation.queuedBy, annotation.steeredBy, annotation.text, canApplySteer, currentMember.id, workspaceLocked, messages, moveSteer, queuePosition, queued, recoverRun, removeSteer, runActive, runStalled, send, sessionId, setTyping, stage, steer, steered, steeringQueue, tab, teamMembers, typingMembers]);
 
   return (
     <main className="flex h-dvh min-h-0 flex-col overflow-hidden bg-[#fafafa] text-[#171717]">
-      <ProductHeader activeMembers={activeMembers} copied={copied} currentMember={currentMember} members={teamMembers} onCopyInvite={copyInvite} onSignOut={signOut} onReset={reset} repository={repository} sessionTitle={sessionTitle} workspaceLocked={workspaceLocked} syncing={syncing} syncError={syncError} />
+      <ProductHeader activeMembers={activeMembers} copied={copied} currentMember={currentMember} members={teamMembers} onCopyInvite={copyInvite} onSignOut={signOut} onReset={openReset} repository={repository} sessionTitle={sessionTitle} resetDisabled={resetDisabled} syncing={syncing} syncError={syncError} />
+      <Dialog onOpenChange={setResetOpen} open={resetOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reset this task for everyone?</DialogTitle>
+            <DialogDescription>This clears the shared conversation, Threads, queued steers and approval for every member and starts a fresh agent workspace. It cannot be undone. GitHub commits and pull requests are not changed.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button onClick={() => setResetOpen(false)} variant="outline">Cancel</Button>
+            <Button disabled={resetDisabled} onClick={confirmReset}>Reset task</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       {workspace.restore ? <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[#e8e8e8] px-4 py-2 text-xs text-[#737373]" role="status">
         <span>{workspace.restore.status === "unconfirmed" ? "Restore needs confirmation. The workspace is paused." : "Restoring workspace and agent context…"}</span>
         <button className="shrink-0 underline underline-offset-4" onClick={() => { setThreadId(null); setTab("checkpoints"); setPane("workspace"); }} type="button">View checkpoints</button>

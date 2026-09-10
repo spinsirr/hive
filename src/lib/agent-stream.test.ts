@@ -57,10 +57,30 @@ test("checkpoints are sent during generation, not only at completion", async () 
   assert.deepEqual(saved, ["first", "first and last"]);
 });
 
-test("checkpoint failure propagates to the run instead of silently claiming delivery", async () => {
-  const writer = createReplyWriter(async () => { throw new Error("database unavailable"); });
+test("a failed progress checkpoint is reported, never interrupts the turn, and later text still saves", async () => {
+  const errors: unknown[] = [];
+  const saved: string[] = [];
+  let failing = true;
+  const writer = createReplyWriter(async (body) => {
+    if (failing) throw new Error("database unavailable");
+    saved.push(body);
+  }, 1, (error) => errors.push(error));
   writer.push("Hello");
-  await assert.rejects(writer.close(), /database unavailable/);
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(errors.length, 1);
+  assert.deepEqual(saved, []);
+  assert.doesNotThrow(() => writer.push("Hello team"), "one failed save must not poison later deltas");
+  failing = false;
+  assert.deepEqual(await writer.close(), { delivered: true });
+  assert.deepEqual(saved, ["Hello team"]);
+});
+
+test("a persistently failing checkpoint store still lets the turn finish and reports non-delivery", async () => {
+  const errors: unknown[] = [];
+  const writer = createReplyWriter(async () => { throw new Error("database unavailable"); }, 1, (error) => errors.push(error));
+  writer.push("Hello");
+  assert.deepEqual(await writer.close(), { delivered: false });
+  assert.ok(errors.length >= 1);
 });
 
 test("a slow database coalesces pending text instead of building an unbounded write queue", async () => {
@@ -97,7 +117,8 @@ test("refresh restores a streaming reply and completion keeps the same message i
   assert.equal(conversationMessages(restored).at(-1)?.id, "agent-reply");
   const finished = appendHiveReply(restored, "Final step summary", 3);
   assert.equal(finished.messages.at(-1)?.id, "agent-reply");
-  assert.equal(finished.messages.at(-1)?.body, "Partial reply");
+  assert.equal(finished.messages.at(-1)?.body, "Final step summary", "the completed text wins over a possibly lagging checkpoint");
+  assert.equal(finished.messages.at(-1)?.createdAt, 2, "the reply keeps the time it started streaming");
   assert.equal(finished.workspace.liveReply, undefined);
   assert.equal(finished.messages.at(-1)?.status, undefined);
   assert.equal(conversationMessages(finished).filter((message) => message.id === "agent-reply").length, 1);

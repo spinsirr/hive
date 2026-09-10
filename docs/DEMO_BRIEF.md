@@ -57,7 +57,8 @@ Postgres owns who said what, which replies become instructions, and who may run 
 - Two authenticated accounts were operated by the assistant during acceptance; that is not two independent human reviews.
 - Paired checkpoint restore is not permanent-sandbox-deletion disaster recovery.
 - Persisted messages and browser reconnection are not proof of automatic recovery after the executing process is killed. Do not describe Postgres as a substitute for durable execution or Workflow as unsuitable for interactive agents.
-- No PR automation, issue triage, attachment ingestion, cross-task memory or multi-team administration is in this demo.
+- No PR automation, issue triage, attachment ingestion or multi-team administration is in this demo. Repository-scoped memory exists and passed one bounded live round, but it is not demonstrated live; do not claim it is fully verified.
+- If a run has not reported for six minutes, use **Mark run as lost** rather than Reset: it keeps the discussion and queue. Reset needs confirmation and an idle task, and it erases the shared conversation for everyone.
 - The public dashboard preview is not a fake substitute for the real task.
 
 ## Before submission

@@ -99,7 +99,9 @@ test("a fresh coding turn receives attributed repository memory as context, neve
     }]);
     assert.match(turns[0].prompt, /Prefer pnpm for this repository/);
     assert.match(turns[0].prompt, /Grace Hopper/);
-    assert.match(turns[0].prompt, /earlier-task/);
+    assert.match(turns[0].prompt, /"sourceTaskId":"earlier-task"/, "the source task must be labeled as a task, not a bare session/message key");
+    assert.match(turns[0].prompt, /name the task by `sourceTaskId`/);
+    assert.doesNotMatch(turns[0].prompt, /"sessionId"/);
     assert.match(turns[0].prompt, /human-20/);
     assert.match(turns[0].prompt, /reply-21/);
     assert.match(turns[0].prompt, /untrusted/i);
