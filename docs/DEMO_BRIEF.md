@@ -37,6 +37,8 @@ Do not walk every file. Keep the [runner](../src/lib/hive-runner.ts), [restore i
 
 ## AI journey — speak in concrete examples
 
+**Lead with ownership:** “I designed the module boundaries and overall architecture. AI worked with me on brainstorming alternatives and implementing the design.” Use the [product definition and scope](PRESENTATION_NOTES.md#what-hive-is) to keep the story consistent.
+
 - **Spencer set the product direction:** a multiplayer agent conversation, not a long-lived team chat; one task per session; repository attachment can happen later.
 - **Spencer challenged persistence:** a Codex session ID alone does not make sandbox history durable. Team history and paired recovery became explicit product boundaries.
 - **AI work needed verification:** a shell exit zero masked failed edits, and a regression queried a deliberately hidden button. The supervising AI inspected real output, reproduced the defects, supplied a repair and verified the final sandbox command. Do not present that as a manual human fix or an autonomous first-pass success.

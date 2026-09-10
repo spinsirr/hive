@@ -25,6 +25,40 @@ The owner-approved Luna switch deployed in `9662380`, but the account's free-cre
 
 The current two-paragraph introduction lives in the [submission packet](SUBMISSION.md#summary-blurb), alongside all four deliverables and the remaining access gates. Spencer confirmed this existing wording on September 8, 2026. The text was not rewritten as part of that confirmation; repository publication and external sending remain separately unauthorized.
 
+## What Hive is
+
+Hive is a multiplayer coding agent for small software teams. Teammates work on one task with the same agent, conversation and execution workspace. They discuss requirements, explicitly turn selected discussion into instructions, and inspect the resulting code changes together.
+
+**Opening line:** “I built Hive so teammates can work with the same coding agent while the code is being made. They can discuss a requirement, decide what the agent should act on, and review the result in one shared task.”
+
+The useful unit is one task, with one repository attached when needed and one mutating agent run at a time. Several teammates can participate; a person can also start alone and invite others later. Finishing a run or approving a diff does not close the conversation.
+
+## What Hive is not
+
+- **A general team chat or project tracker.** Discussion is organized around a specific coding task; there are no permanent channels, sprint boards or organization administration workflows.
+- **A multi-agent orchestration product.** Multiplayer means several humans working with one coding agent, not a separate agent for every teammate.
+- **A new coding runtime or full collaborative IDE.** Codex supplies execution inside Sandbox. Hive supplies shared task state, attributed input, steering and review. The file viewer supports inspection and annotation, not simultaneous human editing.
+- **An autonomous delivery pipeline.** This submission stops at inspectable changes and human review; it does not create PRs, push sandbox branches, merge or deploy the agent's changes.
+- **An automatic consensus engine.** A Thread reply is discussion until explicitly steered. Retrieved memory is fallible background, not a decision on behalf of the team.
+
+## Presentation scope
+
+**Core demonstration:** create/join a task → attach an authorized repository → discuss with attributed replies → steer selected input → observe one shared coding run → inspect Files, Diff and command output → review and continue.
+
+**Supporting behavior:** streaming, queued input at run boundaries, refresh/reconnection, and paired filesystem/native-context checkpoints. Explain their tested boundaries; do not turn each into a separate live demonstration.
+
+**Optional extension:** repository-scoped memory and task-aware agent tools. Keep memory out of the core live route until actual save/recall acceptance is recorded. Configuration and controlled tests alone are not live service evidence.
+
+**Deferred:** Workflow integration, automatic recovery after hard worker termination, PR automation, uploads and multi-team administration. These are scope boundaries, not promises required to finish this presentation. Current release and service readiness remain tracked in [GOAL.md](GOAL.md).
+
+## Design ownership and AI collaboration
+
+Spencer clarified the division of work on September 9: he designed the module boundaries and overall framework. The agent collaborated with him on brainstorming and implemented the design. Presentation copy should state architectural ownership explicitly, alongside his product and scope decisions. Keep individual AI diagnoses and repairs attributed to AI where the evidence log records them.
+
+**Speaking version:** “I designed Hive’s module boundaries and overall architecture. I used AI as a partner to brainstorm alternatives and implement the design. I owned the decisions about what belonged in the product and how its parts should work together, and refined those decisions as we tested the experience.”
+
+Use the shared-task state, execution harness and review workspace to explain the module responsibilities, then show a recorded correction such as late repository attachment or removal of Complete/Reopen. Distinguish initial design from later refinements; the build was iterative.
+
 ## Problem
 
 Start with the workflow that motivated this build: one person owns the prompt, transcript, and workspace; teammates enter after the agent has already acted. The team copies context across private agent sessions, chat tools, screenshots, and pull requests, losing both intent and clear authorship.
@@ -167,7 +201,7 @@ For Q&A, keep [`hive-runner.ts`](../src/lib/hive-runner.ts) ready for Codex/Sand
 
 ### 15–18 min — AI journey
 
-Use three concrete moments, about one minute each; the longer chronology below is for Q&A:
+Start with the ownership statement above: Spencer designed the modules and overall framework; AI partnered on brainstorming and implementation. Then use three concrete moments; the longer chronology below is for Q&A:
 
 - **Human product direction:** AI leaned toward intent governance and long-lived rooms. Spencer brought it back to a real multiplayer agent conversation, one task per session, and a repository that can be attached later. The brainstorm records those corrections.
 - **Human challenge, AI implementation:** Spencer caught that native session history could disappear with the sandbox. Postgres became canonical team history; saved sandbox/context pairs support resumable execution. Show the boundary, not a claim of disaster recovery after permanent deletion.
