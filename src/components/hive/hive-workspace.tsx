@@ -43,6 +43,8 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useSharedSession } from "@/hooks/use-shared-session";
+import { SubagentActivity } from "@/components/hive/subagent-activity";
+import { HiveMark } from "@/components/hive/hive-mark";
 import { useMessageDraft } from "@/hooks/use-message-draft";
 import { useStalledRun } from "@/hooks/use-stalled-run";
 import type { MessageSubmission } from "@/lib/message-draft";
@@ -85,24 +87,6 @@ const tabs: Array<{ key: WorkspaceTab; label: string; icon: typeof Code2 }> = [
   { key: "runs", label: "Runs", icon: ListChecks },
   { key: "checkpoints", label: "Checkpoints", icon: History },
 ];
-
-function HiveMark({ className, light = false }: { className?: string; light?: boolean }) {
-  return (
-    <span
-      aria-label="Hive logo"
-      className={cn(
-        "grid size-8 shrink-0 place-items-center rounded-md",
-        light ? "bg-[#ededed] text-[#171717]" : "bg-[#171717] text-white",
-        className,
-      )}
-      role="img"
-    >
-      <svg aria-hidden="true" className="size-[68%]" fill="none" viewBox="0 0 24 24">
-        <path d="M12 3.5 15 5.25v3.5l-3 1.75-3-1.75v-3.5L12 3.5ZM8 11l3 1.75v3.5L8 18l-3-1.75v-3.5L8 11Zm8 0 3 1.75v3.5L16 18l-3-1.75v-3.5L16 11Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.45" />
-      </svg>
-    </span>
-  );
-}
 
 function OnlineMembers({
   activeMembers,
@@ -411,9 +395,10 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
                     </button>
                   ) : null}
                 </div>
-                <MessageContent className={cn("w-fit max-w-full rounded-lg border border-[#e8e8e8] px-3 py-2.5 text-sm leading-6 shadow-none sm:max-w-[94%]", hasReplies && "w-full sm:max-w-full", message.role === "agent" ? "bg-[#fafafa] text-[#4d4d4d]" : isCurrentMember ? "ml-auto bg-white" : "bg-white")}>
+                {message.subagents?.length ? <SubagentActivity live={message.status === "streaming" && runActive && !disabled} sessionId={sessionId} tasks={message.subagents} /> : null}
+                {message.body ? <MessageContent className={cn("w-fit max-w-full rounded-lg border border-[#e8e8e8] px-3 py-2.5 text-sm leading-6 shadow-none sm:max-w-[94%]", hasReplies && "w-full sm:max-w-full", message.role === "agent" ? "bg-[#fafafa] text-[#4d4d4d]" : isCurrentMember ? "ml-auto bg-white" : "bg-white")}>
                   {message.role === "agent" ? <AgentResponse streaming={message.status === "streaming"}>{message.body}</AgentResponse> : message.codeReference ? <div><p className="break-all font-mono text-[11px] text-[#737373]">{codeReferenceLabel(message.codeReference)}</p><pre className="mt-2 max-h-40 overflow-auto whitespace-pre font-mono text-[11px] leading-5">{message.codeReference.quote}</pre></div> : message.body}
-                </MessageContent>
+                </MessageContent> : null}
 
                 <MessageThreadPreview disabled={disabled} members={members} message={message} onOpen={() => onOpenThread(message.id)} onSteerReply={onSteerReply} queueing={runActive || steeringQueue.length > 0} />
               </Message>

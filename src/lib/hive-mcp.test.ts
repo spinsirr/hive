@@ -6,8 +6,35 @@ import { handleHiveMcp } from "./hive-mcp.ts";
 import { createHiveMemory } from "./hive-memory.ts";
 import { assertHiveToolRun, describeHiveContext, hiveThreadReply, memoryContribution, type HiveToolContext } from "./hive-tool-context.ts";
 import { createInitialTaskSessionState, memberDirectory, reduceTaskSession } from "./task-session.ts";
+import type { HiveSubagent, SubagentControl } from "./hive-subagents.ts";
 
 const scope = { sessionId: "tool-test", memberId: "spencer", runId: "run-one" };
+
+test("MCP delegation, result reads and stop remain bound to the current authenticated run", async () => {
+  let context = fixture();
+  const calls: SubagentControl[] = [];
+  const task: HiveSubagent = { id: "dc064a02-7cff-4874-9f70-4a0f936958c3", runId: scope.runId, kind: "research", task: "Inspect queue.ts", status: "running", startedAt: 1, result: "" };
+  const client = new Client({ name: "subagent-test", version: "1" });
+  await client.connect(new StreamableHTTPClientTransport(new URL("https://hive.test/agent-tools"), {
+    fetch: (input, init) => handleHiveMcp(new Request(input, init), scope, {
+      read: async () => context,
+      reply: async () => { throw new Error("Delegation must not post a team reply"); },
+      control: async (receivedScope, input) => { assert.deepEqual(receivedScope, scope); calls.push(input); return task; },
+    }, createHiveMemory(undefined)),
+  }));
+  try {
+    const tools = await client.listTools();
+    for (const name of ["spawn_subagent", "read_subagent", "stop_subagent"]) assert.ok(tools.tools.some((tool) => tool.name === name));
+    await client.callTool({ name: "spawn_subagent", arguments: { kind: "research", task: "Inspect queue.ts" } });
+    await client.callTool({ name: "read_subagent", arguments: { id: task.id } });
+    await client.callTool({ name: "stop_subagent", arguments: { id: task.id } });
+    assert.deepEqual(calls.map((input) => input.action), ["spawn", "read", "stop"]);
+    assert.equal(context.steeringQueue.length, 0);
+    context = { ...context, workspace: { ...context.workspace, liveReply: { id: "new-run" } } };
+    assert.equal((await client.callTool({ name: "spawn_subagent", arguments: { kind: "research", task: "Must not run" } })).isError, true);
+    assert.equal(calls.length, 3);
+  } finally { await client.close(); }
+});
 function fixture(): HiveToolContext {
   const initial = createInitialTaskSessionState(1, scope.sessionId);
   return { ...initial, stage: "running", repository: {

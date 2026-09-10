@@ -34,6 +34,7 @@ for (const failure of [false, true]) {
             assert.equal(request.params.approvalPolicy, "never");
             assert.equal(request.params.sandbox, "danger-full-access");
             assert.equal(request.params.config.web_search, "disabled");
+            assert.equal(request.params.config.model_reasoning_effort, "low", "Store turn reasoning in thread config so delegated tasks inherit it");
             if (launched === 2) {
               assert.equal(request.method, "thread/resume", "A fresh process must resume the saved native thread");
               assert.equal(request.params.threadId, "native-thread");
@@ -79,7 +80,7 @@ for (const failure of [false, true]) {
         sessionId, isResume: Boolean(savedThread),
         async doPromptTurn({ emit }) {
           const done = runCodexAppServerTurn({
-            start: { prompt: "Controlled native stream", webSearch: false },
+            start: { prompt: "Controlled native stream", webSearch: false, reasoningEffort: "low" },
             workdir: "/controlled-native-stream", threadId: savedThread,
             onThread(id) { savedThread = id; }, launch,
             turn: { abortSignal: new AbortController().signal, emit(event) {

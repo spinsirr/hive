@@ -38,6 +38,7 @@ mock.module(new URL("../src/lib/task-session-store.ts", import.meta.url).href, {
   getTaskSessionSnapshot: async () => ({ session }),
   getPublicTaskSessionSnapshot: async () => ({ session }),
   checkpointAgentReply: async () => {},
+  checkpointSubagents: async () => {},
   applyTaskSessionAction: async (_id, action, actor, now) => {
     const previous = session;
     session = reducer.reduceTaskSession(session, action, now, [actor]);

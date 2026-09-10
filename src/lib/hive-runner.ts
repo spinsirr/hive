@@ -15,6 +15,7 @@ import { getRepositoryCloneCredentials } from "@/lib/github-app";
 import { buildHivePrompt } from "@/lib/hive-prompt";
 import { createHiveMemory } from "@/lib/hive-memory";
 import { createMemoryRecall } from "@/lib/hive-memory-recall";
+import type { HiveSubagentUpdate } from "@/lib/hive-subagents";
 import {
   isRepositoryWorkingCopy,
   repositoryDirectory,
@@ -258,7 +259,7 @@ export async function runHiveCodingTask(
   taskSession: TaskSessionState,
   actor: MemberId,
   steer?: string,
-  auth?: { actorName?: string; memoryQuery?: string; vercelOidcToken?: string; onText?: (body: string) => void; toolConnection?: { url: string; token: string } },
+  auth?: { actorName?: string; memoryQuery?: string; vercelOidcToken?: string; onText?: (body: string) => void; onSubagents?: (update: HiveSubagentUpdate) => void; toolConnection?: { url: string; token: string; controlCapability: string; runId: string } },
 ) {
   if (taskSession.workspace.restore) throw new HiveAgentError("Finish restoring the workspace before starting Hive.", new Error("Workspace restore in progress."));
   if (!taskSession.repository) {
@@ -337,13 +338,13 @@ export async function runHiveCodingTask(
         // credential and database access remain in the authenticated host route.
         ...(auth?.toolConnection ? { mcpServers: { hive: {
           url: auth.toolConnection.url,
-          http_headers: { Authorization: `Bearer ${auth.toolConnection.token}` },
+          http_headers: { Authorization: `Bearer ${auth.toolConnection.token}`, "X-Hive-Control": auth.toolConnection.controlCapability, "X-Hive-Run-Id": auth.toolConnection.runId },
           startup_timeout_sec: 10,
           tool_timeout_sec: 15,
         } } } : {}),
       }, (attributes) => {
         console.info("Hive Gateway request", { taskSessionId: taskSession.sessionId, ...attributes });
-      }),
+      }, auth?.onSubagents),
       model: process.env.HIVE_CODEX_MODEL?.trim() || DEFAULT_MODEL,
       prepareCall: createMemoryRecall(createHiveMemory(process.env.MEM0_API_KEY), {
         installationId: taskSession.repository.installationId,

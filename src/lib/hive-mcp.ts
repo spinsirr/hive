@@ -4,10 +4,12 @@ import { z } from "zod";
 import { assertHiveToolRun, describeHiveContext, memoryContribution, type HiveToolContext } from "./hive-tool-context.ts";
 import { createHiveMemory, HiveMemoryError } from "./hive-memory.ts";
 import type { HiveToolScope } from "./hive-tool-token.ts";
+import type { HiveSubagent, SubagentControl } from "./hive-subagents.ts";
 
 export type HiveToolSource = {
   read: (scope: HiveToolScope) => Promise<HiveToolContext>;
   reply: (scope: HiveToolScope, messageId: string, body: string, requestId: string) => Promise<{ messageId: string; replyId: string }>;
+  control?: (scope: HiveToolScope, input: SubagentControl, signal: AbortSignal) => Promise<HiveSubagent>;
 };
 
 export async function handleHiveMcp(
@@ -53,6 +55,23 @@ export async function handleHiveMcp(
     const contribution = memoryContribution(context, messageId, replyId);
     return memory.remember(repository(context), contribution.text, contribution.source, extra.signal);
   }));
+
+  if (source.control) {
+    const control = source.control;
+    server.registerTool("spawn_subagent", {
+      description: "Delegate a concrete independent research or code review task to a separate Codex thread in this repository. At most two children TOTAL per Hive turn, inheriting this task's model, tools, skills and permissions. Children inspect and report; keep code changes and further delegation with the parent. Include the relevant context and teammate attribution. Returns immediately; use read_subagent to get the actual result before summarizing. Children are stopped when your turn ends. Do not delegate trivial work or manufacture consensus.",
+      inputSchema: z.object({ kind: z.enum(["research", "review"]), task: z.string().trim().min(1).max(4000) }).strict(),
+      annotations: { readOnlyHint: false, destructiveHint: false },
+    }, ({ kind, task }, extra) => run(() => control(scope, { action: "spawn", kind, task, requestId: String(extra.requestId) }, extra.signal)));
+    server.registerTool("read_subagent", {
+      description: "Read a delegated task's real status and final result. Waits up to 10 seconds for a state change (no shell polling). If still running, do useful independent work or call again to wait. A stopping/unconfirmed task is not completed; never claim a result you have not received.",
+      inputSchema: z.object({ id: z.string().uuid() }).strict(), annotations: { readOnlyHint: true },
+    }, ({ id }, extra) => run(() => control(scope, { action: "read", id, waitMs: 10_000 }, extra.signal)));
+    server.registerTool("stop_subagent", {
+      description: "Request cancellation of a child owned by this run. This does not stop Hive or change the team's queue. Only a later stopped/completed status confirms termination; the interrupt acknowledgement alone does not.",
+      inputSchema: z.object({ id: z.string().uuid() }).strict(), annotations: { readOnlyHint: false, destructiveHint: false },
+    }, ({ id }, extra) => run(() => control(scope, { action: "stop", id }, extra.signal)));
+  }
 
   // Stateless request/response, not another persistent connection or heartbeat.
   await server.connect(transport);

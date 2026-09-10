@@ -73,6 +73,16 @@ try {
   assert.deepEqual(sockets[0].sent, [{ type: "typing", typing: true }]);
   assert.equal(requests.length, 0);
   console.log("PASS: presence preserves task data; typing is deduplicated and sent through WebSocket, with no HTTP heartbeat.");
+  const liveReply = view.result.current.snapshot.session.workspace.liveReply;
+  const child = { id: "e9e3838b-8945-41df-bf86-8e3b7911fa51", runId: liveReply.id, kind: "research", task: "Read the fixture", status: "completed", startedAt: 1, result: "Child result" };
+  await act(async () => {
+    sockets[0].receive({ type: "reply", sessionId: "shared-qa", reply: { ...liveReply, body: "old", sequence: 1, subagentSequence: 2, subagents: [child] } });
+    sockets[0].receive({ type: "reply", sessionId: "shared-qa", reply: { ...liveReply, subagentSequence: 1, subagents: [{ ...child, status: "running" }] } });
+  });
+  assert.equal(view.result.current.snapshot.session.workspace.liveReply.body, "Hello team");
+  assert.equal(view.result.current.snapshot.session.workspace.liveReply.subagents[0].status, "completed");
+  assert.equal(requests.length, 0);
+  console.log("PASS: subagent-only WebSocket updates preserve newer parent text and reject stale child status without a refetch.");
 
   await act(async () => { view.result.current.receiveSnapshot(structuredClone(initial)); });
   assert.deepEqual(view.result.current.snapshot.activeMembers, ["github-101"], "an HTTP result must not overwrite live connection state");

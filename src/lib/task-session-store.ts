@@ -7,6 +7,7 @@ import { taskSessionMembers, taskSessions, users } from "@/db/schema";
 import { sessionNotification } from "@/lib/session-events";
 import { assertHiveToolRun, hiveThreadReply, type HiveToolContext } from "@/lib/hive-tool-context";
 import type { HiveToolScope } from "@/lib/hive-tool-token";
+import { subagentUpdateSchema, type HiveSubagent, type SubagentSession } from "./hive-subagents.ts";
 import { beginWorkspaceRestore, completeWorkspaceRestore, failWorkspaceRestore, WorkspaceRestoreError, type RestoreWorkspaceRequest } from "@/lib/workspace-restore-state";
 import {
   applyHiveRunError,
@@ -305,6 +306,7 @@ export async function appendHiveReply(
     runResult?: HiveRunResult;
     runError?: string;
     runCheckpoint?: HiveSessionCheckpoint;
+    subagents?: HiveSubagent[];
   } = {},
   now = Date.now(),
 ) {
@@ -322,6 +324,9 @@ export async function appendHiveReply(
     const currentSession = sessionState(storedSession);
     if (currentSession.workspace.restore) return;
     if (options.forReplyId && currentSession.workspace.liveReply?.id !== options.forReplyId) return;
+    if (options.subagents && currentSession.workspace.liveReply) {
+      currentSession.workspace.liveReply = { ...currentSession.workspace.liveReply, subagents: options.subagents };
+    }
     if (
       options.forMessageId &&
       !currentSession.messages.some(
@@ -385,6 +390,43 @@ export async function checkpointAgentReply(sessionId: string, replyId: string, b
       sql`(${taskSessions.workspace}->'liveReply'->>'sequence')::integer < ${sequence}`,
     )).returning({ id: taskSessions.id });
     if (changed.length) await transaction.execute(sessionNotification(sessionId, "reply"));
+  });
+}
+
+export async function checkpointSubagents(sessionId: string, replyId: string, value: unknown) {
+  const update = subagentUpdateSchema.parse(value);
+  if (update.runId !== replyId || update.tasks.some((task) => task.runId !== replyId)) throw new Error("Subagent run mismatch.");
+  await db.transaction(async (transaction) => {
+    const changed = await transaction.update(taskSessions).set({
+      workspace: sql`jsonb_set(${taskSessions.workspace}, '{liveReply}',
+        (${taskSessions.workspace}->'liveReply') || ${JSON.stringify({ subagents: update.tasks, subagentSequence: update.sequence })}::jsonb)`,
+    }).where(and(
+      eq(taskSessions.id, sessionId), eq(taskSessions.stage, "running"),
+      sql`${taskSessions.workspace}->>'startedAt' IS NOT NULL`,
+      sql`${taskSessions.workspace}->>'completedAt' IS NULL`,
+      sql`${taskSessions.workspace}->'liveReply'->>'id' = ${replyId}`,
+      sql`coalesce((${taskSessions.workspace}->'liveReply'->>'subagentSequence')::integer, 0) < ${update.sequence}`,
+    )).returning({ id: taskSessions.id });
+    if (changed.length) await transaction.execute(sessionNotification(sessionId, "reply"));
+  });
+}
+
+/** Control reads never download transcripts, file snapshots or native history. */
+export async function withTaskSubagentControl<T>(sessionId: string, control: (session: SubagentSession) => Promise<T>): Promise<T> {
+  return db.transaction(async (transaction) => {
+    const lock = await transaction.execute(sql`select pg_try_advisory_xact_lock_shared(hashtextextended(${'hive-workspace:' + sessionId}, 0)) as acquired`);
+    if (!lock.rows[0]?.acquired) throw new WorkspaceRestoreError(409, "Workspace is busy. Try again shortly.");
+    const [row] = await transaction.select({
+      sessionId: taskSessions.id, stage: taskSessions.stage, repository: taskSessions.repository,
+      workspace: sql<SubagentSession["workspace"]>`jsonb_build_object(
+        'startedAt', ${taskSessions.workspace}->'startedAt', 'completedAt', ${taskSessions.workspace}->'completedAt',
+        'restore', ${taskSessions.workspace}->'restore', 'sandboxName', ${taskSessions.workspace}->'sandboxName',
+        'agentSession', jsonb_build_object('id', ${taskSessions.workspace}->'agentSession'->'id'),
+        'liveReply', jsonb_build_object('id', ${taskSessions.workspace}->'liveReply'->'id')
+      )`,
+    }).from(taskSessions).where(eq(taskSessions.id, sessionId));
+    if (!row) throw new WorkspaceRestoreError(404, "Task not found.");
+    return control({ ...row, repository: row.repository ?? undefined });
   });
 }
 

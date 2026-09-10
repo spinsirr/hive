@@ -4,6 +4,7 @@ import path from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { startGatewayTransport } from "./gateway-transport.mjs";
+import { createSubagents, serveSubagents } from "./subagents.mjs";
 
 // The sandbox recipe pins the CLI via @openai/codex-sdk. Use that installation,
 // not a global CLI, and keep the task sandbox's existing Codex home and credentials.
@@ -29,7 +30,10 @@ function threadSettings(start, workdir) {
   const config = {
     ...start.codexConfig,
     web_search: start.webSearch ? "live" : "disabled",
+    ...(start.reasoningEffort ? { model_reasoning_effort: start.reasoningEffort } : {}),
     model_reasoning_summary: "detailed",
+    // Hive owns bounded delegation so native children cannot bypass its limits.
+    features: { ...start.codexConfig?.features, multi_agent: false, multi_agent_v2: false },
   };
   if (gateway && model?.startsWith("openai/")) config.model_supports_reasoning_summaries = true;
   if (baseUrl) {
@@ -122,6 +126,10 @@ async function runNativeTurn({
   let abortTimer;
   let tokenUsage;
   let processExit;
+  let subagents;
+  let closeSubagentServer;
+  let rpcSequence = 0;
+  const pendingRequests = new Map();
   const exited = new Promise((resolve) => child.once("close", (code, signal) => {
     closed = true;
     resolve({ code, signal });
@@ -132,6 +140,26 @@ async function runNativeTurn({
   const send = (message) => {
     if (!closed && !child.stdin.destroyed) child.stdin.write(`${JSON.stringify(message)}\n`);
   };
+  const request = (method, params) => new Promise((resolve, reject) => {
+    if (closed) { reject(new Error("Codex is no longer running.")); return; }
+    const id = `hive-subagent:${++rpcSequence}`;
+    const timer = setTimeout(() => { pendingRequests.delete(id); reject(new Error("Codex request timed out.")); }, 12_000);
+    pendingRequests.set(id, { resolve, reject, timer });
+    send({ id, method, params });
+  });
+  // Keep processing child replies while the main loop drains at turn end.
+  lines.on("line", (line) => {
+    let message;
+    try { message = JSON.parse(line); } catch { return; }
+    const pending = pendingRequests.get(message.id);
+    if (pending && !message.method) {
+      pendingRequests.delete(message.id);
+      clearTimeout(pending.timer);
+      if (message.error) pending.reject(new Error(message.error.message));
+      else pending.resolve(message.result);
+    }
+    if (message.method) subagents?.notification(message);
+  });
   const startThread = () => send({ id: 1, method: resumedThreadId ? "thread/resume" : "thread/start", params: {
     ...settings, ...(resumedThreadId ? { threadId: resumedThreadId } : {}),
   } });
@@ -175,9 +203,11 @@ async function runNativeTurn({
       if (message.method && message.id != null) {
         // Approval/input requests are not silently granted or left hanging.
         send({ id: message.id, error: { code: -32601, message: "Interactive requests are not supported by Hive." } });
+        if (subagents?.ownsThread(message.params?.threadId)) continue;
         throw new Error(`Codex requested unsupported interaction: ${message.method}`);
       }
       if (!message.method) {
+        if (String(message.id).startsWith("hive-subagent:")) continue;
         if (message.error) throw new Error(message.error.message || "Codex request failed.");
         if (message.id === 0) {
           send({ method: "initialized", params: {} });
@@ -195,6 +225,13 @@ async function runNativeTurn({
           }
           onThread(threadId);
           emit({ type: "bridge-thread", threadId });
+          const headers = start.mcpServers?.hive?.http_headers;
+          if (headers?.["X-Hive-Control"] && headers?.["X-Hive-Run-Id"]) {
+            subagents = createSubagents({ request, settings, runId: headers["X-Hive-Run-Id"], onChange(attrs) {
+              turn.bridgeLog?.({ level: "info", subsystem: "hive.subagent", message: "Subagent progress", attrs });
+            } });
+            closeSubagentServer = await serveSubagents(subagents, headers["X-Hive-Control"]);
+          }
           send({ id: 2, method: "turn/start", params: {
             threadId,
             input: [
@@ -272,6 +309,9 @@ async function runNativeTurn({
       throw new Error("Codex finished without a command's exit status.");
     }
   } finally {
+    // Stop outstanding children before flushing native history/snapshotting the VM.
+    await subagents?.close();
+    await closeSubagentServer?.();
     for (const id of commands.keys()) completeCommand({ id, status: "interrupted" });
     turn.abortSignal.removeEventListener("abort", abort);
     clearTimeout(abortTimer);
@@ -281,6 +321,11 @@ async function runNativeTurn({
     processExit = await exited;
     clearTimeout(timer);
     lines.close();
+    for (const pending of pendingRequests.values()) {
+      clearTimeout(pending.timer);
+      pending.reject(new Error("Codex has stopped."));
+    }
+    pendingRequests.clear();
   }
   if (processExit.code !== 0 || processExit.signal) {
     throw new Error("Codex did not shut down cleanly; its history checkpoint could not be confirmed.");

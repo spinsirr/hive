@@ -22,7 +22,7 @@ export function isRepositoryWorkingCopy(
 }
 
 export function resolvePersistentSandboxName(
-  session: Pick<TaskSessionState, "workspace">,
+  session: { workspace: Pick<TaskSessionState["workspace"], "sandboxName"> },
   sessionId: string,
 ) {
   const storedName = session.workspace.sandboxName;

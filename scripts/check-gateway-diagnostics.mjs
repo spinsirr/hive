@@ -21,7 +21,7 @@ await harness.doStart({ sessionId: "fixture-session", observability: { report: (
 assert.equal(started.settings, settings, "Do not replace auth or model settings");
 assert.equal(started.options.sessionId, "fixture-session");
 const { debug, report } = started.options.observability;
-assert.deepEqual(debug, { enabled: true, level: "info", subsystems: ["hive.gateway"] });
+assert.deepEqual(debug, { enabled: true, level: "info", subsystems: ["hive.gateway", "hive.subagent"] });
 report({ kind: "log", subsystem: "sandbox.log.stdout", message: "private console text" });
 report({ kind: "log", subsystem: "hive.gateway", message: "still raw text" });
 report({ kind: "event", subsystem: "other.provider", attrs: { input: "private prompt" } });
@@ -29,7 +29,7 @@ const attrs = { statusCode: 429, requestId: "req-fixture", retryAfterMs: 1000, o
 report({ kind: "event", subsystem: "hive.gateway", attrs });
 assert.deepEqual(records, [attrs]);
 const recipe = await harness.getBootstrap();
-for (const name of ["runtime.mjs", "bridge.mjs", "app-server.mjs", "gateway-transport.mjs", "hive-collaboration/SKILL.md"]) {
+for (const name of ["runtime.mjs", "bridge.mjs", "app-server.mjs", "subagents.mjs", "gateway-transport.mjs", "hive-collaboration/SKILL.md"]) {
   const assets = recipe.files.filter((file) => file.path === `.harness-bootstrap/codex/${name}`);
   assert.equal(assets.length, 1, `Ship exactly one ${name}`);
   assert.ok(assets[0].content.length > 100);

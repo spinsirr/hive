@@ -5,6 +5,7 @@
 
 import type { HarnessAgentResumeSessionState } from "@ai-sdk/harness/agent";
 import { codeReferenceContext, codeReferenceSchema, type CodeReference } from "./code-reference.ts";
+import { finalizeSubagents } from "./hive-subagents.ts";
 
 export type MemberId = string;
 
@@ -98,6 +99,7 @@ export type ChatMessage = {
   time: string;
   /** Epoch milliseconds; viewers format this in their own time zone. */
   createdAt?: number;
+  subagents?: import("./hive-subagents.ts").HiveSubagent[];
 };
 
 type RepositoryDetails = {
@@ -183,6 +185,8 @@ export type AgentReply = {
   body: string;
   sequence: number;
   startedAt: number;
+  subagentSequence?: number;
+  subagents?: import("./hive-subagents.ts").HiveSubagent[];
 };
 
 export type HiveRunResult = {
@@ -352,7 +356,7 @@ export function isHiveRunStalled(state: TaskSessionState, now = Date.now()): boo
     now - state.workspace.startedAt! >= STALLED_RUN_AFTER_MS;
 }
 
-function finishAgentReply(state: TaskSessionState, body: string, now: number): ChatMessage[] {
+function finishAgentReply(state: TaskSessionState, body: string, now: number, final = true): ChatMessage[] {
   const liveReply = state.workspace.liveReply;
   if (!liveReply) return appendAgentMessage(state, body, now);
   return [...state.messages, {
@@ -365,12 +369,13 @@ function finishAgentReply(state: TaskSessionState, body: string, now: number): C
     role: "agent",
     time: timeLabel(liveReply.startedAt),
     createdAt: liveReply.startedAt,
+    subagents: final ? finalizeSubagents(liveReply.subagents) : liveReply.subagents,
   }];
 }
 
 export function conversationMessages(state: TaskSessionState): ChatMessage[] {
-  if (!state.workspace.liveReply?.body) return state.messages;
-  const messages = finishAgentReply(state, "", state.updatedAt);
+  if (!state.workspace.liveReply?.body && !state.workspace.liveReply?.subagents?.length) return state.messages;
+  const messages = finishAgentReply(state, "", state.updatedAt, false);
   return messages.map((message, index) => index === messages.length - 1
     ? { ...message, status: "streaming" }
     : message);
@@ -1060,7 +1065,7 @@ export function applyHiveRunError(
         : state.workspace.checkpoints,
     },
     messages: [
-      ...(state.workspace.liveReply?.body ? finishAgentReply(state, "", now) : state.messages),
+      ...(state.workspace.liveReply?.body || state.workspace.liveReply?.subagents?.length ? finishAgentReply(state, "", now) : state.messages),
       {
         id: `agent-${now}-${state.version + 1}`,
         name: "Hive",

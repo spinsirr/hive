@@ -14,10 +14,13 @@ import { MESSAGE_BODY_LIMIT, type TaskSessionAction } from "@/lib/task-session";
 import { isTaskSessionId } from "@/lib/task-session-id";
 import { publicTaskSessionSnapshot } from "@/lib/task-session-snapshot";
 import { WorkspaceRestoreError } from "@/lib/workspace-restore-state";
+import { subagentCapability } from "@/lib/subagent-control";
+import type { HiveSubagent } from "@/lib/hive-subagents";
 import {
   appendHiveReply,
   applyTaskSessionAction,
   checkpointAgentReply,
+  checkpointSubagents,
   getPublicTaskSessionSnapshot,
   isTaskSessionMember,
 } from "@/lib/task-session-store";
@@ -197,6 +200,13 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
     250,
     (error) => console.error("Hive reply checkpoint failed", { taskSessionId: sessionId, error }),
   );
+  let subagents: HiveSubagent[] | undefined;
+  let subagentSequence = 0;
+  let acceptingProgress = true;
+  const subagentWriter = createReplyWriter(
+    (value) => checkpointSubagents(sessionId, replyId, JSON.parse(value)), 250,
+    () => console.error("Hive subagent progress checkpoint failed", { taskSessionId: sessionId }),
+  );
 
   try {
     const { actor: runActor, actorName, steer, memoryQuery } = buildHiveRunInput(
@@ -229,15 +239,25 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
     const toolConnection = toolSecret && callbackUrl ? {
       url: hiveToolEndpoint(sessionId, callbackUrl),
       token: createHiveToolToken({ sessionId, memberId: member.id, runId: replyId }, toolSecret),
+      controlCapability: subagentCapability(sessionId, replyId, toolSecret),
+      runId: replyId,
     } : undefined;
     const runResult = await runHiveCodingTask(snapshot.session, runActor, steer, {
       actorName,
       memoryQuery,
       vercelOidcToken,
       onText: writer.push,
+      onSubagents(update) {
+        if (!acceptingProgress || update.runId !== replyId || update.sequence <= subagentSequence || update.tasks.some((task) => task.runId !== replyId)) return;
+        subagentSequence = update.sequence;
+        subagents = update.tasks;
+        subagentWriter.push(JSON.stringify(update));
+      },
       toolConnection,
     });
     await writer.close();
+    acceptingProgress = false;
+    await subagentWriter.close();
     return sessionResponse(
       await appendHiveReply(sessionId, runResult.summary, {
         forReplyId: replyId,
@@ -246,9 +266,12 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
         forActiveSteerAt: activeSteer?.appliedAt,
         forSteerAt: sourceSteerAt,
         runResult,
+        subagents,
       }),
     );
   } catch (error) {
+    acceptingProgress = false;
+    await subagentWriter.close().catch(() => undefined);
     await writer.close().catch(() => undefined);
     console.error(
       "Hive agent generation failed",
@@ -266,6 +289,7 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
         forActiveSteerAt: activeSteer?.appliedAt,
         forSteerAt: sourceSteerAt,
         status: "error",
+        subagents,
         runError: message,
         runCheckpoint:
           error instanceof HiveAgentError ? error.checkpoint : undefined,
