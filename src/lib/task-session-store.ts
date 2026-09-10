@@ -79,6 +79,7 @@ const agentToolColumns = {
   steeringQueue: taskSessions.steeringQueue, activeSteer: taskSessions.activeSteer,
   workspace: sql<HiveToolContext["workspace"]>`jsonb_build_object(
     'status', ${taskSessions.workspace}->'status',
+    'runtime', ${taskSessions.workspace}->'agentSession'->'runtime',
     'restore', ${taskSessions.workspace}->'restore',
     'lastRestore', ${taskSessions.workspace}->'lastRestore',
     'liveReply', jsonb_build_object('id', ${taskSessions.workspace}->'liveReply'->'id')
@@ -421,7 +422,7 @@ export async function withTaskSubagentControl<T>(sessionId: string, control: (se
       workspace: sql<SubagentSession["workspace"]>`jsonb_build_object(
         'startedAt', ${taskSessions.workspace}->'startedAt', 'completedAt', ${taskSessions.workspace}->'completedAt',
         'restore', ${taskSessions.workspace}->'restore', 'sandboxName', ${taskSessions.workspace}->'sandboxName',
-        'agentSession', jsonb_build_object('id', ${taskSessions.workspace}->'agentSession'->'id'),
+        'agentSession', jsonb_build_object('id', ${taskSessions.workspace}->'agentSession'->'id', 'runtime', ${taskSessions.workspace}->'agentSession'->'runtime'),
         'liveReply', jsonb_build_object('id', ${taskSessions.workspace}->'liveReply'->'id')
       )`,
     }).from(taskSessions).where(eq(taskSessions.id, sessionId));

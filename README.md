@@ -64,7 +64,7 @@ This is a responsibility diagram. Runtime output reaches the shared UI through H
 | Next.js | Full-stack UI, authenticated routes, and task actions, deployed on Vercel. |
 | GitHub OAuth + GitHub App | Human identity and live user-scoped repository discovery; separate repository-scoped installation tokens for Sandbox access. |
 | Neon Postgres via Vercel Marketplace | Canonical conversation, membership, queue, review, and private recovery state. Row locks serialize accepted input. |
-| AI SDK Harness + Codex | Existing coding runtime that inspects, edits, and runs real repository commands. |
+| AI SDK Harness + Codex / Claude Code | Choose the coding runtime before the first repository run. Both share the same task, queue, Sandbox, memory and review surface; native history stays with its chosen runtime. |
 | Vercel AI Gateway + Sandbox | Model access through Vercel OIDC and isolated execution of the selected repository. |
 | WebSockets, Streamdown, and Monaco | Shared live updates, incremental Markdown replies, and read-only source navigation with code annotations. |
 

@@ -45,6 +45,7 @@ import { Input } from "@/components/ui/input";
 import { useSharedSession } from "@/hooks/use-shared-session";
 import { SubagentActivity } from "@/components/hive/subagent-activity";
 import { HiveMark } from "@/components/hive/hive-mark";
+import { CodingAgentSelect } from "@/components/hive/coding-agent-select";
 import { useMessageDraft } from "@/hooks/use-message-draft";
 import { useStalledRun } from "@/hooks/use-stalled-run";
 import type { MessageSubmission } from "@/lib/message-draft";
@@ -56,6 +57,8 @@ import {
   type ChatMessage,
   canApplyNextSteer,
   canApproveChanges,
+  canSelectHarness,
+  type CodingRuntime,
   isHiveRunActive,
   conversationMessages,
   isDirectedAtTeammate,
@@ -134,6 +137,9 @@ function ProductHeader({
   onCopyInvite,
   onSignOut,
   onReset,
+  codingRuntime,
+  harnessLocked,
+  onSelectHarness,
 }: {
   activeMembers: MemberId[];
   copied: boolean;
@@ -147,6 +153,9 @@ function ProductHeader({
   onCopyInvite: () => void;
   onSignOut: () => void;
   onReset: () => void;
+  codingRuntime: CodingRuntime;
+  harnessLocked: boolean;
+  onSelectHarness: (runtime: CodingRuntime) => void;
 }) {
   return (
     <header className="flex h-13 shrink-0 items-center justify-between gap-3 border-b border-[#e8e8e8] bg-white px-3 sm:px-4">
@@ -164,6 +173,7 @@ function ProductHeader({
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+        <CodingAgentSelect value={codingRuntime} disabled={harnessLocked} onChange={onSelectHarness} />
         <div className="hidden items-center gap-1.5 text-[11px] text-[#777] sm:flex">
           {syncError ? (
             <WifiOff className="size-3" />
@@ -693,6 +703,7 @@ export function HiveWorkspace({
   const [threadId, setThreadId] = useState<string | null>(null);
   const [threadTrigger, setThreadTrigger] = useState<HTMLElement | null>(null);
   const [resetOpen, setResetOpen] = useState(false);
+  const [harnessSaving, setHarnessSaving] = useState(false);
   const { dispatch, setTyping, snapshot, syncing, syncError, receiveSnapshot } = useSharedSession(sessionId, initialSnapshot);
   const { session, activeMembers, members, typingMembers } = snapshot;
   const teamMembers = useMemo(
@@ -767,6 +778,7 @@ export function HiveWorkspace({
     void dispatch({ type: "remove-queued-steer", steerId });
   }, [dispatch]);
   const send = useCallback(async ({ body, clientId }: MessageSubmission) => {
+    if (harnessSaving) return false;
     if (
       repository &&
       !isDirectedAtTeammate(body, currentMember.id, teamMembers)
@@ -778,7 +790,13 @@ export function HiveWorkspace({
     return nextSnapshot?.session.messages.some(
       (message) => message.memberId === currentMember.id && message.clientId === clientId && message.body === body,
     ) ?? false;
-  }, [currentMember.id, dispatch, repository, teamMembers]);
+  }, [currentMember.id, dispatch, repository, teamMembers, harnessSaving]);
+  const selectHarness = useCallback(async (runtime: CodingRuntime) => {
+    if (harnessSaving) return;
+    setHarnessSaving(true);
+    try { await dispatch({ type: "select-harness", runtime }); }
+    finally { setHarnessSaving(false); }
+  }, [dispatch, harnessSaving]);
   const advance = useCallback(() => {
     const action = canApplySteer
       ? ({ type: "apply-next-steer" } as const)
@@ -810,7 +828,7 @@ export function HiveWorkspace({
     steered,
     steeredBy: annotation.steeredBy,
     currentMember: currentMember.id,
-    disabled: workspaceLocked,
+    disabled: workspaceLocked || harnessSaving,
     members: teamMembers,
     messages,
     stage,
@@ -828,11 +846,11 @@ export function HiveWorkspace({
     onTyping: setTyping,
     onAdvance: advance,
     onTabChange: setTab,
-  }), [activeMembers, activeSteer, advance, openThread, steerMessageAnnotation, threadMessage?.id, annotation.queuedBy, annotation.steeredBy, annotation.text, canApplySteer, currentMember.id, workspaceLocked, messages, moveSteer, queuePosition, queued, recoverRun, removeSteer, runActive, runStalled, send, sessionId, setTyping, stage, steer, steered, steeringQueue, tab, teamMembers, typingMembers]);
+  }), [activeMembers, activeSteer, advance, openThread, steerMessageAnnotation, threadMessage?.id, annotation.queuedBy, annotation.steeredBy, annotation.text, canApplySteer, currentMember.id, workspaceLocked, harnessSaving, messages, moveSteer, queuePosition, queued, recoverRun, removeSteer, runActive, runStalled, send, sessionId, setTyping, stage, steer, steered, steeringQueue, tab, teamMembers, typingMembers]);
 
   return (
     <main className="flex h-dvh min-h-0 flex-col overflow-hidden bg-[#fafafa] text-[#171717]">
-      <ProductHeader activeMembers={activeMembers} copied={copied} currentMember={currentMember} members={teamMembers} onCopyInvite={copyInvite} onSignOut={signOut} onReset={openReset} repository={repository} sessionTitle={sessionTitle} resetDisabled={resetDisabled} syncing={syncing} syncError={syncError} />
+      <ProductHeader activeMembers={activeMembers} copied={copied} currentMember={currentMember} members={teamMembers} onCopyInvite={copyInvite} onSignOut={signOut} onReset={openReset} repository={repository} sessionTitle={sessionTitle} resetDisabled={resetDisabled} syncing={syncing} syncError={syncError} codingRuntime={workspace.agentSession?.runtime ?? "codex"} harnessLocked={!canSelectHarness(session) || harnessSaving || syncing || syncError} onSelectHarness={(runtime) => { void selectHarness(runtime); }} />
       <Dialog onOpenChange={setResetOpen} open={resetOpen}>
         <DialogContent>
           <DialogHeader>

@@ -44,6 +44,28 @@ function fixture(): HiveToolContext {
   workspace: { status: "running", liveReply: { id: scope.runId } }, members: [memberDirectory.spencer, memberDirectory.maya] };
 }
 
+test("Claude shares discussion and memory tools without advertising Codex child controls", async () => {
+  const context = fixture();
+  context.workspace.runtime = "claude-code";
+  let controlled = false;
+  const client = new Client({ name: "claude-tools", version: "1" });
+  await client.connect(new StreamableHTTPClientTransport(new URL("https://hive.test/agent-tools"), {
+    fetch: (input, init) => handleHiveMcp(new Request(input, init), scope, {
+      read: async () => context,
+      reply: async (_scope, messageId) => ({ messageId, replyId: "hive-reply" }),
+      control: async () => { controlled = true; throw new Error("Must not invoke Codex"); },
+    }, createHiveMemory(undefined)),
+  }));
+  try {
+    assert.deepEqual((await client.listTools()).tools.map((tool) => tool.name).sort(), ["get_context", "remember_memory", "reply_to_thread", "search_memory"]);
+    const result = await client.callTool({ name: "get_context", arguments: {} });
+    assert.match(JSON.stringify(result), /claude-code/);
+    const reply = await client.callTool({ name: "reply_to_thread", arguments: { messageId: "human-one", body: "Can you clarify?" } });
+    assert.match(JSON.stringify(reply), /hive-reply/);
+    assert.equal(controlled, false);
+  } finally { await client.close(); }
+});
+
 test("tools reject stale or finished runs, restores and revoked members", () => {
   const context = fixture();
   assert.doesNotThrow(() => assertHiveToolRun(context, scope));

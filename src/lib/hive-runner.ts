@@ -1,4 +1,5 @@
 import path from "node:path";
+import { readFile } from "node:fs/promises";
 
 import {
   HarnessAgent,
@@ -6,11 +7,14 @@ import {
 } from "@ai-sdk/harness/agent";
 import { createVercelSandbox } from "@ai-sdk/sandbox-vercel";
 import { Sandbox } from "@vercel/sandbox";
+import type { HarnessV1 } from "@ai-sdk/harness";
 import type { Experimental_SandboxSession } from "ai";
 
 import { hiveAgentFailureMessage, HiveAgentError } from "@/lib/hive-agent";
 import { consumeAgentText } from "@/lib/agent-stream";
 import { createHiveCodex } from "@/lib/codex-harness";
+import { createHiveClaude, CLAUDE_GATEWAY_MODEL, CLAUDE_SUBSCRIPTION_MODEL } from "@/lib/claude-harness";
+import { claudeSubscriptionToken } from "@/lib/claude-subscription";
 import { SUBSCRIPTION_MODEL } from "@/lib/codex-subscription-credentials";
 import { getRepositoryCloneCredentials } from "@/lib/github-app";
 import { buildHivePrompt } from "@/lib/hive-prompt";
@@ -26,6 +30,8 @@ import {
   createAgentSessionId,
   WORKSPACE_CHECKPOINT_LIMIT,
   type HiveSessionCheckpoint,
+  type HiveRunResult,
+  type CodingRuntime,
   type MemberId,
   type TaskSessionState,
   type WorkspaceCommand,
@@ -33,7 +39,7 @@ import {
 } from "@/lib/task-session";
 
 const DEFAULT_MODEL = "openai/gpt-5.1-codex-mini";
-const CODEX_BRIDGE_PORT = 4319;
+const HARNESS_BRIDGE_PORT = 4319;
 const MAX_OUTPUT_CHARS = 20_000;
 const MAX_DIFF_CHARS = 60_000;
 const MAX_CHANGED_FILES = 12;
@@ -215,7 +221,7 @@ function toolOutput(value: unknown) {
   }
 }
 
-function collectCodexCommands(result: {
+function collectWorkspaceCommands(result: {
   toolCalls: Array<{
     toolCallId: string;
     toolName: string;
@@ -225,7 +231,7 @@ function collectCodexCommands(result: {
     toolCallId: string;
     output: unknown;
   }>;
-}) {
+}, runtime: CodingRuntime) {
   const results = new Map(
     result.toolResults.map((item) => [item.toolCallId, item.output]),
   );
@@ -239,11 +245,13 @@ function collectCodexCommands(result: {
     ) return [];
     const output = results.get(call.toolCallId);
     const exitCode =
-      output && typeof output === "object" && "exitCode" in output &&
+      runtime === "codex" && output && typeof output === "object" && "exitCode" in output &&
       typeof output.exitCode === "number" && Number.isInteger(output.exitCode)
         ? output.exitCode
         : null;
-    const body = output && typeof output === "object" && "output" in output && typeof output.output === "string"
+    const body = runtime === "claude-code" && output && typeof output === "object" && ("stdout" in output || "stderr" in output)
+      ? ["stdout" in output ? output.stdout : undefined, "stderr" in output ? output.stderr : undefined].filter((part): part is string => typeof part === "string" && part.length > 0).join("\n")
+      : output && typeof output === "object" && "output" in output && typeof output.output === "string"
       ? output.output
       : toolOutput(output) ?? "";
     return [
@@ -251,6 +259,7 @@ function collectCodexCommands(result: {
         command: input.command,
         output: truncate(body),
         exitCode,
+        ...(runtime === "claude-code" ? { resultReceived: results.has(call.toolCallId) } : {}),
       },
     ];
   });
@@ -261,7 +270,7 @@ export async function runHiveCodingTask(
   actor: MemberId,
   steer?: string,
   auth?: { preferSubscription?: boolean; actorName?: string; memoryQuery?: string; vercelOidcToken?: string; onText?: (body: string) => void; onSubagents?: (update: HiveSubagentUpdate) => void; toolConnection?: { url: string; token: string; controlCapability: string; runId: string } },
-) {
+): Promise<HiveRunResult> {
   if (taskSession.workspace.restore) throw new HiveAgentError("Finish restoring the workspace before starting Hive.", new Error("Workspace restore in progress."));
   if (!taskSession.repository) {
     throw new HiveAgentError(
@@ -283,13 +292,21 @@ export async function runHiveCodingTask(
       taskSession.sessionId,
       taskSession.repository.connectedAt,
     );
+  const runtime = taskSession.workspace.agentSession?.runtime ?? "codex";
+  const claudeToken = runtime === "claude-code" ? claudeSubscriptionToken(taskSession, process.env) : undefined;
+  const failureMessage = (error: unknown) => hiveAgentFailureMessage(error, claudeToken ? "claude-subscription" : "gateway");
+  const authentication = runtime === "claude-code" ? (claudeToken ? "claude-subscription" : "gateway") : undefined;
+  if (runtime === "claude-code" && taskSession.workspace.agentSession?.resumeFrom &&
+    taskSession.workspace.agentSession.authentication !== authentication) {
+    throw new HiveAgentError("Start a new Claude task to change its authentication.", new Error("Claude native authentication boundary changed."));
+  }
   const resumeFrom = taskSession.workspace.agentSession?.resumeFrom as
     | HarnessAgentResumeSessionState
     | undefined;
   const repositoryCwd = repositoryDirectory(taskSession.repository.url);
   const sandboxName = resolvePersistentSandboxName(taskSession, sessionId);
   const gatewayApiKey = process.env.AI_GATEWAY_API_KEY?.trim();
-  const codexAuth: "ai-gateway" | Readonly<Record<string, string>> = gatewayApiKey
+  const gatewayAuth: "ai-gateway" | Readonly<Record<string, string>> = gatewayApiKey
     ? { AI_GATEWAY_API_KEY: gatewayApiKey }
     : auth?.vercelOidcToken
       ? { VERCEL_OIDC_TOKEN: auth.vercelOidcToken }
@@ -306,7 +323,7 @@ export async function runHiveCodingTask(
     persistentSandbox = resumeFrom ? await Sandbox.get({ name: sandboxName }) : await Sandbox.getOrCreate({
       name: sandboxName,
       runtime: "node24",
-      ports: [CODEX_BRIDGE_PORT],
+      ports: [HARNESS_BRIDGE_PORT],
       source: {
         type: "git",
         url: taskSession.repository.url,
@@ -321,17 +338,22 @@ export async function runHiveCodingTask(
       tags: {
         app: "hive",
         session: taskSession.sessionId,
-        runtime: "codex",
+        runtime,
       },
     });
     if (persistentSandbox.keepLastSnapshots?.count !== WORKSPACE_CHECKPOINT_LIMIT) {
       await persistentSandbox.update({ keepLastSnapshots: { count: WORKSPACE_CHECKPOINT_LIMIT, expiration: 0 } });
     }
     const sandbox = createVercelSandbox({ sandbox: persistentSandbox });
-    const agent = new HarnessAgent({
-      id: "hive-coding-agent",
-      harness: createHiveCodex({
-        auth: codexAuth,
+    const harness: HarnessV1 = runtime === "claude-code" ? createHiveClaude({
+        gatewayAuth,
+        subscriptionToken: claudeToken,
+        ...(auth?.toolConnection ? { mcpServers: { hive: {
+          type: "http", url: auth.toolConnection.url,
+          headers: { Authorization: `Bearer ${auth.toolConnection.token}` },
+        } } } : {}),
+      }) : createHiveCodex({
+        auth: gatewayAuth,
         reasoningEffort: "low",
         webSearch: false,
         codexConfig: { model_verbosity: "low" },
@@ -345,8 +367,23 @@ export async function runHiveCodingTask(
         } } } : {}),
       }, (attributes) => {
         console.info(attributes.event === "authentication" ? "Hive model routing" : "Hive Gateway request", { taskSessionId: taskSession.sessionId, ...attributes });
-      }, auth?.onSubagents),
-      model: auth?.preferSubscription ? SUBSCRIPTION_MODEL : process.env.HIVE_CODEX_MODEL?.trim() || DEFAULT_MODEL,
+      }, auth?.onSubagents);
+    const agent = new HarnessAgent({
+      id: "hive-coding-agent",
+      harness,
+      model: runtime === "claude-code"
+        ? claudeToken ? CLAUDE_SUBSCRIPTION_MODEL : CLAUDE_GATEWAY_MODEL
+        : auth?.preferSubscription ? SUBSCRIPTION_MODEL : process.env.HIVE_CODEX_MODEL?.trim() || DEFAULT_MODEL,
+      ...(runtime === "claude-code" ? {
+        // Hive's child-control protocol currently belongs to Codex. Do not
+        // expose an untracked second delegation system through Claude's Agent tool.
+        inactiveTools: ["Agent", "SendMessage", "AskUserQuestion", "EnterPlanMode", "ExitPlanMode", "EnterWorktree", "ExitWorktree", "CronCreate", "CronDelete", "CronList", "RemoteTrigger", "ScheduleWakeup", "Workflow"] as const,
+        skills: [{
+          name: "hive-collaboration",
+          description: "Work within a Hive multiplayer task using team discussion and repository memory.",
+          content: await readFile(path.join(process.cwd(), "src/lib/codex-bridge/hive-collaboration/SKILL.md"), "utf8"),
+        }],
+      } : {}),
       prepareCall: createMemoryRecall(createHiveMemory(process.env.MEM0_API_KEY), {
         installationId: taskSession.repository.installationId,
         repositoryId: taskSession.repository.id,
@@ -354,7 +391,7 @@ export async function runHiveCodingTask(
       // Keep the native configuration stable: changing instructions makes this
       // Codex adapter restart resumed threads. Per-turn memory belongs in prompt.
       instructions: [
-        "You are Hive's Codex execution engine, shared by a small software team.",
+        runtime === "codex" ? "You are Hive's Codex execution engine, shared by a small software team." : "You are Hive's Claude Code execution engine, shared by a small software team.",
         "Work only inside the connected repository and never claim an action you did not perform.",
         "Preserve teammate attribution in the prompt, but treat the latest labeled task as the instruction to execute.",
         "Inspect relevant files before editing and make the smallest coherent change that satisfies the request.",
@@ -370,7 +407,7 @@ export async function runHiveCodingTask(
         onSession: async ({ session, sessionWorkDir, abortSignal }) => {
           sandboxSession = session;
           sandboxWorkDir = sessionWorkDir;
-          await ensureCodexBridgeDependencies(
+          if (runtime === "codex") await ensureCodexBridgeDependencies(
             session,
             sessionWorkDir,
             abortSignal,
@@ -386,7 +423,7 @@ export async function runHiveCodingTask(
           });
           if (check.exitCode !== 0) {
             throw new Error(
-              "Codex session did not start inside the connected repository.",
+              "The agent did not start inside the connected repository.",
             );
           }
         },
@@ -396,7 +433,7 @@ export async function runHiveCodingTask(
     const agentSession = await agent.createSession({ sessionId, resumeFrom });
     // Record tool events as they arrive: final result promises may reject after
     // a provider error and cannot be the only record of completed commands.
-    const observedTools: Parameters<typeof collectCodexCommands>[0] = {
+    const observedTools: Parameters<typeof collectWorkspaceCommands>[0] = {
       toolCalls: [],
       toolResults: [],
     };
@@ -416,12 +453,13 @@ export async function runHiveCodingTask(
         (part) => {
           if (part.type === "tool-call") observedTools.toolCalls.push(part);
           if (part.type === "tool-result") observedTools.toolResults.push(part);
+          if (part.type === "tool-error") observedTools.toolResults.push({ toolCallId: part.toolCallId, output: part.error });
         },
       );
       if (!sandboxSession || !sandboxWorkDir) {
         throw new Error("Vercel Sandbox session was not made available to Hive.");
       }
-      const commands = collectCodexCommands(observedTools);
+      const commands = collectWorkspaceCommands(observedTools, runtime);
       const artifacts = await collectArtifacts(
         sandboxSession,
         commands,
@@ -436,7 +474,8 @@ export async function runHiveCodingTask(
         sandboxName,
         agentSession: {
           id: sessionId,
-          runtime: "codex" as const,
+          runtime,
+          ...(authentication ? { authentication } : {}),
           resumeFrom: nextResumeFrom,
         },
         summary:
@@ -447,7 +486,9 @@ export async function runHiveCodingTask(
         ...artifacts,
       };
     } catch (error) {
-      const commands = collectCodexCommands(observedTools);
+      // Claude's adapter can synthesize 0/1 from an error flag; that is not
+      // evidence of the process's numeric exit status. Preserve the output.
+      const commands = collectWorkspaceCommands(observedTools, runtime);
       let checkpoint: HiveSessionCheckpoint = { sandboxName, commands };
       try {
         const nextResumeFrom = await agentSession.stop();
@@ -456,12 +497,13 @@ export async function runHiveCodingTask(
           ...checkpoint,
           agentSession: {
             id: sessionId,
-            runtime: "codex",
+            runtime,
+            ...(authentication ? { authentication } : {}),
             resumeFrom: nextResumeFrom,
           },
         };
       } catch (stopError) {
-        console.error("Hive could not checkpoint the Codex session", stopError);
+        console.error("Hive could not checkpoint the agent session", stopError);
       }
       // This sandbox is caller-owned: stopping Codex ends its turn, but leaves
       // the working copy available until persistentSandbox.stop() snapshots it.
@@ -479,7 +521,7 @@ export async function runHiveCodingTask(
       }
       checkpoint.snapshot = await saveSandboxCheckpoint(persistentSandbox);
       throw new HiveAgentError(
-        hiveAgentFailureMessage(error),
+        failureMessage(error),
         error,
         checkpoint,
       );
@@ -490,7 +532,7 @@ export async function runHiveCodingTask(
     }
   } catch (error) {
     if (error instanceof HiveAgentError) throw error;
-    throw new HiveAgentError(hiveAgentFailureMessage(error), error);
+    throw new HiveAgentError(failureMessage(error), error);
   }
 }
 

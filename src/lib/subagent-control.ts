@@ -25,6 +25,7 @@ socket.on('error',()=>{process.stderr.write('Subagent control is unavailable');p
 `;
 
 export function assertSubagentRun(session: SubagentSession, runId: string) {
+  if (session.workspace.agentSession?.runtime === "claude-code") throw new Error("Child controls are not available for Claude Code tasks.");
   if (!session.repository || session.stage !== "running" || session.workspace.startedAt == null || session.workspace.completedAt != null || session.workspace.restore || session.workspace.liveReply?.id !== runId) throw new Error("This run has ended. Refresh the task.");
 }
 

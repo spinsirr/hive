@@ -65,3 +65,8 @@ try {
 } finally {
   empty.window.close();
 }
+
+const unreported = render([command({ exitCode: null, resultReceived: true, output: "Native tool output" })]);
+assert.match(unreported.window.document.querySelector("summary").textContent, /Exit unavailable/);
+assert.doesNotMatch(unreported.window.document.querySelector("summary").textContent, /Incomplete|Passed|Exit 0/);
+unreported.window.close();

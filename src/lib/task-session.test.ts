@@ -7,6 +7,7 @@ import {
   appendHiveReply,
   canApplyNextSteer,
   canApproveChanges,
+  canSelectHarness,
   createInitialTaskSessionState,
   didStartHiveRun,
   isHiveRunActive,
@@ -47,6 +48,36 @@ function finishInspection(state: TaskSessionState, diff = "") {
     commands: [{ command: "git status --short", output: "", exitCode: 0 }],
   }, 40);
 }
+
+test("the team can select Claude before coding, then keep that engine through results and reset", () => {
+  const selected = reduceTaskSession(connectedSession(), { type: "select-harness", actor: "spencer", runtime: "claude-code" }, 15);
+  assert.equal(selected.workspace.agentSession?.runtime, "claude-code");
+  assert.equal(canSelectHarness(selected), true);
+  assert.equal(didStartHiveRun(connectedSession(), selected), false);
+  const running = reduceTaskSession(selected, { type: "send-message", actor: "spencer", body: "Inspect files" }, 20);
+  const finished = finishInspection(running);
+  assert.equal(finished.workspace.agentSession?.runtime, "claude-code");
+  for (const state of [running, finished, applyHiveRunError(running, "Fixture", 30)]) {
+    assert.equal(canSelectHarness(state), false);
+    assert.equal(reduceTaskSession(state, { type: "select-harness", actor: "maya", runtime: "codex" }, 50), state);
+  }
+  const reset = reduceTaskSession(finished, { type: "reset", actor: "spencer" }, 60);
+  assert.equal(reset.workspace.agentSession?.runtime, "claude-code");
+  assert.equal(canSelectHarness(reset), true);
+  assert.notEqual(reset.workspace.agentSession?.id, finished.workspace.agentSession?.id);
+});
+
+test("selecting Claude before repository attachment does not reset discussion or start a run", () => {
+  const initial = createInitialTaskSessionState(1);
+  const selected = reduceTaskSession(initial, { type: "select-harness", actor: "spencer", runtime: "claude-code" }, 2);
+  assert.deepEqual(selected.messages, initial.messages);
+  assert.equal(selected.stage, "waiting");
+  const action = { type: "connect-repository" as const, actor: "spencer", repositoryUrl: "https://github.com/example/repo", repositoryName: "example/repo", repositoryId: 1, repositoryBranch: "main", installationId: 2, visibility: "private" as const, githubUserId: 3, githubLogin: "spencer" };
+  const connected = reduceTaskSession(selected, action, 3);
+  assert.equal(connected.workspace.agentSession?.runtime, "claude-code");
+  assert.equal(connected.workspace.agentSession?.id, selected.workspace.agentSession?.id);
+  assert.equal(reduceTaskSession(connected, { type: "select-harness", actor: "spencer", runtime: "claude-code" }, 4), connected);
+});
 
 test("a successful read-only run does not offer or accept diff approval", () => {
   const running = reduceTaskSession(connectedSession(), {

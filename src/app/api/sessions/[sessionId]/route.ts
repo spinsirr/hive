@@ -77,6 +77,7 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
 
   if (
     payload.type !== "send-message" &&
+    payload.type !== "select-harness" &&
     payload.type !== "annotate-message" &&
     payload.type !== "annotate-code" &&
     payload.type !== "steer-message-annotation" &&
@@ -90,6 +91,11 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
     payload.type !== "reset"
   ) {
     return NextResponse.json({ error: "Unknown session action" }, { status: 400 });
+  }
+
+  if (payload.type === "select-harness" &&
+    (!("runtime" in payload) || (payload.runtime !== "codex" && payload.runtime !== "claude-code"))) {
+    return NextResponse.json({ error: "Choose Codex or Claude Code" }, { status: 400 });
   }
 
   if (
@@ -244,7 +250,7 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
       runId: replyId,
     } : undefined;
     const runResult = await runHiveCodingTask(snapshot.session, runActor, steer, {
-      preferSubscription: await prefersCodexSubscription(sessionId),
+      preferSubscription: snapshot.session.workspace.agentSession?.runtime !== "claude-code" && await prefersCodexSubscription(sessionId),
       actorName,
       memoryQuery,
       vercelOidcToken,

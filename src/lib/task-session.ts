@@ -8,6 +8,7 @@ import { codeReferenceContext, codeReferenceSchema, type CodeReference } from ".
 import { finalizeSubagents } from "./hive-subagents.ts";
 
 export type MemberId = string;
+export type CodingRuntime = "codex" | "claude-code";
 
 export type TeamMember = {
   id: MemberId;
@@ -130,6 +131,8 @@ export type WorkspaceCommand = {
   command: string;
   output: string;
   exitCode: number | null;
+  /** A tool response can arrive without reporting the numeric process exit code. */
+  resultReceived?: boolean;
   durationMs?: number;
 };
 
@@ -138,7 +141,9 @@ export type WorkspaceState = {
   sandboxName?: string;
   agentSession?: {
     id: string;
-    runtime: "codex";
+    runtime: CodingRuntime;
+    /** Server-only native authentication boundary; not a credential. */
+    authentication?: "gateway" | "claude-subscription";
     resumeFrom?: HarnessAgentResumeSessionState;
   };
   summary?: string;
@@ -231,6 +236,7 @@ export type TaskSessionState = {
 };
 
 export type TaskSessionAction =
+  | { type: "select-harness"; actor: MemberId; runtime: CodingRuntime }
   | { type: "send-message"; actor: MemberId; body: string; clientId?: string }
   | { type: "annotate-code"; actor: MemberId; body: string; clientId: string; reference: CodeReference }
   | {
@@ -402,6 +408,14 @@ export function didStartHiveRun(previous: TaskSessionState, next: TaskSessionSta
   return !isHiveRunActive(previous) && isHiveRunActive(next);
 }
 
+/** A native conversation belongs to one harness; never reinterpret its history. */
+export function canSelectHarness(state: TaskSessionState) {
+  return !isHiveRunActive(state) && !state.workspace.restore && !state.activeSteer &&
+    state.steeringQueue.length === 0 && !state.workspace.sandboxName &&
+    !state.workspace.agentSession?.resumeFrom && !state.workspace.checkpoints?.length &&
+    !(state.repository && state.workspace.startedAt !== undefined);
+}
+
 export function appendHiveReply(
   state: TaskSessionState,
   body: string,
@@ -441,6 +455,16 @@ export function reduceTaskSession(
 ): TaskSessionState {
   const actor = resolveMember(action.actor, members);
   if (state.workspace.restore) return state;
+  if (action.type === "select-harness") {
+    if (!canSelectHarness(state) || (action.runtime !== "codex" && action.runtime !== "claude-code") ||
+      (state.workspace.agentSession?.runtime ?? "codex") === action.runtime) return state;
+    return {
+      ...state, version: state.version + 1, updatedAt: now,
+      workspace: { ...state.workspace, agentSession: {
+        id: createAgentSessionId(state.sessionId, now), runtime: action.runtime,
+      } },
+    };
+  }
   if (action.type === "recover-stalled-run") {
     if (!isHiveRunStalled(state, now)) return state;
     return applyHiveRunError(
@@ -459,6 +483,9 @@ export function reduceTaskSession(
     });
     initialSession.createdAt = state.createdAt;
     initialSession.version = state.version + 1;
+    if (state.workspace.agentSession) initialSession.workspace.agentSession = {
+      id: createAgentSessionId(state.sessionId, now), runtime: state.workspace.agentSession.runtime,
+    };
     if (!state.repository) return initialSession;
     return {
       ...initialSession,
@@ -467,7 +494,7 @@ export function reduceTaskSession(
         status: "ready",
         agentSession: {
           id: createAgentSessionId(state.sessionId, now),
-          runtime: "codex",
+          runtime: state.workspace.agentSession?.runtime ?? "codex",
         },
         diff: "",
         files: [],

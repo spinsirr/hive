@@ -3,7 +3,7 @@ import type { HiveToolScope } from "./hive-tool-token.ts";
 import { checkedMemoryText } from "./hive-memory.ts";
 
 export type HiveToolContext = Pick<TaskSessionState, "sessionId" | "title" | "version" | "stage" | "repository" | "messages" | "steeringQueue" | "activeSteer"> & {
-  workspace: Pick<TaskSessionState["workspace"], "status" | "restore" | "lastRestore"> & { liveReply?: { id: string } };
+  workspace: Pick<TaskSessionState["workspace"], "status" | "restore" | "lastRestore"> & { liveReply?: { id: string }; runtime?: import("./task-session.ts").CodingRuntime };
   members: TeamMember[];
 };
 
@@ -19,7 +19,7 @@ export function describeHiveContext(context: HiveToolContext) {
   return {
     task: { id: context.sessionId, title: context.title, version: context.version },
     repository: context.repository ? { name: context.repository.name, attachedBranch: context.repository.branch } : null,
-    environment: { runtime: "Vercel Sandbox", workspace: context.workspace.status, restored: Boolean(context.workspace.lastRestore) },
+    environment: { runtime: "Vercel Sandbox", harness: context.workspace.runtime ?? "codex", workspace: context.workspace.status, restored: Boolean(context.workspace.lastRestore) },
     members: context.members.map(({ id, name, githubLogin }) => ({ id, name, githubLogin })),
     // Membership is durable; it is not evidence that a person is currently online.
     presence: "not included; do not infer online status from membership",

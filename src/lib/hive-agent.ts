@@ -39,9 +39,12 @@ function errorMessages(error: unknown): string[] {
   return messages;
 }
 
-export function hiveAgentFailureMessage(error: unknown) {
+export function hiveAgentFailureMessage(error: unknown, authentication: "gateway" | "claude-subscription" = "gateway") {
   const statusCode = errorStatusCode(error);
   const details = errorMessages(error).join(" ").toLowerCase();
+  if (authentication === "claude-subscription" && (statusCode === 401 || statusCode === 403 || /invalid.*oauth|oauth.*expired|authentication_error|invalid bearer/.test(details))) {
+    return hiveErrorCopy.claudeDisconnected;
+  }
 
   if (
     details.includes("customer_verification_required") ||

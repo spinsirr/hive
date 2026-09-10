@@ -3,7 +3,7 @@ import type { TaskSessionState } from "./task-session.ts";
 
 export type SubagentSession = Pick<TaskSessionState, "sessionId" | "stage" | "repository"> & {
   workspace: Pick<TaskSessionState["workspace"], "startedAt" | "completedAt" | "restore" | "sandboxName"> & {
-    agentSession?: { id: string };
+    agentSession?: { id: string; runtime?: import("./task-session.ts").CodingRuntime };
     liveReply?: { id: string };
   };
 };

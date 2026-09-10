@@ -43,7 +43,7 @@ export function RunsPane({ commands }: { commands: WorkspaceState["commands"] })
                     exitedCleanly ? "bg-[#171717]" : "bg-[#a1a1a1]",
                   )}
                 />
-                {command.exitCode === null ? "Incomplete" : `Exit ${command.exitCode}`}
+                {command.exitCode === null ? command.resultReceived ? "Exit unavailable" : "Incomplete" : `Exit ${command.exitCode}`}
               </span>
               <span className="font-mono text-[10px] text-[#999]">
                 {command.durationMs ? `${command.durationMs}ms` : "—"}

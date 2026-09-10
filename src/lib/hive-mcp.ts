@@ -56,7 +56,12 @@ export async function handleHiveMcp(
     return memory.remember(repository(context), contribution.text, contribution.source, extra.signal);
   }));
 
-  if (source.control) {
+  // Decide from authenticated task state, never a caller-supplied capability flag.
+  const supportsSubagents = source.control && await source.read(scope).then((context) => {
+    assertHiveToolRun(context, scope);
+    return context.workspace.runtime !== "claude-code";
+  }).catch(() => false);
+  if (source.control && supportsSubagents) {
     const control = source.control;
     server.registerTool("spawn_subagent", {
       description: "Delegate a concrete independent research or code review task to a separate Codex thread in this repository. At most two children TOTAL per Hive turn, inheriting this task's model, tools, skills and permissions. Children inspect and report; keep code changes and further delegation with the parent. Include the relevant context and teammate attribution. Returns immediately; use read_subagent to get the actual result before summarizing. Children are stopped when your turn ends. Do not delegate trivial work or manufacture consensus.",
