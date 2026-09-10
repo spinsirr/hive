@@ -5,7 +5,7 @@ import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { startGatewayTransport } from "./gateway-transport.mjs";
 import { createSubagents, serveSubagents } from "./subagents.mjs";
-import { SubscriptionUnavailable, subscriptionPreferred, readSubscriptionTokens, subscriptionLimited, subscriptionFailureReason, codexProcessEnvironment } from "./auth.mjs";
+import { SubscriptionUnavailable, NativeHistoryMismatch, isEncryptedHistoryRejection, portableNativeHistory, subscriptionPreferred, readSubscriptionTokens, subscriptionLimited, subscriptionFailureReason, codexProcessEnvironment } from "./auth.mjs";
 
 // The sandbox recipe pins the CLI via @openai/codex-sdk. Use that installation,
 // not a global CLI, and keep the task sandbox's existing Codex home and credentials.
@@ -83,7 +83,7 @@ export async function runCodexAppServerTurn(options) {
   if (subscriptionPreferred(start)) {
     try {
       const tokens = await readSubscriptionTokens(start, turn.abortSignal);
-      return await runNativeTurn({ ...options, subscription: true, tokens, settings: threadSettings(start, workdir, true) });
+      return await runWithCompatibleHistory({ ...options, subscription: true, tokens, settings: threadSettings(start, workdir, true) });
     } catch (error) {
       if (!(error instanceof SubscriptionUnavailable)) throw error;
       // Only preflight failures or a positively excluded, empty rejected turn
@@ -92,7 +92,7 @@ export async function runCodexAppServerTurn(options) {
       if (!process.env.AI_GATEWAY_BASE_URL) throw error;
       const model = start.mcpServers.hive.http_headers["X-Hive-Gateway-Model"];
       if (typeof model !== "string" || !model.trim()) throw new Error("Gateway fallback model is missing.");
-      gatewayStart = { ...start, model };
+      gatewayStart = { ...start, model, ...(error.continuationPrompt ? { prompt: error.continuationPrompt } : {}) };
       turn.bridgeLog?.({ level: "warn", subsystem: "hive.auth", message: "Authentication fallback",
         attrs: { source: "ai-gateway", reason: error.reason, model } });
     }
@@ -122,9 +122,27 @@ export async function runCodexAppServerTurn(options) {
       });
     }
     turn.abortSignal.throwIfAborted();
-    return await runNativeTurn({ ...options, start: gatewayStart, threadId: continuedThreadId, settings });
+    return await runWithCompatibleHistory({ ...options, start: gatewayStart, threadId: continuedThreadId, settings });
   } finally {
     await gateway?.close();
+  }
+}
+
+async function runWithCompatibleHistory(options) {
+  try { return await runNativeTurn(options); }
+  catch (error) {
+    if (!(error instanceof NativeHistoryMismatch)) throw error;
+    options.turn.abortSignal.throwIfAborted();
+    const start = { ...options.start, prompt: error.context + options.start.prompt };
+    options.turn.bridgeLog?.({ level: "info", subsystem: "hive.auth", message: "Native context carried forward",
+      attrs: { source: options.subscription ? "chatgpt" : "ai-gateway", model: options.settings.model, reason: "incompatible_native_history" } });
+    // One recovery only, after confirmed rejection and clean shutdown. Never
+    // edit/delete rollout files or re-run tools from a completed/partial turn.
+    try { return await runNativeTurn({ ...options, start, threadId: undefined }); }
+    catch (failure) {
+      if (failure instanceof SubscriptionUnavailable) failure.continuationPrompt = start.prompt;
+      throw failure;
+    }
   }
 }
 
@@ -351,6 +369,10 @@ async function runNativeTurn({
     turn.abortSignal.throwIfAborted();
     if (!result) throw new Error(`Codex exited before completing its turn.${stderr ? ` ${stderr}` : ""}`);
     if (result.status !== "completed") {
+      if (!observedActivity && result.status === "failed" && threadId && turnId && isEncryptedHistoryRejection(result.error ?? failure)) {
+        const read = await request("thread/read", { threadId, includeTurns: true });
+        throw new NativeHistoryMismatch(portableNativeHistory(read?.thread, turnId));
+      }
       const reason = subscription ? subscriptionFailureReason(result.error ?? failure) : null;
       if (reason && !observedActivity && result.status === "failed" && threadId && turnId) {
         // Preserve the original history. Continue from a native fork immediately

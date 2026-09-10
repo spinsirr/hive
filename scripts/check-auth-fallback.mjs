@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import { PassThrough, Writable } from "node:stream";
 import { test } from "node:test";
 import { runCodexAppServerTurn } from "../src/lib/codex-bridge/app-server.mjs";
-import { codexProcessEnvironment, subscriptionLimited } from "../src/lib/codex-bridge/auth.mjs";
+import { codexProcessEnvironment, subscriptionLimited, portableNativeHistory, isEncryptedHistoryRejection } from "../src/lib/codex-bridge/auth.mjs";
 
 test("subscription process excludes Gateway/API credentials without changing the fallback's environment", () => {
   const env = { PATH: "/bin", CODEX_HOME: "/fixture", CODEX_API_KEY: "secret", AI_GATEWAY_BASE_URL: "https://fixture.invalid" };
@@ -14,8 +14,23 @@ test("subscription process excludes Gateway/API credentials without changing the
   assert.equal(subscriptionLimited({ rateLimitsByLimitId: { other: { primary: { usedPercent: 100 } } } }), false);
 });
 
-for (const scenario of ["success", "auth-down", "malformed", "quota", "rate-check-failed", "login-rejected", "empty-rejected", "dirty-tail", "bad-close", "after-command", "after-text", "ambiguous", "revoked"]) {
+test("portable history rejects unknown, partial, oversized or opaque native history", () => {
+  const rejected = { id: "rejected", status: "failed", items: [{ type: "userMessage" }] };
+  const prior = { id: "prior", status: "completed", items: [{ type: "agentMessage", text: "Prior reply" }] };
+  for (const turns of [undefined, {}, [], [prior], [{ ...rejected, itemsView: "notLoaded" }],
+    [{ ...prior, status: "inProgress" }, rejected], [{ ...prior, itemsView: "notLoaded" }, rejected],
+    [{ ...rejected, items: [{ type: "commandExecution" }] }],
+    [{ ...prior, items: [{ type: "agentMessage", encrypted_content: "OPAQUE" }] }, rejected],
+    [{ ...prior, items: [{ type: "agentMessage", text: "x".repeat(250_000) }] }, rejected],
+  ]) assert.throws(() => portableNativeHistory({ turns }, "rejected"));
+  assert.match(portableNativeHistory({ turns: [prior, rejected] }, "rejected"), /Prior reply/);
+  assert.equal(isEncryptedHistoryRejection({ message: "Unknown network failure" }), false);
+  assert.equal(isEncryptedHistoryRejection({ message: JSON.stringify({ error: { code: "other" } }) }), false);
+});
+
+for (const scenario of ["success", "auth-down", "malformed", "quota", "rate-check-failed", "login-rejected", "empty-rejected", "dirty-tail", "bad-close", "after-command", "after-text", "ambiguous", "revoked", "encrypted-history", "encrypted-gateway", "encrypted-quota", "encrypted-after-command", "encrypted-after-text", "encrypted-dirty-tail", "encrypted-bad-close"]) {
   test(`native auth boundary: ${scenario}`, async () => {
+    const encrypted = scenario.startsWith("encrypted-");
     const previousFetch = globalThis.fetch;
     const oldBase = process.env.AI_GATEWAY_BASE_URL;
     const oldKey = process.env.CODEX_API_KEY;
@@ -47,45 +62,65 @@ for (const scenario of ["success", "auth-down", "malformed", "quota", "rate-chec
           }
           if (r.method === "account/rateLimits/read") respond(scenario === "rate-check-failed" ? { id: r.id, error: { message: "Rate metadata unavailable" } } : { id: r.id, result: { rateLimits: { primary: { usedPercent: scenario === "quota" ? 100 : 2, resetsAt: Date.now() / 1000 + 60 } } } });
           if (r.method === "skills/extraRoots/set") respond({ id: r.id, result: {} });
-          if (r.method === "thread/resume") {
-            threadId = r.params.threadId;
+          if (r.method === "thread/resume" || r.method === "thread/start") {
+            threadId = r.params.threadId ?? "portable-thread";
             assert.equal(r.params.model, subscription ? "gpt-5.6-luna" : "openai/gpt-5.1-codex-mini");
             assert.equal(r.params.config.model_provider, subscription ? "openai" : "agent_bridge_openai");
             respond({ id: r.id, result: { thread: { id: threadId } } });
           }
           if (r.method === "turn/start") {
             respond({ id: r.id, result: { turn: { id: "attempt-turn" } } });
+            if (encrypted && threadId === "existing-thread") {
+              if (scenario === "encrypted-after-command") event("item/started", { item: { id: "cmd", type: "commandExecution", command: "change-code" } });
+              if (scenario === "encrypted-after-text") event("item/agentMessage/delta", { itemId: "text", delta: "Started" });
+              event("turn/completed", { turn: { id: "attempt-turn", status: "failed", error: { message: JSON.stringify({error:{code:"invalid_encrypted_content",message:"Encrypted content could not be decrypted or parsed."}}), codexErrorInfo:"other" } } });
+              callback(); return;
+            }
+            if (encrypted) {
+              const prompt = r.params.input[0].text;
+              assert.match(prompt, /Already inspected package.json/);
+              assert.match(prompt, /pnpm test/);
+              assert.match(prompt, /One request/);
+              assert.doesNotMatch(prompt, /PRIVATE_REASONING|FOREIGN_CIPHERTEXT/);
+            }
             if (subscription && scenario === "after-command") event("item/started", { item: { id: "cmd", type: "commandExecution", command: "change-code" } });
             if (subscription && scenario === "after-text") event("item/agentMessage/delta", { itemId: "text", delta: "Started" });
-            const failed = subscription && ["empty-rejected", "dirty-tail", "bad-close", "after-command", "after-text", "ambiguous"].includes(scenario);
+            const failed = subscription && ["empty-rejected", "dirty-tail", "bad-close", "after-command", "after-text", "ambiguous", "encrypted-quota"].includes(scenario);
             if (!failed) event("item/completed", { item: { id: "text", type: "agentMessage", text: "Done." } });
             event("turn/completed", { turn: { id: "attempt-turn", status: failed ? "failed" : "completed", error: failed ? { message: "fixture rejection", codexErrorInfo: scenario === "ambiguous" ? "other" : "usageLimitExceeded" } : null } });
           }
-          if (r.method === "thread/read") respond({ id: r.id, result: { thread: { turns: [{ id: "attempt-turn", status: "failed", items: [{ type: scenario === "dirty-tail" ? "commandExecution" : "userMessage" }] }] } } });
+          if (r.method === "thread/read") respond({ id: r.id, result: { thread: { id:threadId, turns: [
+            ...(encrypted ? [{id:"previous-turn",status:"completed",items:[{type:"agentMessage",text:"Already inspected package.json"},{type:"commandExecution",command:"pnpm test",aggregatedOutput:"all checks passed",exitCode:0},{type:"reasoning",summary:["PRIVATE_REASONING"],encrypted_content:"FOREIGN_CIPHERTEXT"}]}] : []),
+            { id: "attempt-turn", status: "failed", items: [{ type: ["dirty-tail", "encrypted-dirty-tail"].includes(scenario) ? "commandExecution" : "userMessage" }] }
+          ] } } });
           if (r.method === "thread/fork") {
             assert.equal(r.params.beforeTurnId, "attempt-turn"); assert.equal(r.params.deferGoalContinuation, true);
             respond({ id: r.id, result: { thread: { id: "safe-continuation" } } });
           }
         } catch (error) { fixtureError = error; child.stdout.destroy(error); }
         callback();
-      }, final(callback) { child.stdout.end(); child.stderr.end(); child.emit("close", scenario === "bad-close" ? 1 : 0, null); callback(); } });
+      }, final(callback) { child.stdout.end(); child.stderr.end(); child.emit("close", ["bad-close", "encrypted-bad-close"].includes(scenario) ? 1 : 0, null); callback(); } });
       return child;
     }
     try {
       let error;
       try {
-        await runCodexAppServerTurn({ start: { model: "gpt-5.6-luna", prompt: "One request", mcpServers: { hive: { url: "https://hive.fixture/api/sessions/fixture/agent-tools", http_headers: { Authorization: "Bearer CAPABILITY_FIXTURE", "X-Hive-Auth": "prefer-chatgpt", "X-Hive-Gateway-Model": "openai/gpt-5.1-codex-mini" } } } },
+        await runCodexAppServerTurn({ start: { model: scenario === "encrypted-gateway" ? "openai/gpt-5.1-codex-mini" : "gpt-5.6-luna", prompt: "One request", mcpServers: { hive: { url: "https://hive.fixture/api/sessions/fixture/agent-tools", http_headers: { Authorization: "Bearer CAPABILITY_FIXTURE", "X-Hive-Auth": scenario === "encrypted-gateway" ? "gateway" : "prefer-chatgpt", "X-Hive-Gateway-Model": "openai/gpt-5.1-codex-mini" } } } },
           workdir: "/fixture", threadId: "existing-thread", onThread() {}, launch,
           turn: { abortSignal: AbortSignal.timeout(5000), emit: (e) => events.push(e), bridgeLog: (e) => diagnostics.push(e) },
         });
       } catch (e) { error = e; }
       if (fixtureError) throw fixtureError;
-      const shouldFail = ["dirty-tail", "bad-close", "after-command", "after-text", "ambiguous", "revoked"].includes(scenario);
+      const shouldFail = ["dirty-tail", "bad-close", "after-command", "after-text", "ambiguous", "revoked", "encrypted-after-command", "encrypted-after-text", "encrypted-dirty-tail", "encrypted-bad-close"].includes(scenario);
       assert.equal(Boolean(error), shouldFail, error?.stack);
-      assert.deepEqual(launches, scenario === "revoked" ? [] : ["auth-down", "malformed"].includes(scenario) ? [false] : shouldFail || ["success", "rate-check-failed"].includes(scenario) ? [true] : [true, false]);
+      assert.deepEqual(launches, scenario === "revoked" ? [] : ["auth-down", "malformed"].includes(scenario) ? [false] : scenario === "encrypted-gateway" ? [false, false] : scenario === "encrypted-quota" ? [true, true, false] : scenario === "encrypted-history" ? [true,true] : shouldFail || ["success", "rate-check-failed"].includes(scenario) ? [true] : [true, false]);
+      if (encrypted && !shouldFail) {
+        assert.equal(calls.filter(c=>c.method==='thread/start').length,1);
+        assert.equal(calls.some(c=>c.method==='thread/delete'||c.method==='thread/archive'),false);
+      }
       assert.equal(events.filter((e) => e.type === "stream-start").length, 1);
       assert.equal(calls.some((c) => c.method === "thread/rollback"), false);
-      assert.equal(calls.filter((c) => c.method === "thread/fork").length, ["empty-rejected", "bad-close"].includes(scenario) ? 1 : 0);
+      assert.equal(calls.filter((c) => c.method === "thread/fork").length, ["empty-rejected", "bad-close", "encrypted-quota"].includes(scenario) ? 1 : 0);
       if (scenario === "rate-check-failed") assert.ok(calls.some(c => c.method === "skills/extraRoots/set"));
       if (scenario === "empty-rejected") assert.equal(calls.find((c) => c.method === "thread/resume" && !c.subscription).params.threadId, "safe-continuation");
       assert.doesNotMatch(JSON.stringify([events, diagnostics]), /ACCESS_FIXTURE|ACCOUNT_FIXTURE|CAPABILITY_FIXTURE/);
