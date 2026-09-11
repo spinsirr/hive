@@ -1,6 +1,6 @@
 # Hive — Setup and optional integrations
 
-Use Node.js with native TypeScript execution (recorded checks used v25.2.1), pnpm 11.19.0, an authenticated Vercel CLI, a development Postgres database, and a GitHub App. Configure `.env.local` from [`.env.example`](../.env.example) with development credentials before migrating.
+Use Node.js 24 (the CI runtime), pnpm 11.19.0, an authenticated Vercel CLI, a development Postgres database, and a GitHub App. Earlier recorded local checks used Node.js v25.2.1. Configure `.env.local` from [`.env.example`](../.env.example) with development credentials before migrating.
 
 ```bash
 pnpm install
