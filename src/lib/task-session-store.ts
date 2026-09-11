@@ -35,6 +35,11 @@ export type TaskSessionSnapshot = {
   typingMembers: MemberId[];
   codingModels?: CodingModelOption[];
 };
+export class TaskSessionAccessError extends Error {
+  constructor() {
+    super("You no longer have access to this task.");
+  }
+}
 const randomSuffix = customAlphabet("abcdefghijklmnopqrstuvwxyz0123456789", 6);
 
 function sessionValues(session: TaskSessionState) {
@@ -240,25 +245,31 @@ export async function listTaskSessions(memberId: MemberId) {
 export async function applyTaskSessionAction(
   sessionId: string,
   action: TaskSessionAction,
-  actor?: TeamMember,
+  actor: TeamMember,
   now = Date.now(),
 ) {
+  if (!actor || actor.id !== action.actor) throw new TaskSessionAccessError();
   const storedMembers = await getSessionMembers(sessionId);
+  if (!storedMembers.some((member) => member.id === action.actor)) throw new TaskSessionAccessError();
   const changingModel = action.type === "select-harness" || action.type === "set-coding-effort";
   const preferSubscription = changingModel && await prefersCodexSubscription(sessionId);
-  const members = actor
-    ? [actor, ...storedMembers.filter((member) => member.id !== actor.id)]
-    : storedMembers;
+  const members = [actor, ...storedMembers.filter((member) => member.id !== actor.id)];
 
   const applied = await db.transaction(async (transaction) => {
     const [storedSession] = await transaction
-      .select()
+      .select(getTableColumns(taskSessions))
       .from(taskSessions)
+      .innerJoin(taskSessionMembers, and(
+        eq(taskSessionMembers.sessionId, taskSessions.id),
+        eq(taskSessionMembers.memberId, action.actor),
+      ))
       .where(eq(taskSessions.id, sessionId))
+      // Lock membership along with the task so a stale route check cannot
+      // authorize a write after membership has been revoked.
       .for("update");
 
     if (!storedSession) {
-      throw new Error(`Session ${sessionId} could not be loaded.`);
+      throw new TaskSessionAccessError();
     }
 
     const previousSession = sessionState(storedSession);
@@ -460,8 +471,12 @@ export async function startTaskWorkspaceRestore(sessionId: string, request: Rest
   return db.transaction(async (transaction) => {
     const lock = await transaction.execute(sql`select pg_try_advisory_xact_lock(hashtextextended(${'hive-workspace:' + sessionId}, 0)) as acquired`);
     if (!lock.rows[0]?.acquired) throw new WorkspaceRestoreError(409, "Files are still loading. Try restoring again shortly.");
-    const [row] = await transaction.select().from(taskSessions).where(eq(taskSessions.id, sessionId)).for("update");
-    if (!row) throw new WorkspaceRestoreError(404, "Task not found.");
+    const [row] = await transaction.select(getTableColumns(taskSessions)).from(taskSessions)
+      .innerJoin(taskSessionMembers, and(
+        eq(taskSessionMembers.sessionId, taskSessions.id),
+        eq(taskSessionMembers.memberId, member.id),
+      )).where(eq(taskSessions.id, sessionId)).for("update");
+    if (!row) throw new TaskSessionAccessError();
     const previous = sessionState(row);
     const next = beginWorkspaceRestore(previous, request, member);
     if (next === previous) return { session: previous, started: false };

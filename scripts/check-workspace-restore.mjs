@@ -16,6 +16,7 @@ const calls = [];
 const snapshot = () => ({ session, members: [member], activeMembers: [], typingMembers: [] });
 mock.module(new URL("../src/lib/auth-session.ts", import.meta.url).href, { namedExports: { HIVE_SESSION_COOKIE: "hive_session", getSessionMember: async () => member } });
 mock.module(new URL("../src/lib/task-session-store.ts", import.meta.url).href, { namedExports: {
+  TaskSessionAccessError: class extends Error {},
   isTaskSessionMember: async () => admitted,
   getTaskSessionSnapshot: async () => snapshot(),
   getPublicTaskSessionSnapshot: async () => snapshot(),

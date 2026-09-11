@@ -8,6 +8,7 @@ import {
   applyTaskSessionAction,
   getPublicTaskSessionSnapshot,
   isTaskSessionMember,
+  TaskSessionAccessError,
 } from "@/lib/task-session-store";
 
 export const dynamic = "force-dynamic";
@@ -154,6 +155,7 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     if (error instanceof GitHubUserAuthorizationError) return reconnectResponse();
+    if (error instanceof TaskSessionAccessError) return NextResponse.json({ error: error.message }, { status: 403, headers: { "Cache-Control": "private, no-store" } });
     console.error("GitHub repository attachment failed", error);
     return NextResponse.json(
       { error: "Hive could not attach that repository." },

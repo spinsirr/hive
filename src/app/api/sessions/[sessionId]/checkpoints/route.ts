@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { getSessionMember, HIVE_SESSION_COOKIE } from "@/lib/auth-session";
 import { isTaskSessionId } from "@/lib/task-session-id";
-import { getTaskSessionSnapshot, getPublicTaskSessionSnapshot, isTaskSessionMember, startTaskWorkspaceRestore, finishTaskWorkspaceRestore } from "@/lib/task-session-store";
+import { getTaskSessionSnapshot, getPublicTaskSessionSnapshot, isTaskSessionMember, startTaskWorkspaceRestore, finishTaskWorkspaceRestore, TaskSessionAccessError } from "@/lib/task-session-store";
 import { readWorkspaceCheckpoints, WorkspaceReadError } from "@/lib/workspace-browser";
 import { restoreWorkspaceRequest, WorkspaceRestoreError } from "@/lib/workspace-restore-state";
 import { restoreSandboxCheckpoint } from "@/lib/workspace-restore";
@@ -31,7 +31,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ se
   const member = await getSessionMember(request.cookies.get(HIVE_SESSION_COOKIE)?.value);
   if (!isTaskSessionId(sessionId) || !member || !(await isTaskSessionMember(sessionId, member.id))) return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers });
   const origin = request.headers.get("origin");
-  if (origin && origin !== request.nextUrl.origin) return NextResponse.json({ error: "Invalid request origin." }, { status: 403, headers });
+  if (origin !== request.nextUrl.origin) return NextResponse.json({ error: "Invalid request origin." }, { status: 403, headers });
   const parsed = restoreWorkspaceRequest.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Invalid checkpoint restore request." }, { status: 400, headers });
   let started = false;
@@ -46,6 +46,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ se
     return NextResponse.json(publicTaskSessionSnapshot(snapshot), { headers });
   } catch (error) {
     if (started) await finishTaskWorkspaceRestore(sessionId, parsed.data.id, false).catch(() => undefined);
+    if (error instanceof TaskSessionAccessError) return NextResponse.json({ error: error.message }, { status: 403, headers });
     const known = error instanceof WorkspaceRestoreError || error instanceof WorkspaceReadError;
     return NextResponse.json({ error: known ? error.message : "Restore could not be confirmed. Refresh Checkpoints and retry the same restore before continuing." }, { status: known ? error.status : 503, headers });
   }

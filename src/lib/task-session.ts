@@ -362,6 +362,13 @@ export function isHiveRunActive(state: TaskSessionState): boolean {
     state.workspace.completedAt === undefined;
 }
 
+/** Pending requests are visible in the UI, but are not context for this run. */
+export function pendingMessageIds(state: Pick<TaskSessionState, "steeringQueue">) {
+  return new Set(state.steeringQueue.flatMap(({ source }) =>
+    source.kind === "message" || source.kind === "message-thread" ? [source.messageId] : [],
+  ));
+}
+
 /** True once an active run has outlived the request that could still report for it. */
 export function isHiveRunStalled(state: TaskSessionState, now = Date.now()): boolean {
   return isHiveRunActive(state) &&
