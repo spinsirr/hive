@@ -276,6 +276,7 @@ try {
   console.log("PASS: logout revokes this login and clears GitHub access without signing out another account.");
 } finally {
   await pool.end();
-  if (created) await admin.query(`DROP DATABASE "${databaseName}" WITH (FORCE)`);
+  // Pool shutdown can precede socket close; FORCE would kill those closing clients.
+  if (created) await admin.query(`DROP DATABASE "${databaseName}"`);
   await admin.end();
 }
