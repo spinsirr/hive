@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { mock } from "node:test";
 import { registerHooks } from "node:module";
+import { HarnessAgent as RealHarnessAgent } from "@ai-sdk/harness/agent";
 registerHooks({ resolve(specifier, context, next) {
   if (specifier === "server-only") return next("next/dist/compiled/server-only/empty.js", context);
   if (specifier.startsWith("@/")) return next(new URL(`../src/${specifier.slice(2)}.ts`, import.meta.url).href, context);
@@ -16,6 +17,9 @@ mock.module("@ai-sdk/harness-codex", { namedExports: { createCodex(value) { nati
 mock.module("@ai-sdk/harness-claude-code", { namedExports: { createClaudeCode(value) { native = value; return {}; } } });
 mock.module("@ai-sdk/harness/agent", { namedExports: { HarnessAgent: class {
   constructor(value) {
+    // Exercise the real SDK's settings validation; replacing the whole agent
+    // previously hid its relative-workDir requirement until production.
+    new RealHarnessAgent({ ...value, harness: { ...value.harness, builtinTools: {} } });
     settings = value;
     assert.equal(value.model, runtime === "codex" ? "gpt-5.6-luna" : "claude-opus-4-6");
     assert.equal(value.permissionMode, "allow-all", "Native Codex supports only this mode in its isolated VM");
@@ -50,7 +54,7 @@ for (runtime of ["codex", "claude-code"]) {
   const publicText = [];
   assert.equal(await runHiveConversation(state, "person", "Person", text => publicText.push(text), undefined, auth), "First reply.");
   assert.deepEqual(publicText, ["First ", "First reply."]);
-  assert.equal(settings.sandboxConfig.workDir, "/vercel/sandbox/planning");
+  assert.equal(settings.sandboxConfig.workDir, "planning");
   fail = true;
   await assert.rejects(runHiveConversation(state, "person", "Person", () => {}, undefined, auth), /Subscription limit reached/);
   fail = false;
