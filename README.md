@@ -111,7 +111,22 @@ See [Setup and optional integrations](docs/SETUP.md) for verified runtime versio
 pnpm test
 pnpm lint
 pnpm typecheck
-pnpm exec next build --webpack
+pnpm build --webpack
+```
+
+GitHub Actions runs these checks on every pull request and push to `main`, with a manual run option. The [CI workflow](.github/workflows/ci.yml) uses Node.js 24, the pnpm version pinned in `package.json`, cached dependencies and frozen lockfile installs. Lint/types, tests and the production build report separately; a newer commit cancels the previous run on that branch.
+
+The test job also runs `pnpm test:integration` against disposable Postgres 17. This covers subscription authentication, onboarding, session egress, stalled-run recovery and cross-instance live transport. The first four suites each create, migrate and drop their own database; live transport uses transient notifications. No application secrets or paid services are required.
+
+To run the integration checks locally, point all five variables at a disposable loopback Postgres server whose user can create databases:
+
+```bash
+export HIVE_AUTH_TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/postgres
+export HIVE_ONBOARDING_TEST_DATABASE_URL="$HIVE_AUTH_TEST_DATABASE_URL"
+export HIVE_EGRESS_TEST_DATABASE_URL="$HIVE_AUTH_TEST_DATABASE_URL"
+export HIVE_RECOVERY_TEST_DATABASE_URL="$HIVE_AUTH_TEST_DATABASE_URL"
+export DATABASE_URL_DIRECT="$HIVE_AUTH_TEST_DATABASE_URL"
+pnpm test:integration
 ```
 
 `pnpm test` includes unit tests plus controlled runner, route, native-stream, and real-component regressions. Coverage includes authorship, invitation signing, deduplication, queue boundaries, frozen Threads, IME input, file-read safety, paired restore, reconnect ordering, connection-owned presence, multi-tab deduplication, instance expiry, caching, scrolling, scoped MCP tools and Mem0 request/response boundaries. External services are doubled in these local checks; the MCP client and transport are real.

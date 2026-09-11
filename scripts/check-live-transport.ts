@@ -18,6 +18,8 @@ const session = createInitialTaskSessionState(Date.now(), sessionId);
 session.workspace.liveReply = { id: "diagnostic-reply", body: "", sequence: 0, startedAt: Date.now() };
 const url = new URL(databaseUrl);
 if (url.searchParams.get("sslmode") === "require") url.searchParams.set("sslmode", "verify-full");
+// SessionEventHub reads DATABASE_URL; use the same database as the publisher.
+process.env.DATABASE_URL = url.toString();
 const publisher = new Client({ connectionString: url.toString(), connectionTimeoutMillis: 10_000 });
 const servers: WebSocketServer[] = [];
 const clients: WebSocket[] = [];
