@@ -114,6 +114,27 @@ try {
   await act(async () => { dom.window.dispatchEvent(new dom.window.Event("focus")); });
   assert.equal(requests.length, beforeFocus, "focusing an already-live task does not fetch another snapshot");
   console.log("PASS: reconnect recovers a missed message once; a late HTTP snapshot cannot roll back the conversation, workspace or reply.");
+
+  const edit = { type: "edit-message", messageId: "missed-message", expectedRevision: 0, body: "Updated shared discussion" };
+  globalThis.fetch = async () => Response.json({ error: "This message was edited elsewhere." }, { status: 409 });
+  await act(async () => assert.rejects(view.result.current.dispatch(edit, { throwOnError: true }), /edited elsewhere/));
+  assert.equal(view.result.current.syncError, false, "A conflict must not mark a connected task offline");
+  const saved = structuredClone(view.result.current.snapshot);
+  saved.session.version++;
+  const target = saved.session.messages.find(message => message.id === "missed-message");
+  target.edits = [{ body: target.body, replacedAt: 12345 }];
+  target.body = "Updated shared discussion";
+  globalThis.fetch = async () => Response.json(saved);
+  await act(async () => { await view.result.current.dispatch(edit, { throwOnError: true }); });
+  assert.equal(view.result.current.snapshot.session.messages.at(-1).body, "Updated shared discussion");
+  const second = renderHook(() => useSharedSession("shared-qa", recovered));
+  const secondSocket = sockets.at(-1);
+  await act(async () => { secondSocket.open(); secondSocket.receive({ type: "snapshot", snapshot: saved }); });
+  assert.deepEqual(second.result.current.snapshot.session.messages.at(-1), view.result.current.snapshot.session.messages.at(-1));
+  const late = structuredClone(recovered);
+  await act(async () => second.result.current.receiveSnapshot(late));
+  assert.equal(second.result.current.snapshot.session.messages.at(-1).body, "Updated shared discussion");
+  console.log("PASS: edit errors preserve online state; saved text/history reach a second live viewer and cannot be reverted by a stale response.");
 } finally {
   cleanup();
   dom.window.close();

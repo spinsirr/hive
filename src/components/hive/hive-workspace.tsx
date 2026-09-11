@@ -1,8 +1,6 @@
 "use client";
 
 import {
-  ArrowDown,
-  ArrowUp,
   Check,
   Code2,
   Copy,
@@ -12,11 +10,9 @@ import {
   ListChecks,
   LoaderCircle,
   MessageSquare,
-  Play,
   RotateCcw,
   Search,
   WifiOff,
-  X,
 } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
@@ -28,6 +24,8 @@ import {
 } from "@/components/ai-elements/conversation";
 import { ConversationComposer } from "@/components/hive/conversation-composer";
 import { ConversationMessage } from "@/components/hive/conversation-message";
+import { MessageEditComposer } from "@/components/hive/message-edit-composer";
+import { SteeringQueue } from "@/components/hive/steering-queue";
 import { DiffPane } from "@/components/hive/diff-pane";
 import { MessageThread } from "@/components/hive/message-thread";
 import { MessageTime } from "@/components/hive/message-time";
@@ -61,6 +59,7 @@ import {
   isDirectedAtTeammate,
   STALLED_RUN_AFTER_MS,
   type MemberId,
+  type MessageEdit,
   type RepositoryState,
   resolveMember,
   type RunStage,
@@ -250,60 +249,7 @@ function AnnotationCard({ members, queued, queuedBy, queuePosition, steered, ste
   );
 }
 
-function SteeringQueue({ activeSteer, canApply, items, members, onApply, onMove, onRemove }: {
-  activeSteer?: ActiveSteer;
-  canApply: boolean;
-  items: SteeringQueueItem[];
-  members: TeamMember[];
-  onApply: () => void;
-  onMove: (steerId: string, direction: "up" | "down") => void;
-  onRemove: (steerId: string) => void;
-}) {
-  if (!activeSteer && items.length === 0) return null;
-
-  return (
-    <div className="shrink-0 border-b border-[#dedede] bg-[#f7f7f7] px-3 py-2">
-      <div className="mb-1.5 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold">Queued steering</span>
-          <span className="grid min-w-4 place-items-center rounded bg-[#171717] px-1 text-xs text-white">{items.length}</span>
-        </div>
-        {items.length > 0 ? (
-          <Button className="h-7 rounded px-2 text-xs" disabled={!canApply} onClick={onApply} size="sm" variant="outline">
-            <Play className="size-3" /> Apply next steer
-          </Button>
-        ) : null}
-      </div>
-      {activeSteer ? (
-        <div className="mb-1.5 flex items-center gap-2 border border-[#171717] bg-[#171717] px-2 py-1.5 text-white">
-          <span className="size-1.5 animate-pulse rounded-full bg-white" />
-          <span className="min-w-0 flex-1 truncate text-xs">Applying {resolveMember(activeSteer.authorId, members).shortName}’s steer</span>
-        </div>
-      ) : null}
-      <div className="max-h-28 space-y-1 overflow-y-auto">
-        {items.map((item, index) => {
-          const member = resolveMember(item.authorId, members);
-          return (
-            <div className="group/queue flex items-center gap-2 border border-[#e3e3e3] bg-white px-2 py-1.5" key={item.id}>
-              <span className="grid h-5 min-w-5 shrink-0 place-items-center rounded-sm bg-[#171717] px-1 text-xs text-white">{index + 1}</span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-medium">{item.source.kind === "message-thread" ? item.sourceLabel : item.body}</p>
-                <p className="mt-0.5 truncate text-xs text-[#8a8a8a]">{member.shortName}</p>
-              </div>
-              <div className="flex items-center opacity-0 transition group-hover/queue:opacity-100 group-focus-within/queue:opacity-100">
-                <button aria-label={`Move steer ${index + 1} up`} className="grid size-5 place-items-center text-[#737373] hover:bg-[#f2f2f2] hover:text-[#171717] disabled:opacity-25" disabled={index === 0} onClick={() => onMove(item.id, "up")} type="button"><ArrowUp className="size-3" /></button>
-                <button aria-label={`Move steer ${index + 1} down`} className="grid size-5 place-items-center text-[#737373] hover:bg-[#f2f2f2] hover:text-[#171717] disabled:opacity-25" disabled={index === items.length - 1} onClick={() => onMove(item.id, "down")} type="button"><ArrowDown className="size-3" /></button>
-                <button aria-label={`Remove steer ${index + 1}`} className="grid size-5 place-items-center text-[#737373] hover:bg-[#f2f2f2] hover:text-[#171717]" onClick={() => onRemove(item.id)} type="button"><X className="size-3" /></button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, runActive, runStalled, onRecoverRun, queued, queuedBy, queuePosition, steered, steeredBy, steeringQueue, currentMember, disabled, members, messages, onAdvance, onOpenThread, onSteerReply, selectedThreadId, onMoveSteer, onRemoveSteer, onSteer, onSend, onTyping, stage, typingMembers, workspaceAnnotation, codingRuntime, codingModel, codingModels, harnessLocked, harnessDisabled, onSelectHarness, effort, effortLocked, onEffortChange, compact = false }: {
+function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, runActive, runStalled, onRecoverRun, queued, queuedBy, queuePosition, steered, steeredBy, steeringQueue, currentMember, disabled, members, messages, onAdvance, onOpenThread, onSteerReply, onEditMessage, selectedThreadId, onMoveSteer, onRemoveSteer, onSteer, onSend, onTyping, stage, typingMembers, workspaceAnnotation, codingRuntime, codingModel, codingModels, harnessLocked, harnessDisabled, onSelectHarness, effort, effortLocked, onEffortChange, compact = false }: {
   sessionId: string;
   activeMembers: MemberId[];
   activeSteer?: ActiveSteer;
@@ -324,6 +270,7 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
   onAdvance: () => void;
   onOpenThread: (messageId: string) => void;
   onSteerReply: (messageId: string, replyId: string) => void;
+  onEditMessage: (edit: MessageEdit) => Promise<void>;
   selectedThreadId: string | null;
   onMoveSteer: (steerId: string, direction: "up" | "down") => void;
   onRemoveSteer: (steerId: string) => void;
@@ -344,6 +291,13 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
   onEffortChange: (effort: CodingEffort, modelId?: string) => void;
   compact?: boolean;
 }) {
+  const [editing, setEditing] = useState<{ message: ChatMessage; queuedSteerId?: string } | null>(null);
+  const edit = (message: ChatMessage) => {
+    if (disabled || message.memberId !== currentMember) return;
+    onTyping(false);
+    const queued = steeringQueue.find((item) => item.source.kind === "message" && item.source.messageId === message.id);
+    setEditing({ message, queuedSteerId: queued?.id });
+  };
   const deliveredIds = useMemo(() => new Set(
     messages.filter((message) => message.memberId === currentMember && message.clientId).map((message) => message.clientId!),
   ), [currentMember, messages]);
@@ -367,7 +321,6 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
           <span className="text-xs text-[#8a8a8a]">{activeMembers.length} online</span>
         </div>
       </div>
-      <SteeringQueue activeSteer={activeSteer} canApply={canApplySteer} items={steeringQueue} members={members} onApply={onAdvance} onMove={onMoveSteer} onRemove={onRemoveSteer} />
       <Conversation className="min-h-0 flex-1">
         <ConversationContent className={cn("gap-7 px-4 py-5 sm:px-6 sm:py-7", compact && "gap-5")}>
           {messages.map((message) => {
@@ -385,7 +338,7 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
               );
             }
             return (
-              <ConversationMessage key={message.id} message={message} currentMember={currentMember} members={members} sessionId={sessionId} disabled={disabled} runActive={runActive} queueing={runActive || steeringQueue.length > 0} selected={selectedThreadId === message.id} onOpenThread={onOpenThread} onSteerReply={onSteerReply} />
+              <ConversationMessage key={message.id} message={message} currentMember={currentMember} members={members} sessionId={sessionId} disabled={disabled} runActive={runActive} queueing={runActive || steeringQueue.length > 0} selected={selectedThreadId === message.id} onOpenThread={onOpenThread} onSteerReply={onSteerReply} onEdit={edit} />
             );
           })}
           {runActive && runStalled ? (
@@ -400,7 +353,8 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
         <ConversationScrollButton />
       </Conversation>
       {workspaceAnnotation ? <AnnotationCard members={members} onSteer={onSteer} queuePosition={queuePosition} queued={queued} queuedBy={queuedBy} stage={stage} steered={steered} steeredBy={steeredBy} /> : null}
-      <ConversationComposer
+      <SteeringQueue activeSteer={activeSteer} canApply={canApplySteer} disabled={disabled} items={steeringQueue} messages={messages} currentMember={currentMember} members={members} onApply={onAdvance} onMove={onMoveSteer} onRemove={onRemoveSteer} onEdit={edit} onOpenThread={onOpenThread} />
+      {editing ? <MessageEditComposer key={`${editing.message.id}:${editing.message.edits?.length ?? 0}`} message={editing.message} queuedSteerId={editing.queuedSteerId} disabled={disabled} onSave={onEditMessage} onCancel={() => setEditing((current) => current === editing ? null : current)} /> : <ConversationComposer
         value={draft?.body ?? ""}
         onChange={(value) => { messageDraft.edit(value); onTyping(Boolean(value.trim())); }}
         onSubmit={submit}
@@ -419,7 +373,7 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
         effortLocked={effortLocked}
         onEffortChange={onEffortChange}
         onSelectAgent={onSelectHarness}
-      />
+      />}
     </section>
   );
 }
@@ -744,6 +698,9 @@ export function HiveWorkspace({
   const removeSteer = useCallback((steerId: string) => {
     void dispatch({ type: "remove-queued-steer", steerId });
   }, [dispatch]);
+  const editMessage = useCallback(async (edit: MessageEdit) => {
+    await dispatch({ type: "edit-message", ...edit }, { throwOnError: true });
+  }, [dispatch]);
   const send = useCallback(async ({ body, clientId }: MessageSubmission) => {
     if (harnessSaving) return false;
     if (
@@ -820,6 +777,7 @@ export function HiveWorkspace({
     onEffortChange: setCodingEffort,
     onOpenThread: openThread,
     onSteerReply: steerMessageAnnotation,
+    onEditMessage: editMessage,
     selectedThreadId: threadMessage?.id ?? null,
     onMoveSteer: moveSteer,
     onRemoveSteer: removeSteer,
@@ -828,7 +786,7 @@ export function HiveWorkspace({
     onTyping: setTyping,
     onAdvance: advance,
     onTabChange: setTab,
-  }), [activeMembers, activeSteer, advance, openThread, steerMessageAnnotation, threadMessage?.id, annotation.queuedBy, annotation.steeredBy, annotation.text, canApplySteer, currentMember.id, workspaceLocked, harnessSaving, messages, moveSteer, queuePosition, queued, recoverRun, removeSteer, runActive, runStalled, send, sessionId, setTyping, stage, steer, steered, steeringQueue, tab, teamMembers, typingMembers, workspace.agentSession?.runtime, workspace.codingModel, harnessLocked, syncing, syncError, selectHarness, workspace.codingEffort, effortLocked, setCodingEffort, snapshot.codingModels]);
+  }), [activeMembers, activeSteer, advance, openThread, steerMessageAnnotation, editMessage, threadMessage?.id, annotation.queuedBy, annotation.steeredBy, annotation.text, canApplySteer, currentMember.id, workspaceLocked, harnessSaving, messages, moveSteer, queuePosition, queued, recoverRun, removeSteer, runActive, runStalled, send, sessionId, setTyping, stage, steer, steered, steeringQueue, tab, teamMembers, typingMembers, workspace.agentSession?.runtime, workspace.codingModel, harnessLocked, syncing, syncError, selectHarness, workspace.codingEffort, effortLocked, setCodingEffort, snapshot.codingModels]);
 
   return (
     <main className="flex h-dvh min-h-0 flex-col overflow-hidden bg-[#fafafa] text-[#171717]">

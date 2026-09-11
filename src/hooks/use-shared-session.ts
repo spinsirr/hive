@@ -18,6 +18,11 @@ type SessionDispatchAction = ClientTaskSessionAction extends infer Action
     : never
   : never;
 
+class SessionActionError extends Error {
+  status: number;
+  constructor(status: number, message: string) { super(message); this.status = status; }
+}
+
 export function useSharedSession(sessionId: string, initialSnapshot: TaskSessionSnapshot) {
   const [snapshot, setSnapshot] = useState(initialSnapshot);
   const [syncing, setSyncing] = useState(true);
@@ -36,7 +41,7 @@ export function useSharedSession(sessionId: string, initialSnapshot: TaskSession
     setSyncError(false);
   }, []);
 
-  const post = useCallback(async (payload: object) => {
+  const post = useCallback(async (payload: object, options?: { throwOnError?: boolean }) => {
     try {
       const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, {
         method: "POST",
@@ -44,13 +49,20 @@ export function useSharedSession(sessionId: string, initialSnapshot: TaskSession
         body: JSON.stringify(payload),
       });
       if (response.status === 401) window.location.reload();
-      if (!response.ok) throw new Error("Session action failed");
+      if (!response.ok) {
+        const failure = await response.json().catch(() => null);
+        throw new SessionActionError(response.status, typeof failure?.error === "string" ? failure.error : "Session action failed");
+      }
       const nextSnapshot = (await response.json()) as TaskSessionSnapshot;
       publish(nextSnapshot);
       return nextSnapshot;
-    } catch {
-      setSyncing(true);
-      setSyncError(true);
+    } catch (error) {
+      // A rejected edit is not a lost connection; keep the live task visible.
+      if (!(error instanceof SessionActionError) || error.status >= 500) {
+        setSyncing(true);
+        setSyncError(true);
+      }
+      if (options?.throwOnError) throw error;
       return null;
     }
   }, [publish, sessionId]);
@@ -149,7 +161,7 @@ export function useSharedSession(sessionId: string, initialSnapshot: TaskSession
   }, [publish, refresh, sessionId]);
 
   const dispatch = useCallback(
-    (action: SessionDispatchAction) => post(action),
+    (action: SessionDispatchAction, options?: { throwOnError?: boolean }) => post(action, options),
     [post],
   );
 

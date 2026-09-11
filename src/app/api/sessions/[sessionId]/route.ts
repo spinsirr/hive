@@ -12,7 +12,7 @@ import { runHiveCodingTask } from "@/lib/hive-runner";
 import { prefersCodexSubscription } from "@/lib/codex-subscription-store";
 import { buildHiveRunInput } from "@/lib/hive-prompt";
 import { createHiveToolToken, hiveToolEndpoint } from "@/lib/hive-tool-token";
-import { MESSAGE_BODY_LIMIT, type TaskSessionAction } from "@/lib/task-session";
+import { MESSAGE_BODY_LIMIT, MessageEditError, type TaskSessionAction } from "@/lib/task-session";
 import { isTaskSessionId } from "@/lib/task-session-id";
 import { publicTaskSessionSnapshot } from "@/lib/task-session-snapshot";
 import { WorkspaceRestoreError } from "@/lib/workspace-restore-state";
@@ -78,6 +78,7 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
 
   if (
     payload.type !== "send-message" &&
+    payload.type !== "edit-message" &&
     payload.type !== "select-harness" &&
     payload.type !== "set-coding-effort" &&
     payload.type !== "annotate-message" &&
@@ -94,6 +95,13 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
   ) {
     return NextResponse.json({ error: "Unknown session action" }, { status: 400 });
   }
+
+  if (payload.type === "edit-message" && (
+    !("messageId" in payload) || typeof payload.messageId !== "string" || !payload.messageId ||
+    !("body" in payload) || typeof payload.body !== "string" || !payload.body.trim() || payload.body.trim().length > MESSAGE_BODY_LIMIT ||
+    !("expectedRevision" in payload) || typeof payload.expectedRevision !== "number" || !Number.isSafeInteger(payload.expectedRevision) || payload.expectedRevision < 0 ||
+    ("queuedSteerId" in payload && (typeof payload.queuedSteerId !== "string" || !payload.queuedSteerId))
+  )) return NextResponse.json({ error: "Choose a message and enter up to 8,000 characters with its current revision." }, { status: 400 });
 
   if (payload.type === "select-harness" &&
     (!("runtime" in payload) || (payload.runtime !== "codex" && payload.runtime !== "claude-code"))) {
@@ -173,6 +181,7 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
   let applied;
   try { applied = await applyTaskSessionAction(sessionId, action, member, actionAt); }
   catch (error) {
+    if (error instanceof MessageEditError) return NextResponse.json({ error: error.message }, { status: error.status });
     if (error instanceof WorkspaceRestoreError) return NextResponse.json({ error: error.message }, { status: error.status });
     throw error;
   }

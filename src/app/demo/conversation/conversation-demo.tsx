@@ -5,10 +5,12 @@ import { useState } from "react";
 import { Conversation, ConversationContent, ConversationScrollButton } from "@/components/ai-elements/conversation";
 import { ConversationComposer } from "@/components/hive/conversation-composer";
 import { ConversationMessage } from "@/components/hive/conversation-message";
+import { MessageEditComposer } from "@/components/hive/message-edit-composer";
+import { SteeringQueue } from "@/components/hive/steering-queue";
 import { HiveMark } from "@/components/hive/hive-mark";
 import { MessageThread } from "@/components/hive/message-thread";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import type { ChatMessage, CodingRuntime, TeamMember } from "@/lib/task-session";
+import { createInitialTaskSessionState, reduceTaskSession, type ChatMessage, type CodingRuntime, type SteeringQueueItem, type TaskSessionAction, type TeamMember } from "@/lib/task-session";
 import type { CodingEffort } from "@/lib/coding-effort";
 import { codingModelOptions, CODEX_SUBSCRIPTION_MODEL, modelEffort } from "@/lib/coding-models";
 
@@ -29,10 +31,19 @@ export function ConversationDemo() {
   const [effort, setEffort] = useState<CodingEffort>("low");
   const [value, setValue] = useState("");
   const [messages, setMessages] = useState(samples);
+  const [queue, setQueue] = useState<SteeringQueueItem[]>([]);
+  const [editing, setEditing] = useState<{ message: ChatMessage; queuedSteerId?: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [threadId, setThreadId] = useState<string | null>(null);
   const thread = messages.find((message) => message.id === threadId);
+  const edit = (message: ChatMessage) => setEditing({ message, queuedSteerId: queue.find((item) => item.source.kind === "message" && item.source.messageId === message.id)?.id });
+  const apply = (action: TaskSessionAction) => {
+    const initial = createInitialTaskSessionState(1, "ui-conversation-preview");
+    const next = reduceTaskSession({ ...initial, messages, steeringQueue: queue, stage: busy ? "running" : "waiting", workspace: { ...initial.workspace, startedAt: 1, completedAt: busy ? undefined : 2 } }, action, Date.now(), members);
+    setMessages(next.messages);
+    setQueue(next.steeringQueue);
+  };
   const steer = (messageId: string, replyId: string) => {
     setMessages((current) => current.map((message) => message.id !== messageId ? message : { ...message, annotations: message.annotations?.map((reply) => reply.id !== replyId ? reply : { ...reply, status: "queued", queuedBy: "demo-alex" }) }));
     setNotice("Queued in this preview only. No agent is running.");
@@ -50,14 +61,18 @@ export function ConversationDemo() {
         <div className="flex items-center justify-between gap-3 px-6 pb-2 pt-5 text-xs text-[#aaa]"><p>UI preview · Sample conversation · No model calls</p><div aria-label="Sample teammates" className="flex -space-x-1.5"><span className="grid size-6 place-items-center rounded-full border-2 border-white bg-[#242424] text-xs text-white">AL</span><span className="grid size-6 place-items-center rounded-full border-2 border-white bg-[#eaeaea] text-xs text-[#555]">CA</span></div></div>
         <Conversation className="min-h-0 flex-1">
           <ConversationContent className="gap-7 px-5 py-6 sm:px-6">
-            {messages.map((message) => <ConversationMessage key={message.id} message={message} currentMember="demo-alex" members={members} sessionId="ui-conversation-preview" disabled={false} runActive={false} queueing={busy} selected={threadId === message.id} onOpenThread={setThreadId} onSteerReply={steer} />)}
+            {messages.map((message) => <ConversationMessage key={message.id} message={message} currentMember="demo-alex" members={members} sessionId="ui-conversation-preview" disabled={false} runActive={false} queueing={busy} selected={threadId === message.id} onOpenThread={setThreadId} onSteerReply={steer} onEdit={edit} />)}
             {notice ? <p className="px-1 text-xs text-[#999]" role="status">{notice}</p> : null}
           </ConversationContent>
           <ConversationScrollButton />
         </Conversation>
-        <ConversationComposer value={value} onChange={setValue} onSubmit={() => {
+        <SteeringQueue items={queue} messages={messages} currentMember="demo-alex" members={members} disabled={false} canApply={!busy} onEdit={edit} onOpenThread={setThreadId} onMove={(steerId, direction) => apply({ type: "reorder-queued-steer", actor: "demo-alex", steerId, direction })} onRemove={(steerId) => { apply({ type: "remove-queued-steer", actor: "demo-alex", steerId }); setNotice("Removed from the preview queue. The discussion is kept."); }} onApply={() => { apply({ type: "apply-next-steer", actor: "demo-alex" }); setNotice("Selected in this preview only. No agent is running."); }} />
+        {editing ? <MessageEditComposer key={`${editing.message.id}:${editing.message.edits?.length ?? 0}`} message={editing.message} queuedSteerId={editing.queuedSteerId} disabled={false} onCancel={() => setEditing((current) => current === editing ? null : current)} onSave={async (change) => {
+          apply({ type: "edit-message", actor: "demo-alex", ...change });
+          setNotice("Edit saved in this preview only. No agent was started.");
+        }} /> : <ConversationComposer value={value} onChange={setValue} onSubmit={() => {
           if (!value.trim()) return;
-          setMessages((current) => [...current, { id: crypto.randomUUID(), role: "human", memberId: "demo-alex", name: "Alex", initials: "AL", body: value, time: "Now" }]);
+          apply({ type: "send-message", actor: "demo-alex", body: value, clientId: crypto.randomUUID() });
           setValue("");
           setNotice("Message added to this preview only. Nothing was sent to an agent.");
         }} members={members} currentMember="demo-alex" disabled={false} sending={false} unconfirmed={false} queueing={busy} runtime={runtime} modelId={modelId} models={models} agentLocked={busy} agentDisabled={false} onSelectAgent={(nextRuntime, nextModelId) => {
@@ -65,7 +80,7 @@ export function ConversationDemo() {
           if (!model || busy) return;
           setRuntime(nextRuntime); setModelId(nextModelId);
           setEffort(modelEffort(model, effort) ?? "low");
-        }} effort={effort} effortLocked={busy} onEffortChange={setEffort} />
+        }} effort={effort} effortLocked={busy} onEffortChange={setEffort} />}
       </div>
       <Dialog open={Boolean(thread)} onOpenChange={(open) => { if (!open) setThreadId(null); }}>
         <DialogContent className="flex h-[min(720px,85dvh)] flex-col overflow-hidden p-0 sm:max-w-xl" showCloseButton={false}>

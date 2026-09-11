@@ -32,6 +32,10 @@ _Avoid_: New task session, agent history
 A quoted file-and-line selection with a teammate's comment, shared as a discussion thread. It does not edit the file or wake the agent by itself.
 _Avoid_: File save, prompt, agent response
 
+**Message Edit**:
+A correction by the original author. Pending message edits update the queued request without moving it. Already-dispatched edits update discussion and keep previous versions; they do not rewrite native agent history or rerun work. Frozen whole-thread steers stay frozen.
+_Avoid_: Retry, conversation rewind, hidden steer
+
 **Steer**:
 One reply, an entire thread, or a teammate message explicitly promoted into agent direction. A whole-thread steer freezes the parent, replies through the selected boundary, and each author's identity. During a run, steers wait in an ordered queue for a safe boundary.
 _Avoid_: Comment, hidden prompt
