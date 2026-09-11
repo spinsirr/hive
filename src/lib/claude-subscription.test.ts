@@ -4,6 +4,15 @@ import { claudeSubscriptionToken } from "./claude-subscription.ts";
 import { platformCodingModels, usesPlatformSubscriptions } from "./platform-models.ts";
 
 const token = "sk-ant-oat01-fixture-only-never-a-real-secret";
+test("accepts current and legacy official setup-token formats without accepting API keys", () => {
+  for (const prefix of ["sk-ant-at01-", "sk-ant-oat01-"]) {
+    const value = `${prefix}fixture-only-never-a-real-secret`;
+    assert.equal(claudeSubscriptionToken({ HIVE_CLAUDE_OAUTH_TOKEN: value }), value);
+  }
+  for (const value of ["sk-ant-api03-fixture", "sk-ant-at99-fixture", "sk-ant-at01-invalid value"]) {
+    assert.throws(() => claudeSubscriptionToken({ HIVE_CLAUDE_OAUTH_TOKEN: value }), /Reconnect/);
+  }
+});
 test("explicit platform credentials are independent of task, owner and repository", () => {
   assert.equal(claudeSubscriptionToken({ HIVE_CLAUDE_OAUTH_TOKEN: token }), token);
   assert.equal(claudeSubscriptionToken({ HIVE_CLAUDE_OAUTH_TOKEN: token, HIVE_CLAUDE_SUBSCRIPTION_SCOPE: "obsolete-task-binding" }), token);
