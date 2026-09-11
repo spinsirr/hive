@@ -35,6 +35,27 @@ Progress uses the existing reply WebSocket. Text and subagent updates have indep
 - `scripts/check-stalled-run.mjs`: actual disposable local Postgres verifies concurrent text/child patches, privacy of control projections, and old-child callback fencing after recovery/new runs. Deletes only its generated fixture database afterward.
 - `/demo/subagents` is explicitly labeled sample UI, not a live run. It reuses the production disclosure/result component.
 
+### September 10 Pacific: live owner Stop acceptance
+
+The supervising assistant sent **one** bounded request as Spinsirr in the [independent delegation task](https://hive-roan-mu.vercel.app/sessions/verify-live-subagent-collaborati-ugic3a), timestamped **September 11, 02:34:02 UTC**. Its current settings were Codex / GPT-5.6 Luna / Low. It requested exactly two read-only children: Research would call inherited context, then run one `sleep 45` to provide a Stop window; Review would inspect the existing task/run control boundaries. No new repository, invitation, credential, model choice, reset or restore was introduced.
+
+Observed directly on the live page:
+
+- Research reached **Working** with an enabled **Stop research subagent** control. Review also appeared and was already **Completed** before the Stop click.
+- One click on Research's Stop first disabled its button and displayed **Stopping** while the child status still read Working. A subsequent live update changed the actual child status to **Stopped** and removed the control. The button's pending text alone was not treated as confirmation.
+- The parent continued streaming a final response distinguishing Research **Stopped** from Review **Completed**, then returned to its ordinary idle composer. No replacement child appeared. Research's partial disclosure retained its context/stop-window report; Review retained its separate result.
+- A page refresh retained exactly those two current-turn child records, their statuses and the parent's final answer. Diff remained empty, and the latest parent Runs view showed no commands. The prepared accessibility-demo task was not changed.
+
+**Scope:** one successful owner-operated production Stop and parent completion, not a two-account Stop test. Review had finished before cancellation, so this does not test interrupting one child while another remains actively running. The child reported its context lookup and sleep, but the current UI does not expose the underlying child tool trace; do not promote those reports to independently observed tool-call evidence. Joseph has not been invited to this task: permission to do that was requested separately and is still required before extending access. No automatic retry or second model turn was sent.
+
+### September 10 Pacific: persisted production result recheck
+
+On **September 11, 02:26–02:28 UTC**, a fresh owner-authenticated page in the [real delegation task](https://hive-roan-mu.vercel.app/sessions/verify-live-subagent-collaborati-ugic3a) showed later evidence than the original failed attempt below. The turn timestamp was **September 10, 20:27:21 UTC**. Two production child rows, **Research** and **Code review**, each displayed **Completed**, with expandable assignments and separate results. Refresh retained both statuses and both complete result disclosures; this was not `/demo/subagents` or a new model run.
+
+Research's saved result named the actual task, `spinsirr/hive`, Spinsirr, the `hive` package and an abbreviated test script. Review's saved result said no issues found and cited the task/run checks in `subagents/route.ts` and `subagent-control.ts`. The parent summary referenced both results. The task currently displayed GPT-5.6 Luna / Low, no git diff and no commands in its latest-turn Runs view. Current selector state is not independent proof of the earlier execution configuration.
+
+**Proven by this recheck:** persisted completed child records, distinct result disclosure and refresh recovery in the real task. **Still not proven by this recheck:** live startup/parallel timing, the child's actual inherited `get_context` invocation (the text reports it, but the UI does not expose its tool trace), cross-account live Stop/acknowledgement and stopping one child while preserving its parent. A review's “no issues found” is the agent's conclusion, not a security audit verdict. The earlier 429 attempt remains valid historical evidence, but it is no longer the latest persisted outcome.
+
 ### September 10 production attempt
 
 The owner explicitly requested deployment and live testing. Commit `e24bbabef410e0a65415814f78f072028d141abe` was pushed to the existing private repository and deployed through its GitHub/Vercel integration. [Deployment `EjVcNfz8URk2YJAGTuBYu7g39E4p`](https://vercel.com/spinsirrs-projects/hive/EjVcNfz8URk2YJAGTuBYu7g39E4p) became Ready after a 48-second production build. `/demo/subagents` returned 200 with its sample-content label; the independent task API returned 401 without authentication.

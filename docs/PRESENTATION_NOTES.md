@@ -843,6 +843,8 @@ Keep the evidence distinctions visible: original two-account execution and no-re
 
 ### September 10 — Subagent deployment and bounded live attempt
 
+Later rechecks: the same real task now retains two completed child results and a subsequent owner-operated live Research Stop, with parent completion and refresh preservation. This does not erase the failed attempt below or prove cross-account Stop/independently observed inherited-tool calls. Use the [current live Stop evidence](SUBAGENTS.md#september-10-pacific-live-owner-stop-acceptance), not the earlier failure as the latest outcome.
+
 The owner requested direct deployment and live testing. `e24bbab` deployed successfully; the new UI demo is online. In an independent task, two browsers sharing the owner's account retained the same prompt, running state, failure and refreshed local times. Five model calls succeeded before three Gateway 429 responses; bounded retries stopped and no child start was observed. Keep deployment, controlled native tests and passing live delegation as separate claims: child startup/Stop/result acceptance is still open. Existing presentation tasks were not reset or restored. See [deployment and request evidence](SUBAGENTS.md#september-10-production-attempt).
 
 ### September 10 — Typography consolidation and isolated PR
