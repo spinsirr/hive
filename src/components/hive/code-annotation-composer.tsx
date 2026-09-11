@@ -27,11 +27,11 @@ export function CodeAnnotationComposer({ reference, sessionId, memberId, deliver
   const sending = draft?.status === "sending";
   return (
     <form className="shrink-0 border-t border-[#ebebeb] p-3" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
-      <label className="mb-2 block truncate font-mono text-[11px] text-[#737373]" htmlFor="code-annotation" title={codeReferenceLabel(reference)}>{codeReferenceLabel(reference)}</label>
+      <label className="mb-2 block truncate text-xs text-[#737373]" htmlFor="code-annotation" title={codeReferenceLabel(reference)}>{codeReferenceLabel(reference)}</label>
       <textarea
         aria-label="Code annotation"
         autoFocus
-        className="min-h-16 w-full resize-y rounded border border-[#dedede] bg-white px-2.5 py-2 text-xs leading-5 outline-none placeholder:text-[#a1a1a1] focus:border-[#737373]"
+        className="min-h-16 w-full resize-y rounded border border-[#dedede] bg-white px-2.5 py-2 text-base leading-6 sm:text-sm outline-none placeholder:text-[#a1a1a1] focus:border-[#737373]"
         disabled={!draft || sending}
         id="code-annotation"
         maxLength={500}
@@ -41,7 +41,7 @@ export function CodeAnnotationComposer({ reference, sessionId, memberId, deliver
         value={draft?.body ?? ""}
       />
       <div className="mt-2 flex items-center justify-between gap-2">
-        <p className="text-[11px] text-[#737373]" role="status">{draft?.status === "unconfirmed" ? "Not confirmed. Retry keeps the same annotation." : "Share first. Steer Hive from the conversation."}</p>
+        <p className="text-xs text-[#737373]" role="status">{draft?.status === "unconfirmed" ? "Not confirmed. Retry keeps the same annotation." : "Share first. Steer Hive from the conversation."}</p>
         <div className="flex shrink-0 gap-1">
           <Button className="h-7 text-xs" disabled={sending} onClick={() => { clear(); onClose(); }} size="sm" type="button" variant="ghost">Cancel</Button>
           <Button className="h-7 text-xs" disabled={!draft?.body.trim() || sending} size="sm" type="submit">{sending ? "Sharing…" : draft?.status === "unconfirmed" ? "Retry" : "Share annotation"}</Button>

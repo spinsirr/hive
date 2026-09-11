@@ -42,10 +42,11 @@ export function WorkspaceFileIcon({ path, kind = "file", expanded = false }: {
 
   // The adjacent filename already names the item. Decorative icons must not
   // change button labels, keyboard navigation, or the restricted-file state.
+  // Only these 16px decorative icons use lettering below the 12px UI text floor.
   return (
     <span aria-hidden="true" className={`inline-flex size-4 shrink-0 items-center justify-center rounded-[2px] ${appearance.color}`}>
       {appearance.badge
-        ? <span className="font-mono text-[9px] font-semibold leading-none tracking-[-0.06em]">{appearance.badge}</span>
+        ? <span className="text-[10px] font-semibold leading-none tracking-[-0.06em]">{appearance.badge}</span>
         : <Icon className="size-4" strokeWidth={1.7} />}
     </span>
   );

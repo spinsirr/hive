@@ -123,11 +123,11 @@ export function WorkspaceFiles({ sessionId, revision, initialPath = "", memberId
     <WorkspaceReadCache scope={JSON.stringify([sessionId, memberId, readRevision, locked])}>
       {active ? (
         <div className={styles.browser}>
-          <div className="flex h-9 shrink-0 items-center gap-2 border-b border-[#ebebeb] px-2 text-[11px] text-[#737373]">
+          <div className="flex h-9 shrink-0 items-center gap-2 border-b border-[#ebebeb] px-2 text-xs text-[#737373]">
             <Button aria-label={explorerOpen ? "Hide file explorer" : "Show file explorer"} aria-pressed={explorerOpen} className="size-7 shrink-0" onClick={() => setExplorerOpen(!explorerOpen)} size="icon" title={explorerOpen ? "Hide file explorer" : "Show file explorer"} variant="ghost"><PanelLeft className="size-3.5" /></Button>
             {selected ? <WorkspaceFileIcon path={selected} /> : null}
-            <span className="min-w-0 flex-1 truncate font-mono" title={selected || "Workspace"}>{selected || "Workspace"}</span>
-            <Button aria-label="Annotate selected code" className="h-7 shrink-0 px-2 text-[11px]" disabled={disabled || locked || !selectedReference || selectedReference.path !== selected} onClick={() => setAnnotation(selectedReference)} size="sm" title="Select up to 100 lines to annotate" variant="ghost"><MessageSquarePlus className="size-3.5" /> Annotate</Button>
+            <span className="min-w-0 flex-1 truncate" title={selected || "Workspace"}>{selected || "Workspace"}</span>
+            <Button aria-label="Annotate selected code" className="h-7 shrink-0 px-2 text-xs" disabled={disabled || locked || !selectedReference || selectedReference.path !== selected} onClick={() => setAnnotation(selectedReference)} size="sm" title="Select up to 100 lines to annotate" variant="ghost"><MessageSquarePlus className="size-3.5" /> Annotate</Button>
             <Button aria-label="Refresh workspace files" className="size-7 shrink-0" disabled={locked} onClick={onRefresh} size="icon" title="Refresh workspace files" variant="ghost"><RotateCw className="size-3.5" /></Button>
           </div>
           {locked ? <Notice>The workspace is being restored.</Notice> : <div className={styles.body}>
