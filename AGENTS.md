@@ -1,3 +1,8 @@
+# Project workflow
+
+- The `ship` skill is disabled for Hive. Do not load or invoke any `ship` skill, directly or through another workflow.
+- Do not start the automatic external-review pipeline associated with `ship`. Follow the user's requested release scope and the repository's existing GitHub/Vercel workflow instead.
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 # This is NOT the Next.js you know

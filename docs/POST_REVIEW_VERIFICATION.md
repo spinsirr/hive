@@ -23,7 +23,7 @@ A fresh authenticated production page for the [prepared acceptance task](https:/
 
 Publication status was checked separately: the repository remains private. Remote `main` was `3239afe` (the merged typography PR), with a successful Vercel status. Local `3d11457` and remote `main` have diverged; the remote typography branch did not include the local Claude integration. The completed, uncommitted CI work in the shared checkout was also preserved. This recheck does not merge, commit or publish either set of changes.
 
-**Still open:** integration and deployment of the current local changes, fresh second-account production acceptance, live subagent acceptance as recorded in [SUBAGENTS.md](SUBAGENTS.md), the timed narrated rehearsal, and owner-controlled reviewer access/submission timing. A second-account login was requested; the inspected Chrome profile had no Hive tab. Do not count the retained Joseph-authored history as a fresh second-account login.
+**Still open:** integration and deployment of the current local changes, fresh second-account production acceptance, live subagent acceptance as recorded in [SUBAGENTS.md](SUBAGENTS.md). A second-account login was requested; the inspected Chrome profile had no Hive tab. Do not count the retained Joseph-authored history as a fresh second-account login.
 
 ## Result
 
@@ -127,3 +127,14 @@ Build verification: the default `pnpm build` first failed to download Google Fon
 On September 10, commit `e24bbab` deployed with the subagent addition through the existing GitHub/Vercel integration. Production deployment `EjVcNfz8URk2YJAGTuBYu7g39E4p` became Ready after the configured 48-second build; this is production build evidence, separate from the local bundler limitation above.
 
 The new `verify-live-subagent-collaborati-ugic3a` task's greeting, repository notice, prompt and failure were retained as **12:02, 12:05, 12:06 and 12:10 AM Pacific** on a fresh in-app page and reloaded Chrome page. Both reached Live and preserved the shared messages, rather than retaining UTC labels. This closes the observed refresh-time regression for this production check; the four zone/season cases remain local tests. The separate model execution ended on Gateway 429 and did not verify live subagents; see [the full result](SUBAGENTS.md#september-10-production-attempt).
+
+## September 10 Pacific — release preflight
+
+During the **September 10 Pacific finalization** (September 11 UTC), the owner requested final technical checks. No new product feature or runtime fix was added in this follow-up.
+
+- Fetched `origin`; feature branch `feat/message-actions` already contains the current `main` (`d15d2c0`). Head `b0ab5e8` has passing [CI run 34564150694](https://github.com/spinsirr/hive/actions/runs/34564150694) and a successful [Vercel preview](https://vercel.com/spinsirrs-projects/hive/G9MMqXcTdGL3TDscEEoAwFLAxi9q). Draft PR #5 is unmerged and remains separate from canonical production.
+- Fresh local `pnpm test`, `pnpm lint`, `pnpm typecheck`, `pnpm build --webpack` and `git diff --check` all exited 0. This is the existing application implementation plus documentation changes; no dependency or runtime code changed. The current-head CI integration result is separate from the local suite, and the configured default production build is separate from this local Webpack check.
+- A fresh canonical page of the prepared `label-the-return-to-latest-messa-qvezdg` task signed in as **Spinsirr**, reached **Live / 1 online**, and retained both actual changed files. Expanded Runs still contained the saved combined check, **125 tests / 125 pass / 0 fail**, the caller-override scrolling regression, TypeScript completion and **Exit 0**. These are inspected historical Sandbox results, not newly executed checks.
+- Files loaded the full repository root and scripts directory, and opened unchanged `package.json` in read-only Monaco. The original Thread showed both real authors, all three replies and **2 replies steered by josephmreb1**; the third localization reply remained outside that frozen boundary. No message, steer, approval, checkpoint restore or model call was made. The responsive Conversation/Workspace/Thread navigation was used without changing the saved task or runtime selection.
+
+This was a technical and document preflight, not a new two-account round. The second account was not available in the connected browser inventory. Fresh-account admission and the final two-account recheck remained open. No PR was merged or new model request sent.

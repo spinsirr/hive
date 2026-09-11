@@ -4,7 +4,7 @@ One coding agent your whole team can work with.
 
 Hive is a multiplayer coding agent for small software teams. Teammates share one task, one agent conversation, and one execution workspace. They can discuss the work in Threads, explicitly steer the agent, and review real code changes and checks together.
 
-[Live application](https://hive-roan-mu.vercel.app/) · [Dashboard UI demo](https://hive-roan-mu.vercel.app/demo) · [Submission packet](docs/SUBMISSION.md)
+[Live application](https://hive-roan-mu.vercel.app/) · [Dashboard UI demo](https://hive-roan-mu.vercel.app/demo) · [Product walkthrough](docs/DEMO_BRIEF.md)
 
 ## The problem
 
@@ -30,11 +30,11 @@ The public `/demo` route uses the real dashboard component with invented, page-l
 
 Hive focuses on one shared coding task: one conversation, at most one attached repository, and one mutating agent run at a time. A person can start alone and invite teammates. Discussion, explicit steering and code review form the core workflow; approving a diff keeps the conversation open.
 
-Hive is not a general team chat, a multi-agent orchestration system or a full collaborative IDE. It uses an existing coding runtime and provides the shared controls around it. PR creation, sandbox branch pushes, merging, deployment of generated changes and organization administration are outside this submission. Repository memory is an optional extension with its verification status below.
+Hive is not a general team chat, a multi-agent orchestration system or a full collaborative IDE. It uses an existing coding runtime and provides the shared controls around it. PR creation, sandbox branch pushes, merging, deployment of generated changes and organization administration are outside the product scope. Repository memory is an optional extension with its verification status below.
 
 ## Architecture
 
-Hive owns shared task state, input ordering and review. The existing Codex harness owns coding execution inside Vercel Sandbox. Postgres preserves team history and private recovery records.
+Hive owns shared task state, input ordering and review. The selected existing coding harness owns execution inside Vercel Sandbox. Postgres preserves team history and private recovery records.
 
 ```mermaid
 flowchart LR
@@ -56,8 +56,7 @@ flowchart LR
     class Runtime,Gateway execution
 ```
 
-This is a responsibility diagram. Runtime output reaches the shared UI through Hive; teammates do not connect directly to the Sandbox.
-
+This responsibility diagram illustrates the Codex/Gateway path. The runtime choices are listed below. Runtime output reaches the shared UI through Hive; teammates do not connect directly to the Sandbox.
 
 | Layer | Responsibility |
 | --- | --- |
@@ -87,7 +86,7 @@ The [runner](src/lib/hive-runner.ts), [restore path](src/lib/workspace-restore.t
 - **Show honest failures.** Runs displays process exit codes and original output, not an inferred test verdict. It shows the latest turn, so a later text-only reply can correctly show no commands. Diff shows real old/new file line numbers; the captured diff is capped at 60 KB, changed-file previews at 12 files of 20 KB each, and each command's output at 20 KB, with a visible truncation notice.
 - **A lost run is recoverable without losing the team's work.** Execution is bound to one request of at most five minutes. If a run has not reported for six minutes, any member can mark it as lost: the discussion, partial reply and queued steers stay, nothing reruns, and the task becomes steerable again. This is a manual, disclosed recovery, not automatic resumption after hard worker termination.
 - **Reset is deliberate.** Resetting a task clears the shared conversation for everyone and cannot be undone, so it requires a confirmation and an idle task (no active run, applied steer or queued input). Conversation messages carry timestamps shown in each viewer's local time; a message may hold up to 8,000 characters, Thread replies 4,000 and code annotations 500.
-- **Bound the submission.** No PR creation, sandbox branch push, issue triage, uploads, or multi-team administration. Vercel Workflow remains deferred. The owner's subsequent, narrow request for repository memory is described below; one bounded live round on September 10 (UTC) saved a selected reply and recalled it in another task on the same repository, while the source-task citation defect, live cross-repository isolation and Gateway rate limits remain open. Browser reconnection and caught-failure checkpoints do not guarantee automatic recovery after hard worker termination.
+- **Keep the scope focused.** No product PR creation, sandbox branch push, issue triage, uploads, or multi-team administration. Vercel Workflow remains deferred. The owner's subsequent, narrow request for repository memory is described below; one bounded live round on September 10 (UTC) saved a selected reply and recalled it in another task on the same repository. A later [source-citation retest](docs/POST_REVIEW_VERIFICATION.md#live-reset-and-memory-source-citation) passed in a new task; live cross-repository isolation and Gateway rate limits remain open. Browser reconnection and caught-failure checkpoints do not guarantee automatic recovery after hard worker termination.
 
 Task membership and GitHub repository access are separate. An invitation shares only that task's conversation and attached working copy, not the inviter's other tasks or repository pool. Repository listing and attachment both query GitHub using the current user's access token, including when several users share an App installation. The user's encrypted, HttpOnly GitHub cookie is bound to one Hive login, expires within eight hours (or sooner if GitHub specifies), and is cleared on logout. Missing, expired or revoked authorization asks for **Reconnect GitHub**; it never falls back to App-wide access. The existing OAuth client secret derives a purpose-specific encryption key; invitation signing is unchanged and no new secret or database migration is required. [GitHub's user-scoped repository API](https://docs.github.com/en/rest/apps/installations#list-repositories-accessible-to-the-user-access-token).
 
@@ -135,29 +134,27 @@ pnpm test:integration
 
 For onboarding and authorization, set `HIVE_ONBOARDING_TEST_DATABASE_URL` to a **local loopback** Postgres server with database-creation permission, then run `pnpm test:onboarding`. It creates and drops only its uniquely named fixture database. Actual OAuth routes, session persistence, task creation, task pages and protected APIs verify first signup, empty dashboard, task invitations, user-scoped GitHub listing/attachment, credential expiry and account isolation. GitHub HTTP is controlled; no real account, Neon database, Sandbox or model is contacted. This is not a substitute for a fresh-account production walkthrough.
 
-For real Postgres/live-route egress regression coverage, set `HIVE_EGRESS_TEST_DATABASE_URL` to a **local loopback** Postgres server with a role that can create databases, then run `pnpm test:session-egress`. The check creates and removes its own uniquely named fixture database. It does not load `.env.local`, contact Neon, use real accounts, or call a model. It measures 31 seconds of idle connections, verifies typing and multi-tab presence without presence-table/task reads, and retains SQL-side exclusion of private recovery data. See the [September 8 incident](docs/PRESENTATION_NOTES.md#september-8--neon-egress-incident) for historical measurements and production availability limits.
+For real Postgres/live-route egress regression coverage, set `HIVE_EGRESS_TEST_DATABASE_URL` to a **local loopback** Postgres server with a role that can create databases, then run `pnpm test:session-egress`. The check creates and removes its own uniquely named fixture database. It does not load `.env.local`, contact Neon, use real accounts, or call a model. It measures 31 seconds of idle connections, verifies typing and multi-tab presence without presence-table/task reads, and retains SQL-side exclusion of private recovery data. See the [September 8 incident](docs/DEVELOPMENT.md#september-8--neon-egress-incident) for historical measurements and production availability limits.
 
 That database check also covers the signed agent-tool route, bounded bodies, retry-safe replies, and revoked/stale-run access. For native integration, `node scripts/diagnostics/check-hive-tools.mjs /path/to/isolated/sdk-install` requires an isolated `@openai/codex-sdk@0.149.1` installation. It runs the real Codex process against loopback model and Mem0 fixtures, verifying skill loading, same-thread history, tool execution and cross-task recall—not real model behavior or Mem0 Cloud availability.
 
-Presence follows authenticated WebSocket connections, not a periodic HTTP request or a stored `last_seen` value. Native ping/pong checks the browser connection every 20 seconds without SQL. Existing Postgres `NOTIFY` relays only member IDs and typing flags across instances; each active instance/task renews its small announcement every 30 seconds, without table writes or repeated reads on receipt. Normal disconnects publish a leave; an ungraceful instance loss expires after 90 seconds. This is reduced database traffic, not zero database traffic. The retired presence table is unused but retained; no destructive migration is required. See [connection-presence evidence](docs/PRESENTATION_NOTES.md#september-8--connection-owned-presence).
+Presence follows authenticated WebSocket connections, not a periodic HTTP request or a stored `last_seen` value. Native ping/pong checks the browser connection every 20 seconds without SQL. Existing Postgres `NOTIFY` relays only member IDs and typing flags across instances; each active instance/task renews its small announcement every 30 seconds, without table writes or repeated reads on receipt. Normal disconnects publish a leave; an ungraceful instance loss expires after 90 seconds. This is reduced database traffic, not zero database traffic. The retired presence table is unused but retained; no destructive migration is required. See [connection-presence evidence](docs/DEVELOPMENT.md#september-8--connection-owned-presence).
 
-On September 8, the independent real-repository task completed `pnpm test && pnpm typecheck && git diff --check` with Exit 0. Its older Sandbox checkout passed **125 unit tests**, component regressions, TypeScript, and diff validation. Both real GitHub accounts inspected the two-file change and attributed response, then verified approval and the then-existing Complete → refresh → Reopen flow. Manual task completion was [removed on September 9](docs/PRESENTATION_NOTES.md#september-9--execution-completion-is-not-conversation-closure). Earlier checks separately verified queued Threads, excluded later replies, native incremental text, offline recovery, and paired restore with pending input.
+On September 8, the independent real-repository task completed `pnpm test && pnpm typecheck && git diff --check` with Exit 0. Its older Sandbox checkout passed **125 unit tests**, component regressions, TypeScript, and diff validation. Both real GitHub accounts inspected the two-file change and attributed response, then verified approval and the then-existing Complete → refresh → Reopen flow. Manual task completion was [removed on September 9](docs/DEVELOPMENT.md#september-9--execution-completion-is-not-conversation-closure). Earlier checks separately verified queued Threads, excluded later replies, native incremental text, offline recovery, and paired restore with pending input.
 
 The supervising AI operated both authenticated accounts and supplied a tested repair after earlier agent failures. This was not two independent human reviews or an autonomous first-pass success. Provider 429 risk remains; these checks do not prove hard-worker-crash or permanent-Sandbox-deletion recovery.
 
-The [dated evidence log](docs/PRESENTATION_NOTES.md#evidence-log) records successes, failures, versions, and test limitations. Technical checks do not substitute for the remaining timed rehearsal, fresh reviewer access, or publication approval.
+The [dated evidence log](docs/DEVELOPMENT.md#evidence-log) records successes, failures, versions, and test limitations. Historical checks do not substitute for fresh-account and final-release acceptance.
 
-## AI collaboration and presentation
+## Development
 
-I designed Hive’s module boundaries and overall architecture, and worked with AI to brainstorm alternatives and implement the design. I owned the product and technical decisions, refining them as we tested the experience: one task per session, late repository attachment, explicit steering, inspectable execution artifacts, and persistence beyond a Sandbox session ID. AI supported implementation, diagnosis and regression testing.
+Hive was developed with AI-assisted implementation, diagnosis and regression testing. Product and architecture decisions center on one shared task, explicit steering, inspectable execution artifacts and persistence beyond a Sandbox session ID.
 
-Verification also changed the result. A command swallowed failed edits behind exit zero, and an AI-written regression queried a deliberately hidden button. The supervising AI reproduced the failures, corrected the misleading verdict, supplied a repair, and checked real output. Those interventions are part of the story.
-
-Use the [20-minute presenter card](docs/DEMO_BRIEF.md) for problem → solution → code → AI journey. The [submission packet](docs/SUBMISSION.md) contains the owner-confirmed two-paragraph introduction and access checklist. The repository remains private until the owner authorizes publication; nothing has been submitted.
+Verification changed the implementation. A command swallowed failed edits behind exit zero, and an AI-written regression queried a deliberately hidden button. The supervising AI reproduced those failures, corrected the misleading verdict, supplied a repair and checked real output. The [development log](docs/DEVELOPMENT.md#evidence-log) distinguishes those interventions from autonomous execution.
 
 ## Further reading
 
 - [Product vocabulary](CONTEXT.md) — task, Thread, steer, workspace and checkpoint boundaries.
-- [Decisions and development history](docs/PRESENTATION_NOTES.md) — design ownership, alternatives, AI collaboration and dated evidence.
+- [Decisions and development history](docs/DEVELOPMENT.md) — design choices, alternatives and dated engineering evidence.
 - [Setup and integrations](docs/SETUP.md) — runtime requirements, authentication and optional memory.
-- [Presenter card](docs/DEMO_BRIEF.md) — the focused 20-minute route.
+- [Product walkthrough](docs/DEMO_BRIEF.md) — shared discussion, steering, execution and review.

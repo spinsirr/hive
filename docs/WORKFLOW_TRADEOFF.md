@@ -2,7 +2,7 @@
 
 Evaluated 2026-09-08 against current Hive code and official documentation. This is a retrospective assessment of an alternative available now, not evidence that Workflow was evaluated or deliberately rejected during the original build. No Workflow integration or failure experiment was performed.
 
-**Decision after this review:** Spencer [froze the submission scope](GOAL.md#submission-scope-freeze--september-8) and deferred Workflow. The adoption guidance below applies beyond this submission; it is not authorization or a plan to change the current execution architecture.
+**Decision after this review:** Workflow integration was deferred to keep focus on the existing [shared-task scope](ROADMAP.md#execution-architecture). The adoption guidance below describes a possible future change, not an implemented migration.
 
 ## Conclusion
 
@@ -52,7 +52,7 @@ Keep the present implementation for the current bounded demo if demonstrating sh
 
 Before switching, test: termination after database admission but before dispatch; duplicate dispatch; termination after a file/tool effect but before checkpoint commit; mid-turn continuation; a second member queuing during recovery; stale or unauthorized Apply; stream reconnection; and restoring a previous workspace while preserving current conversation and pending input. Success should mean one authorized logical turn with a reconciled outcome, not merely that a retry eventually returned.
 
-## Suggested presentation wording
+## Summary
 
 “Hive currently uses Postgres to coordinate the shared task and save its conversation and checkpoints. Execution still runs inside a bounded request, so a hard process failure can leave work requiring recovery. Evaluating it now, Workflow would add durable orchestration, and the AI SDK has helpers that preserve the Codex harness across step or time boundaries. I would use that before promising unattended recovery, while keeping Postgres for membership, ordered steers, and the shared task record. The remaining work is making dispatch, retries, native context, and workspace checkpoints agree.”
 
