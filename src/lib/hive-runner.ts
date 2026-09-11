@@ -346,7 +346,8 @@ export async function runHiveCodingTask(
       persistent: true,
       snapshotExpiration: 0,
       keepLastSnapshots: { count: WORKSPACE_CHECKPOINT_LIMIT, expiration: 0 },
-      resources: { vcpus: 1 },
+      // The pinned Claude bootstrap OOMs at 2 GiB; 2 vCPUs provide 4 GiB.
+      resources: { vcpus: runtime === "claude-code" ? 2 : 1 },
       tags: {
         app: "hive",
         session: taskSession.sessionId,

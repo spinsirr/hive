@@ -26,7 +26,8 @@ export async function runHivePlanningHarness(
   if (!model) throw new HiveAgentError("Choose a model available with this task's current connection.", new Error("Model unavailable."));
   const effort = model.efforts.length ? task.workspace.codingEffort ?? model.efforts[0] : undefined;
   if (effort && !model.efforts.includes(effort)) throw new HiveAgentError("Choose a supported effort for this model.", new Error("Unsupported effort."));
-  const sandbox = await Sandbox.create({ runtime: "node24", ports: [4319], timeout: 10 * 60 * 1000, resources: { vcpus: 1 } });
+  // The pinned Claude bootstrap OOMs at 2 GiB; 2 vCPUs provide 4 GiB.
+  const sandbox = await Sandbox.create({ runtime: "node24", ports: [4319], timeout: 10 * 60 * 1000, resources: { vcpus: runtime === "claude-code" ? 2 : 1 } });
   try {
     const agent = new HarnessAgent({
       id: "hive-planning-agent", model: model.modelId,
