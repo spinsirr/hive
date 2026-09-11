@@ -35,7 +35,7 @@ export async function runHivePlanningHarness(
         : createHiveCodex({ auth: {}, reasoningEffort: effort, webSearch: false }, undefined, undefined, codexSubscription),
       sandbox: createVercelSandbox({ sandbox }),
       sandboxConfig: {
-        workDir: "/vercel/sandbox/planning",
+        workDir: "planning",
         onSession: async ({ session, sessionWorkDir, abortSignal }) => {
           if (runtime === "codex") await ensureCodexBridgeDependencies(session, sessionWorkDir, abortSignal);
         },
