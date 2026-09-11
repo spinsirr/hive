@@ -28,7 +28,7 @@ test("portable history rejects unknown, partial, oversized or opaque native hist
   assert.equal(isEncryptedHistoryRejection({ message: JSON.stringify({ error: { code: "other" } }) }), false);
 });
 
-for (const scenario of ["success", "auth-down", "malformed", "quota", "rate-check-failed", "login-rejected", "empty-rejected", "dirty-tail", "bad-close", "after-command", "after-text", "ambiguous", "revoked", "encrypted-history", "encrypted-gateway", "encrypted-quota", "encrypted-after-command", "encrypted-after-text", "encrypted-dirty-tail", "encrypted-bad-close"]) {
+for (const scenario of ["success", "background-refresh", "inference-refresh", "auth-down", "malformed", "quota", "rate-check-failed", "login-rejected", "empty-rejected", "dirty-tail", "bad-close", "after-command", "after-text", "ambiguous", "revoked", "encrypted-history", "encrypted-gateway", "encrypted-quota", "encrypted-after-command", "encrypted-after-text", "encrypted-dirty-tail", "encrypted-bad-close"]) {
   test(`native auth boundary: ${scenario}`, async () => {
     const encrypted = scenario.startsWith("encrypted-");
     const previousFetch = globalThis.fetch;
@@ -67,6 +67,10 @@ for (const scenario of ["success", "auth-down", "malformed", "quota", "rate-chec
           if (r.method === "turn/start") {
             assert.equal(r.params.effort, subscription ? "max" : "high");
             respond({ id: r.id, result: { turn: { id: "attempt-turn" } } });
+            if (["background-refresh", "inference-refresh"].includes(scenario)) {
+              respond({ id: "native-refresh", method: "account/chatgptAuthTokens/refresh", params: { reason: "unauthorized", previousAccountId: "ACCOUNT_FIXTURE" } });
+              callback(); return;
+            }
             if (encrypted && threadId === "existing-thread") {
               if (scenario === "encrypted-after-command") event("item/started", { item: { id: "cmd", type: "commandExecution", command: "change-code" } });
               if (scenario === "encrypted-after-text") event("item/agentMessage/delta", { itemId: "text", delta: "Started" });
@@ -85,6 +89,13 @@ for (const scenario of ["success", "auth-down", "malformed", "quota", "rate-chec
             const failed = subscription && ["empty-rejected", "dirty-tail", "bad-close", "after-command", "after-text", "ambiguous", "encrypted-quota"].includes(scenario);
             if (!failed) event("item/completed", { item: { id: "text", type: "agentMessage", text: "Done." } });
             event("turn/completed", { turn: { id: "attempt-turn", status: failed ? "failed" : "completed", error: failed ? { message: "fixture rejection", codexErrorInfo: scenario === "ambiguous" ? "other" : "usageLimitExceeded" } : null } });
+          }
+          if (r.id === "native-refresh") {
+            assert.equal(r.error?.code, -32000, "Refuse refresh explicitly without returning credentials");
+            assert.equal(r.result, undefined);
+            if (scenario === "background-refresh") event("item/completed", { item: { id: "text", type: "agentMessage", text: "Done." } });
+            event("turn/completed", { turn: { id: "attempt-turn", status: scenario === "background-refresh" ? "completed" : "failed",
+              error: scenario === "inference-refresh" ? { message: "fixture rejection", codexErrorInfo: "unauthorized" } : null } });
           }
           if (r.method === "thread/read") respond({ id: r.id, result: { thread: { id:threadId, turns: [
             ...(encrypted ? [{id:"previous-turn",status:"completed",items:[{type:"agentMessage",text:"Already inspected package.json"},{type:"commandExecution",command:"pnpm test",aggregatedOutput:"all checks passed",exitCode:0},{type:"reasoning",summary:["PRIVATE_REASONING"],encrypted_content:"FOREIGN_CIPHERTEXT"}]}] : []),
@@ -110,7 +121,7 @@ for (const scenario of ["success", "auth-down", "malformed", "quota", "rate-chec
         });
       } catch (e) { error = e; }
       if (fixtureError) throw fixtureError;
-      const shouldFail = !["success", "rate-check-failed", "encrypted-history", "encrypted-gateway"].includes(scenario);
+      const shouldFail = !["success", "background-refresh", "rate-check-failed", "encrypted-history", "encrypted-gateway"].includes(scenario);
       assert.equal(Boolean(error), shouldFail, error?.stack);
       assert.deepEqual(launches, ["auth-down", "malformed", "revoked"].includes(scenario) ? [] : scenario === "encrypted-gateway" ? [false, false] : ["encrypted-history", "encrypted-quota"].includes(scenario) ? [true, true] : [true]);
       if (scenario !== "encrypted-gateway") assert.ok(launches.every(Boolean), "Never switch a subscription turn to paid Gateway");
@@ -122,6 +133,13 @@ for (const scenario of ["success", "auth-down", "malformed", "quota", "rate-chec
       assert.equal(calls.some((c) => c.method === "thread/rollback"), false);
       assert.equal(calls.filter((c) => c.method === "thread/fork").length, 0, "No automatic fork/replay on quota errors");
       if (scenario === "rate-check-failed") assert.ok(calls.some(c => c.method === "skills/extraRoots/set"));
+      if (["background-refresh", "inference-refresh"].includes(scenario)) {
+        assert.equal(calls.filter(call => call.id === "native-refresh").length, 1);
+        assert.equal(calls.filter(call => call.method === "turn/start").length, 1, "Never replay the requested turn");
+        assert.equal(events.filter(event => event.type === "finish").length, shouldFail ? 0 : 1);
+        if (shouldFail) assert.match(error.message, /Reconnect the Codex subscription/);
+        else assert.equal(events.filter(event => event.type === "text-delta").map(event => event.delta).join(""), "Done.");
+      }
       for (const call of calls.filter(c => c.method === "thread/start" || c.method === "thread/resume")) assert.equal(call.params.config.hive_subscription_tokens, undefined);
       assert.doesNotMatch(JSON.stringify([events, diagnostics]), /ACCESS_FIXTURE|ACCOUNT_FIXTURE|CAPABILITY_FIXTURE/);
     } finally {
