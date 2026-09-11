@@ -157,7 +157,8 @@ try {
 } finally {
   await pool.end();
   if (created) {
-    await admin.query(`DROP DATABASE "${databaseName}" WITH (FORCE)`);
+    // Pool shutdown can precede socket close; FORCE would kill those closing clients.
+    await admin.query(`DROP DATABASE "${databaseName}"`);
     assert.equal((await admin.query("SELECT 1 FROM pg_database WHERE datname = $1", [databaseName])).rowCount, 0);
     console.log("CLEANUP: removed only this run's disposable local fixture database.");
   }

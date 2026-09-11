@@ -127,6 +127,7 @@ try {
   console.log("PASS: access is rechecked after refresh; uncertain failure stays fenced without token replay; shared snapshots contain no vault data.");
 } finally {
   await pool.end();
-  if (created) { await admin.query(`DROP DATABASE "${name}" WITH (FORCE)`); console.log("CLEANUP: removed only this run's disposable local auth database."); }
+  // Pool shutdown can precede socket close; FORCE would kill those closing clients.
+  if (created) { await admin.query(`DROP DATABASE "${name}"`); console.log("CLEANUP: removed only this run's disposable local auth database."); }
   await admin.end();
 }

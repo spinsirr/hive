@@ -234,6 +234,7 @@ try {
     await new Promise((resolve) => server.close(resolve));
   }
   await pool.end();
-  if (created) await admin.query(`DROP DATABASE "${databaseName}" WITH (FORCE)`);
+  // Pool shutdown can precede socket close; FORCE would kill those closing clients.
+  if (created) await admin.query(`DROP DATABASE "${databaseName}"`);
   await admin.end();
 }
