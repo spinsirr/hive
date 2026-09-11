@@ -69,6 +69,7 @@ for (const scenario of ["success", "auth-down", "malformed", "quota", "rate-chec
             respond({ id: r.id, result: { thread: { id: threadId } } });
           }
           if (r.method === "turn/start") {
+            assert.equal(r.params.effort, subscription ? "max" : "high", "Gateway fallback must adapt effort without reducing the subscription setting");
             respond({ id: r.id, result: { turn: { id: "attempt-turn" } } });
             if (encrypted && threadId === "existing-thread") {
               if (scenario === "encrypted-after-command") event("item/started", { item: { id: "cmd", type: "commandExecution", command: "change-code" } });
@@ -105,7 +106,7 @@ for (const scenario of ["success", "auth-down", "malformed", "quota", "rate-chec
     try {
       let error;
       try {
-        await runCodexAppServerTurn({ start: { model: scenario === "encrypted-gateway" ? "openai/gpt-5.1-codex-mini" : "gpt-5.6-luna", prompt: "One request", mcpServers: { hive: { url: "https://hive.fixture/api/sessions/fixture/agent-tools", http_headers: { Authorization: "Bearer CAPABILITY_FIXTURE", "X-Hive-Auth": scenario === "encrypted-gateway" ? "gateway" : "prefer-chatgpt", "X-Hive-Gateway-Model": "openai/gpt-5.1-codex-mini" } } } },
+        await runCodexAppServerTurn({ start: { model: scenario === "encrypted-gateway" ? "openai/gpt-5.1-codex-mini" : "gpt-5.6-luna", reasoningEffort: scenario === "encrypted-gateway" ? "high" : "max", prompt: "One request", mcpServers: { hive: { url: "https://hive.fixture/api/sessions/fixture/agent-tools", http_headers: { Authorization: "Bearer CAPABILITY_FIXTURE", "X-Hive-Auth": scenario === "encrypted-gateway" ? "gateway" : "prefer-chatgpt", "X-Hive-Gateway-Model": "openai/gpt-5.1-codex-mini" } } } },
           workdir: "/fixture", threadId: "existing-thread", onThread() {}, launch,
           turn: { abortSignal: AbortSignal.timeout(5000), emit: (e) => events.push(e), bridgeLog: (e) => diagnostics.push(e) },
         });

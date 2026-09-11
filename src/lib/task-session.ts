@@ -4,6 +4,8 @@
  */
 
 import type { HarnessAgentResumeSessionState } from "@ai-sdk/harness/agent";
+import { isCodingEffort, type CodingEffort } from "./coding-effort.ts";
+import { codingModelOptions, CODEX_GATEWAY_MODEL, selectedCodingModel, modelEffort, type CodingModelOption } from "./coding-models.ts";
 import { codeReferenceContext, codeReferenceSchema, type CodeReference } from "./code-reference.ts";
 import { finalizeSubagents } from "./hive-subagents.ts";
 
@@ -138,6 +140,9 @@ export type WorkspaceCommand = {
 
 export type WorkspaceState = {
   status: "disconnected" | "ready" | "running" | "review" | "error";
+  /** Shared coding preference, independent of the saved native conversation. */
+  codingEffort?: CodingEffort;
+  codingModel?: string;
   sandboxName?: string;
   agentSession?: {
     id: string;
@@ -236,7 +241,8 @@ export type TaskSessionState = {
 };
 
 export type TaskSessionAction =
-  | { type: "select-harness"; actor: MemberId; runtime: CodingRuntime }
+  | { type: "select-harness"; actor: MemberId; runtime: CodingRuntime; modelId?: string }
+  | { type: "set-coding-effort"; actor: MemberId; effort: CodingEffort; modelId?: string }
   | { type: "send-message"; actor: MemberId; body: string; clientId?: string }
   | { type: "annotate-code"; actor: MemberId; body: string; clientId: string; reference: CodeReference }
   | {
@@ -416,6 +422,10 @@ export function canSelectHarness(state: TaskSessionState) {
     !(state.repository && state.workspace.startedAt !== undefined);
 }
 
+export function canSetCodingEffort(state: TaskSessionState) {
+  return !isHiveRunActive(state) && !state.workspace.restore && !state.activeSteer && state.steeringQueue.length === 0;
+}
+
 export function appendHiveReply(
   state: TaskSessionState,
   body: string,
@@ -452,15 +462,24 @@ export function reduceTaskSession(
   action: TaskSessionAction,
   now = Date.now(),
   members: TeamMember[] = [],
+  models: CodingModelOption[] = codingModelOptions(CODEX_GATEWAY_MODEL),
 ): TaskSessionState {
   const actor = resolveMember(action.actor, members);
   if (state.workspace.restore) return state;
+  if (action.type === "set-coding-effort") {
+    const model = selectedCodingModel(models, state.workspace.agentSession?.runtime ?? "codex", state.workspace.codingModel);
+    if (!model || (action.modelId && action.modelId !== model.modelId) || !model.efforts.includes(action.effort) || !isCodingEffort(action.effort) || !canSetCodingEffort(state) || (state.workspace.codingEffort ?? "low") === action.effort) return state;
+    return { ...state, workspace: { ...state.workspace, codingEffort: action.effort }, version: state.version + 1, updatedAt: now };
+  }
   if (action.type === "select-harness") {
-    if (!canSelectHarness(state) || (action.runtime !== "codex" && action.runtime !== "claude-code") ||
-      (state.workspace.agentSession?.runtime ?? "codex") === action.runtime) return state;
+    const runtime = state.workspace.agentSession?.runtime ?? "codex";
+    const model = selectedCodingModel(models, action.runtime, action.modelId);
+    if (!model || !canSetCodingEffort(state) || (action.runtime !== runtime && !canSelectHarness(state))) return state;
+    const previous = selectedCodingModel(models, runtime, state.workspace.codingModel);
+    if (previous?.modelId === model.modelId && action.runtime === runtime) return state;
     return {
       ...state, version: state.version + 1, updatedAt: now,
-      workspace: { ...state.workspace, agentSession: {
+      workspace: { ...state.workspace, codingModel: action.modelId ? model.modelId : undefined, codingEffort: modelEffort(model, state.workspace.codingEffort), agentSession: action.runtime === runtime && state.workspace.agentSession ? state.workspace.agentSession : {
         id: createAgentSessionId(state.sessionId, now), runtime: action.runtime,
       } },
     };
@@ -482,6 +501,8 @@ export function reduceTaskSession(
       createdBy: state.createdBy,
     });
     initialSession.createdAt = state.createdAt;
+    initialSession.workspace.codingEffort = state.workspace.codingEffort;
+    initialSession.workspace.codingModel = state.workspace.codingModel;
     initialSession.version = state.version + 1;
     if (state.workspace.agentSession) initialSession.workspace.agentSession = {
       id: createAgentSessionId(state.sessionId, now), runtime: state.workspace.agentSession.runtime,
@@ -492,6 +513,8 @@ export function reduceTaskSession(
       repository: state.repository,
       workspace: {
         status: "ready",
+        codingEffort: state.workspace.codingEffort,
+        codingModel: state.workspace.codingModel,
         agentSession: {
           id: createAgentSessionId(state.sessionId, now),
           runtime: state.workspace.agentSession?.runtime ?? "codex",
@@ -540,6 +563,8 @@ export function reduceTaskSession(
       repository,
       workspace: {
         status: "ready",
+        codingEffort: state.workspace.codingEffort,
+        codingModel: state.workspace.codingModel,
         agentSession:
           state.workspace.agentSession ?? {
             id: createAgentSessionId(state.sessionId, now),
@@ -1046,6 +1071,8 @@ export function applyHiveRunResult(
     activeSteer: undefined,
     workspace: {
       status: hasQueuedSteer ? "running" : hasChanges ? "review" : "ready",
+      codingEffort: state.workspace.codingEffort,
+      codingModel: state.workspace.codingModel,
       sandboxName: result.sandboxName,
       agentSession: result.agentSession,
       summary: result.summary,

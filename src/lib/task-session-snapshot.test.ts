@@ -4,6 +4,7 @@ import test from "node:test";
 import { appendHiveReply, createInitialTaskSessionState, reduceTaskSession } from "./task-session.ts";
 import { publicTaskSessionSnapshot, receiveAgentReply, receiveTaskSessionSnapshot } from "./task-session-snapshot.ts";
 import type { TaskSessionSnapshot } from "./task-session-store.ts";
+import { codingModelOptions, CODEX_GATEWAY_MODEL } from "./coding-models.ts";
 
 function snapshot(sessionId = "shared-task"): TaskSessionSnapshot {
   return {
@@ -60,6 +61,26 @@ test("same-version presence updates still refresh without changing the transcrip
   const before = snapshot();
   const incoming = { ...before, activeMembers: ["spencer"], typingMembers: ["spencer"] };
   assert.deepEqual(receiveTaskSessionSnapshot(before, incoming), incoming);
+});
+
+test("shared coding effort survives public snapshots, reconnects, and stale updates", () => {
+  const before = snapshot();
+  const after = publicTaskSessionSnapshot({ ...before, session: reduceTaskSession(before.session, { type: "set-coding-effort", actor: "spencer", effort: "high" }, 2) });
+  assert.equal(after.session.workspace.codingEffort, "high");
+  assert.equal(receiveTaskSessionSnapshot(before, after).session.workspace.codingEffort, "high");
+  assert.equal(receiveTaskSessionSnapshot(after, before).session.workspace.codingEffort, "high");
+});
+
+test("model selection and display metadata survive public projection, reconnect and stale updates", () => {
+  const before = snapshot();
+  const models = codingModelOptions(CODEX_GATEWAY_MODEL, true);
+  const session = reduceTaskSession(before.session, { type: "select-harness", actor: "spencer", runtime: "claude-code", modelId: "claude-fable-5" }, 2, [], models);
+  const after = publicTaskSessionSnapshot({ ...before, session, codingModels: models });
+  assert.deepEqual(after.codingModels, models);
+  assert.equal(after.session.workspace.codingModel, "claude-fable-5");
+  assert.deepEqual(receiveTaskSessionSnapshot(before, after).codingModels, models);
+  assert.equal(receiveTaskSessionSnapshot(before, after).session.workspace.codingModel, "claude-fable-5");
+  assert.equal(receiveTaskSessionSnapshot(after, before).session.workspace.codingModel, "claude-fable-5");
 });
 
 test("a late response from another task never replaces the current task", () => {

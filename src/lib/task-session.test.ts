@@ -8,6 +8,7 @@ import {
   canApplyNextSteer,
   canApproveChanges,
   canSelectHarness,
+  canSetCodingEffort,
   createInitialTaskSessionState,
   didStartHiveRun,
   isHiveRunActive,
@@ -17,6 +18,8 @@ import {
   STALLED_RUN_AFTER_MS,
   type TaskSessionState,
 } from "./task-session.ts";
+import { isCodingEffort } from "./coding-effort.ts";
+import { codingModelOptions, CODEX_SUBSCRIPTION_MODEL } from "./coding-models.ts";
 
 function connectedSession(): TaskSessionState {
   return reduceTaskSession(
@@ -77,6 +80,62 @@ test("selecting Claude before repository attachment does not reset discussion or
   assert.equal(connected.workspace.agentSession?.runtime, "claude-code");
   assert.equal(connected.workspace.agentSession?.id, selected.workspace.agentSession?.id);
   assert.equal(reduceTaskSession(connected, { type: "select-harness", actor: "spencer", runtime: "claude-code" }, 4), connected);
+});
+
+test("coding effort changes at idle boundaries without replacing native history or workspace", () => {
+  const initial = connectedSession();
+  const selected = reduceTaskSession(initial, { type: "set-coding-effort", actor: "spencer", effort: "medium" }, 15);
+  assert.equal(selected.workspace.codingEffort, "medium");
+  assert.deepEqual({ ...selected.workspace, codingEffort: undefined }, { ...initial.workspace, codingEffort: undefined });
+  assert.equal(didStartHiveRun(initial, selected), false);
+  const running = reduceTaskSession(selected, { type: "send-message", actor: "spencer", body: "Inspect files" }, 20);
+  const finished = finishInspection(running);
+  const high = reduceTaskSession(finished, { type: "set-coding-effort", actor: "maya", effort: "high" }, 50);
+  assert.equal(finished.workspace.codingEffort, "medium");
+  assert.equal(high.workspace.codingEffort, "high");
+  assert.equal(high.workspace.agentSession, finished.workspace.agentSession);
+  assert.equal(high.workspace.files, finished.workspace.files);
+  assert.equal(high.messages, finished.messages);
+  assert.equal(high.version, finished.version + 1);
+  assert.equal(canSelectHarness(high), false);
+  assert.equal(canSetCodingEffort(high), true);
+  assert.equal(reduceTaskSession(high, { type: "set-coding-effort", actor: "maya", effort: "high" }, 55), high);
+  assert.equal(reduceTaskSession(high, { type: "reset", actor: "spencer" }, 60).workspace.codingEffort, "high");
+  const queued = reduceTaskSession(running, { type: "send-message", actor: "maya", body: "Check tests too" }, 25);
+  for (const busy of [running, queued, finishInspection(queued)]) {
+    assert.equal(canSetCodingEffort(busy), false);
+    assert.equal(reduceTaskSession(busy, { type: "set-coding-effort", actor: "maya", effort: "high" }, 65), busy);
+  }
+  for (const value of [undefined, null, "ultra", 1, {}, "HIGH"]) assert.equal(isCodingEffort(value), false);
+  for (const value of ["low", "medium", "high", "xhigh", "max"]) assert.equal(isCodingEffort(value), true);
+  assert.equal(reduceTaskSession(high, { type: "set-coding-effort", actor: "maya", effort: "max" }, 70), high, "Mini does not acquire Max just because the transport recognizes it");
+});
+
+test("model selection preserves native history, normalizes effort, and respects shared run boundaries", () => {
+  const models = codingModelOptions(CODEX_SUBSCRIPTION_MODEL, true);
+  const select = (state: TaskSessionState, modelId: string) => reduceTaskSession(state, { type: "select-harness", runtime: "claude-code", actor: "maya", modelId }, 50, [], models);
+  let state = select(connectedSession(), "claude-sonnet-4-6");
+  state = reduceTaskSession(state, { type: "set-coding-effort", actor: "maya", modelId: "claude-sonnet-4-6", effort: "max" }, 51, [], models);
+  const running = reduceTaskSession(state, { type: "send-message", actor: "spencer", body: "Inspect files" }, 52);
+  const finished = finishInspection(running);
+  const opus = select(finished, "claude-opus-4-6");
+  assert.equal(opus.workspace.codingModel, "claude-opus-4-6");
+  assert.equal(opus.workspace.codingEffort, "max");
+  assert.equal(opus.workspace.agentSession, finished.workspace.agentSession);
+  assert.equal(opus.messages, finished.messages);
+  assert.equal(opus.workspace.files, finished.workspace.files);
+  assert.equal(opus.version, finished.version + 1);
+  assert.equal(select(opus, "claude-opus-4-6"), opus);
+  assert.equal(select(opus, "untrusted-model"), opus);
+  assert.equal(select(opus, "gpt-6-astra"), opus, "Runtime/model mismatch is rejected");
+  assert.equal(reduceTaskSession(opus, { type: "select-harness", actor: "maya", runtime: "codex", modelId: "gpt-6-astra" }, 55, [], models), opus);
+  const haiku = select(opus, "claude-haiku-4-5");
+  assert.equal(haiku.workspace.codingEffort, undefined);
+  assert.equal(reduceTaskSession(haiku, { type: "set-coding-effort", actor: "maya", effort: "high" }, 55, [], models), haiku);
+  assert.equal(reduceTaskSession(opus, { type: "set-coding-effort", actor: "maya", modelId: "claude-sonnet-4-6", effort: "low" }, 55, [], models), opus, "A teammate's stale effort control cannot modify a different model");
+  const queued = reduceTaskSession(running, { type: "send-message", actor: "maya", body: "Check tests" }, 53);
+  for (const busy of [running, queued, finishInspection(queued)]) assert.equal(select(busy, "claude-opus-4-6"), busy);
+  assert.equal(reduceTaskSession(opus, { type: "reset", actor: "maya" }, 60).workspace.codingModel, opus.workspace.codingModel);
 });
 
 test("a successful read-only run does not offer or accept diff approval", () => {

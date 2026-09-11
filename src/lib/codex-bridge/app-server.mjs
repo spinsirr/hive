@@ -92,9 +92,12 @@ export async function runCodexAppServerTurn(options) {
       if (!process.env.AI_GATEWAY_BASE_URL) throw error;
       const model = start.mcpServers.hive.http_headers["X-Hive-Gateway-Model"];
       if (typeof model !== "string" || !model.trim()) throw new Error("Gateway fallback model is missing.");
-      gatewayStart = { ...start, model, ...(error.continuationPrompt ? { prompt: error.continuationPrompt } : {}) };
+      // The existing fallback is Codex Mini, which accepts only these three
+      // efforts. Preserve the user's subscription setting for the next turn.
+      const reasoningEffort = ["xhigh", "max"].includes(start.reasoningEffort) ? "high" : start.reasoningEffort;
+      gatewayStart = { ...start, model, reasoningEffort, ...(error.continuationPrompt ? { prompt: error.continuationPrompt } : {}) };
       turn.bridgeLog?.({ level: "warn", subsystem: "hive.auth", message: "Authentication fallback",
-        attrs: { source: "ai-gateway", reason: error.reason, model } });
+        attrs: { source: "ai-gateway", reason: error.reason, model, requestedEffort: start.reasoningEffort, effort: reasoningEffort } });
     }
   }
   const settings = threadSettings(gatewayStart, workdir);

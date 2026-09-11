@@ -1,6 +1,6 @@
 import { verifyHiveToolToken } from "@/lib/hive-tool-token";
 import { readCodexSubscription, SubscriptionAccessDenied } from "@/lib/codex-subscription-store";
-import { SUBSCRIPTION_MODEL } from "@/lib/codex-subscription-credentials";
+import { CODEX_SUBSCRIPTION_MODEL } from "@/lib/coding-models";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -22,6 +22,6 @@ export async function POST(request: Request, context: { params: Promise<{ sessio
     if (error instanceof SubscriptionAccessDenied) return Response.json({ error: "Forbidden" }, { status: 403, headers });
     // SDK/OAuth errors can contain credentials. Only a fixed reason is logged.
     console.warn("Hive subscription unavailable", { sessionId, runId: scope.runId });
-    return Response.json({ reason: "subscription_unavailable", model: SUBSCRIPTION_MODEL }, { status: 503, headers });
+    return Response.json({ reason: "subscription_unavailable", model: CODEX_SUBSCRIPTION_MODEL }, { status: 503, headers });
   }
 }

@@ -9,6 +9,12 @@ registerHooks({ resolve(specifier, context, next) {
 } });
 let subscription = false, fail = false, expectedResume;
 let settings, stopped = 0, starts = 0;
+let nativeSettings;
+let explicitModel, explicitEffort;
+mock.module("@ai-sdk/harness-claude-code", { namedExports: { createClaudeCode(value) {
+  nativeSettings = value;
+  return { harnessId: "claude-code", specificationVersion: "harness-v1" };
+} } });
 const resume = { type: "resume-session", harnessId: "claude-code", specificationVersion: "harness-v1", data: { claudeSessionId: "native-fixture-id" } };
 const sandbox = {
   async run({ command }) {
@@ -24,7 +30,10 @@ mock.module("@ai-sdk/harness/agent", { namedExports: { HarnessAgent: class {
   constructor(value) {
     settings = value;
     assert.equal(value.harness.harnessId, "claude-code");
-    assert.equal(value.model, subscription ? "claude-sonnet-4-6" : "anthropic/claude-sonnet-4.6");
+    const noEffort = explicitModel === "claude-haiku-4-5";
+    assert.equal(nativeSettings.effort, noEffort ? undefined : explicitEffort ?? "medium", "Shared effort must reach Claude on new and resumed turns");
+    assert.deepEqual(nativeSettings.thinking, { type: noEffort ? "disabled" : "adaptive" });
+    assert.equal(value.model, explicitModel ?? (subscription ? "claude-sonnet-4-6" : "anthropic/claude-sonnet-4.6"));
     assert.ok(value.inactiveTools.includes("Agent"));
     assert.equal(value.skills[0].name, "hive-collaboration");
     assert.match(value.skills[0].content, /get_context/);
@@ -51,6 +60,7 @@ const { runHiveCodingTask } = await import("../src/lib/hive-runner.ts");
 const { createInitialTaskSessionState, reduceTaskSession, applyHiveRunResult, applyHiveRunError } = await import("../src/lib/task-session.ts");
 const { HiveAgentError } = await import("../src/lib/hive-agent.ts");
 const { publicTaskSessionSnapshot } = await import("../src/lib/task-session-snapshot.ts");
+const { codingModelOptions } = await import("../src/lib/coding-models.ts");
 const saved = { HIVE_CLAUDE_SUBSCRIPTION_SCOPE: process.env.HIVE_CLAUDE_SUBSCRIPTION_SCOPE, HIVE_CLAUDE_OAUTH_TOKEN: process.env.HIVE_CLAUDE_OAUTH_TOKEN, MEM0_API_KEY: process.env.MEM0_API_KEY };
 try {
   delete process.env.MEM0_API_KEY;
@@ -62,6 +72,7 @@ try {
       let task = createInitialTaskSessionState(1, "claude-test", { createdBy: "owner" });
       task = reduceTaskSession(task, { type: "select-harness", runtime: "claude-code", actor: "owner" }, 2);
       task = reduceTaskSession(task, { type: "connect-repository", actor: "owner", repositoryUrl: "https://github.com/example/repo", repositoryId: 42, repositoryName: "example/repo", repositoryBranch: "main", visibility: "private", installationId: 1, githubUserId: 1, githubLogin: "owner" }, 3);
+      task = reduceTaskSession(task, { type: "set-coding-effort", actor: "owner", effort: "medium" }, 3);
       task = reduceTaskSession(task, { type: "send-message", actor: "owner", body: "Inspect only" }, 4);
       if (subscription) {
         process.env.HIVE_CLAUDE_SUBSCRIPTION_SCOPE = JSON.stringify({ sessionId: task.sessionId, ownerId: "owner", repositoryId: 42 });
@@ -100,6 +111,33 @@ try {
     }
   }
   assert.equal(stopped, 6);
+  subscription = true; fail = false; expectedResume = undefined;
+  const nativeModels = codingModelOptions("gpt-5.6-luna", true);
+  let task = createInitialTaskSessionState(1, "claude-models", { createdBy: "owner" });
+  task = reduceTaskSession(task, { type: "select-harness", runtime: "claude-code", actor: "owner" }, 2);
+  task = reduceTaskSession(task, { type: "connect-repository", actor: "owner", repositoryUrl: "https://github.com/example/repo", repositoryId: 42, repositoryName: "example/repo", repositoryBranch: "main", visibility: "private", installationId: 1, githubUserId: 1, githubLogin: "owner" }, 3);
+  process.env.HIVE_CLAUDE_SUBSCRIPTION_SCOPE = JSON.stringify({ sessionId: task.sessionId, ownerId: "owner", repositoryId: 42 });
+  process.env.HIVE_CLAUDE_OAUTH_TOKEN = "sk-ant-oat01-fixture-not-real";
+  for (const [modelId, effort] of [["claude-opus-4-6", "max"], ["claude-fable-5", "low"], ["claude-fable-5", "xhigh"], ["claude-haiku-4-5", undefined]]) {
+    explicitModel = modelId; explicitEffort = effort;
+    const history = task.workspace.agentSession;
+    task = reduceTaskSession(task, { type: "select-harness", runtime: "claude-code", modelId, actor: "owner" }, 4, [], nativeModels);
+    assert.equal(task.workspace.agentSession, history, "Same engine keeps native history when the model changes");
+    if (effort) task = reduceTaskSession(task, { type: "set-coding-effort", effort, modelId, actor: "owner" }, 5, [], nativeModels);
+    const result = await runHiveCodingTask(task, "owner");
+    task = applyHiveRunResult(task, result, 6);
+    assert.equal(task.workspace.codingModel, modelId, "A successful checkpoint must retain the selected model");
+    expectedResume = resume;
+  }
+  const before = starts;
+  task.workspace.codingModel = "claude-fable-5-1";
+  await assert.rejects(runHiveCodingTask(task, "owner"), /Choose a model available/);
+  task.workspace.codingModel = "claude-opus-4-6";
+  task.workspace.codingEffort = "xhigh";
+  await assert.rejects(runHiveCodingTask(task, "owner"), /supported effort/);
+  assert.equal(starts, before, "Unsupported model/effort must be rejected before starting a sandbox");
+  assert.equal(stopped, 10);
+  console.log("PASS: Opus Max, Fable Low/Extra high and Haiku reach the native runtime without losing resume state; invalid selections never start work.");
   console.log("PASS: Claude shares the runner, streams only public text, preserves file/native checkpoints after success or failure, resumes exactly and never silently changes authentication.");
 } finally {
   for (const [key, value] of Object.entries(saved)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }

@@ -2,6 +2,8 @@
 
 Deliver a working, shareable multiplayer coding agent and an evidence-backed take-home presentation.
 
+**Latest recheck — September 10 Pacific:** the current local working tree passes 179 unit tests and the controlled checks, local Postgres onboarding/authentication/egress tests, lint, typecheck and the explicit Webpack build. A fresh production page preserves the prepared two-file result, its actual Exit 0 / 125-test command, colored Files view and usable narrow-screen Thread. Local changes are not yet integrated with remote typography or deployed; second-account acceptance and the rehearsal/submission gates remain open. See the [dated release recheck and exact evidence boundaries](POST_REVIEW_VERIFICATION.md#september-10-pacific--release-recheck).
+
 ### September 10 owner-requested addition: bounded subagents
 
 After the scope freeze below, Spencer explicitly requested research/review subagents and Codex Desktop-like API controls. The bounded implementation and evidence are recorded in [SUBAGENTS.md](SUBAGENTS.md): two research/review child tasks per turn, inline progress/results and child Stop, using the existing harness and shared conversation. His follow-up removed blanket inheritance restrictions: children reuse the current task's model, tools, skills and permission configuration instead of adding a separate access tier. Commit `e24bbab` is deployed. The September 10 live attempt retained shared state and errors across two browsers, but reached Gateway 429 without an observed child start; delegation/Stop/result acceptance remains open. Both browsers used the same account. No other frozen features are reopened by this addition.

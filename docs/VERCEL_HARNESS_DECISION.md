@@ -1,6 +1,67 @@
 # Vercel Harness decision
 
-Last checked: 2026-09-02
+Current compatibility record checked: 2026-09-10 (local installed packages).
+The original September 2 migration proposal is retained below as history.
+
+## Current decision and SDK compatibility boundaries
+
+Hive now uses Vercel's Harness interface with Codex and Claude Code adapters.
+On September 10, Spencer chose to keep the official Vercel harness rather than
+maintain a separate runtime/bootstrap upgrade just to expose newer model controls.
+The benefit is shared lifecycle and integration infrastructure; the tradeoff is
+that native runtime releases can expose features before the installed adapter
+supports them.
+
+These are **version-specific compatibility limits, not confirmed SDK bugs**.
+Package observations below describe this checkout, not the newest published
+release, production deployment, or every model/account's capabilities.
+
+| Boundary | Verified local evidence | Product impact |
+| --- | --- | --- |
+| Codex Ultra effort | `@ai-sdk/harness-codex` **1.0.100** declares `reasoningEffort` as `low`, `medium`, `high`, `xhigh`, `max` in `dist/index.d.ts`; its `dist/index.js` bridge parameter schema accepts the same values. | Hive does not expose or accept `ultra`. This is not just a missing slider label. |
+| Claude runtime version | `@ai-sdk/harness-claude-code` **1.0.102** ships a `dist/bridge/package.json` and lockfile pinning Claude Agent SDK **0.3.245** and Claude Code **2.1.245**. | Updating a model label or the host CLI does not upgrade the Sandbox runtime. Hive currently exposes Fable 5, not Fable 5.1; Fable 5.1 is not validated on this bundle. |
+| Model-specific capabilities | [The bounded catalog](../src/lib/coding-models.ts) is maintained by Hive, not fetched from the current account's native runtime. | An adapter accepting an effort value does not prove every model or account supports it. Keep each model's menu separate from the transport vocabulary. |
+
+OpenAI documents `ultra` for supported Codex models in its
+[reasoning-effort guidance](https://learn.chatgpt.com/docs/agent-configuration/subagents#choosing-models-and-reasoning).
+That establishes the native feature's existence, not compatibility with Hive's
+installed Vercel adapter. No live Ultra request was made to establish a runtime
+failure; the observed blocker is the installed adapter contract and validation.
+
+**Current handling:** retain the official adapter/bootstrap, cap the picker at
+the supported per-model options, and preserve the existing defaults. Do not
+force unsupported values through type casts, silently relabel Max as Ultra,
+or claim that every menu item has been accepted by a live account.
+
+The existing Codex public-text event mapping is a separate integration decision,
+not a native CLI upgrade; its evidence and scope remain in
+[the streaming diagnosis](STREAMING_DIAGNOSIS.md).
+
+### Revisit on an official adapter or bundled runtime upgrade
+
+1. Inspect the resolved adapter version, exported types, bridge parameter schema,
+   and bundled SDK/CLI lockfile together. A newer package number alone is not
+   acceptance evidence.
+2. Confirm the exact model and effort against the actual runtime/connection.
+   Enable Ultra only for models that expose it; do not add it to every engine.
+3. Update the shared effort validator, per-model catalog, runner/bridge handling,
+   and UI together. Audit the existing Gateway fallback's effort conversion;
+   its current `xhigh`/`max` handling does not cover `ultra`.
+4. Run catalog, route/reducer, picker, and runner regressions. Preserve defaults,
+   explicit selections, queued-work locks, and native history across resume.
+5. With separate authorization for live usage, verify both a new turn and a
+   resumed turn, including request parameters and an inspectable result. Record
+   local checks separately from live acceptance and deployment.
+
+Recheck or retire this dated limitation when those gates pass. Documentation
+alone does not authorize a dependency upgrade, paid run, deployment, or upstream
+bug report.
+
+## Historical migration proposal — September 2, 2026
+
+The remaining sections describe the pre-migration implementation and original
+recommendation, including the then-Codex-only demo scope. They are not a statement
+of the current runtime selection or outstanding migration work.
 
 ## Short answer
 

@@ -47,7 +47,10 @@ mock.module("@vercel/sandbox", { namedExports: {
   Sandbox: { async getOrCreate() { return persistentSandbox; }, async get() { return persistentSandbox; } },
 } });
 mock.module("@ai-sdk/sandbox-vercel", { namedExports: { createVercelSandbox() { return {}; } } });
-mock.module("@ai-sdk/harness-codex", { namedExports: { createCodex() { return {}; } } });
+mock.module("@ai-sdk/harness-codex", { namedExports: { createCodex(settings) {
+  assert.equal(settings.reasoningEffort, scenario.effort ?? "low", "Shared effort must reach Codex, not just the UI");
+  return {};
+} } });
 mock.module(new URL("../src/lib/github-app.ts", import.meta.url).href, {
   namedExports: { async getRepositoryCloneCredentials() { return {}; } },
 });
@@ -118,6 +121,8 @@ for (const options of [
   { name: "git error is not displayed as a code diff", fail: true, artifactFailure: "git-error" },
   { name: "checkpoint failure still retains command and file evidence", fail: true, checkpointFailure: true },
   { name: "normal completion still retains all commands and reviewable files", fail: false },
+  { name: "medium effort reaches the Codex harness", fail: false, effort: "medium" },
+  { name: "high effort reaches the Codex harness", fail: false, effort: "high" },
   { name: "an explicit coding model overrides the free-tier coding default", fail: false, modelOverride: "openai/controlled-model-override" },
   { name: "the coding runner supplies server-owned repository recall before the native prompt", fail: false, memoryRecall: true },
 ]) {
@@ -132,7 +137,7 @@ for (const options of [
     return Response.json({ results: [{ id: "m1", memory: "RUNNER_MEMORY_CONVENTION", metadata: { hive_scope: repositoryMemoryId({ installationId: 1, repositoryId: 1 }), author_name: "Fixture Teammate" } }] });
   };
   sandboxStopped = false;
-  const initial = { ...running, workspace: { ...running.workspace, ...previousSnapshot } };
+  const initial = { ...running, workspace: { ...running.workspace, codingEffort: options.effort, ...previousSnapshot } };
   const publicText = [];
   let failure;
   let result;

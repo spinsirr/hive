@@ -25,15 +25,15 @@ export function RunsPane({ commands }: { commands: WorkspaceState["commands"] })
             key={`${index}-${command.command}`}
           >
             <summary className="grid cursor-pointer list-none grid-cols-[24px_minmax(0,1fr)_auto_auto_16px] items-center gap-3 px-4 py-3.5 transition hover:bg-[#fafafa] [&::-webkit-details-marker]:hidden">
-              <span className="grid size-6 place-items-center rounded-full border border-[#dedede] font-mono text-[9px] text-[#737373]">
+              <span className="grid size-6 place-items-center rounded-full border border-[#dedede] text-xs text-[#737373]">
                 {index + 1}
               </span>
-              <code className="truncate font-mono text-[12px] text-[#292929]">
+              <code className="truncate font-mono text-xs text-[#292929]">
                 {command.command}
               </code>
               <span
                 className={cn(
-                  "flex items-center gap-1.5 text-[10px] font-medium",
+                  "flex items-center gap-1.5 text-xs font-medium",
                   exitedCleanly ? "text-[#3d3d3d]" : "text-[#737373]",
                 )}
               >
@@ -45,12 +45,12 @@ export function RunsPane({ commands }: { commands: WorkspaceState["commands"] })
                 />
                 {command.exitCode === null ? command.resultReceived ? "Exit unavailable" : "Incomplete" : `Exit ${command.exitCode}`}
               </span>
-              <span className="font-mono text-[10px] text-[#999]">
+              <span className="text-xs tabular-nums text-[#999]">
                 {command.durationMs ? `${command.durationMs}ms` : "—"}
               </span>
               <ChevronDown className="size-3.5 text-[#999] transition-transform group-open:rotate-180" />
             </summary>
-            <pre className="overflow-x-auto border-t border-[#242424] bg-[#0a0a0a] px-4 py-4 font-mono text-[11px] leading-5 text-[#d8d8d8]">
+            <pre className="overflow-x-auto border-t border-[#242424] bg-[#0a0a0a] px-4 py-4 font-mono text-xs leading-5 text-[#d8d8d8]">
               {command.output || "No output"}
             </pre>
           </details>

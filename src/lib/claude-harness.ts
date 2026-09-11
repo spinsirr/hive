@@ -1,9 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createClaudeCode, type ClaudeCodeHarnessSettings } from "@ai-sdk/harness-claude-code";
 import type { HarnessV1RequestTransformation } from "@ai-sdk/harness";
-
-export const CLAUDE_GATEWAY_MODEL = "anthropic/claude-sonnet-4.6";
-export const CLAUDE_SUBSCRIPTION_MODEL = "claude-sonnet-4-6";
+import type { CodingEffort } from "./coding-effort.ts";
 
 /** Only the Sandbox egress layer receives this credential, never the VM. */
 export function claudeOAuthTransformations(token: string, placeholder: string): HarnessV1RequestTransformation[] {
@@ -19,6 +17,9 @@ export function claudeOAuthTransformations(token: string, placeholder: string): 
 export function createHiveClaude(settings: {
   gatewayAuth: NonNullable<ClaudeCodeHarnessSettings["auth"]>;
   subscriptionToken?: string;
+  effort?: CodingEffort;
+  supportsEffort?: boolean;
+  adaptiveRequired?: boolean;
   mcpServers?: ClaudeCodeHarnessSettings["mcpServers"];
 }) {
   const placeholder = settings.subscriptionToken ? `sk-ant-oat01-hive-${randomUUID()}` : "";
@@ -27,7 +28,9 @@ export function createHiveClaude(settings: {
     auth: settings.subscriptionToken ? {} : settings.gatewayAuth,
     mcpServers: settings.mcpServers,
     maxTurns: 30,
-    thinking: { type: "disabled" },
+    // Preserve the low-cost default; higher effort enables adaptive thinking.
+    thinking: { type: settings.adaptiveRequired ? "adaptive" : settings.supportsEffort === false || !settings.effort || settings.effort === "low" ? "disabled" : "adaptive" },
+    ...(settings.supportsEffort === false ? {} : { effort: settings.effort ?? "low" }),
     env: {
       CLAUDE_CODE_OAUTH_TOKEN: placeholder,
       CLAUDE_CODE_USE_BEDROCK: "", CLAUDE_CODE_USE_VERTEX: "", CLAUDE_CODE_USE_FOUNDRY: "",

@@ -2,12 +2,13 @@
 
 import { Autocomplete } from "@base-ui/react/autocomplete";
 import { useEffect, useRef, useState } from "react";
+import { cn } from "@/lib/utils";
 
 import { shouldSubmitMessage } from "@/lib/message-keyboard";
 import type { TeamMember } from "@/lib/task-session";
 import { activeTeammateMention, insertTeammateMention, matchingTeammates, teammateMentionHandle } from "@/lib/teammate-mention";
 
-export function MentionInput({ value, onChange, onSubmit, members, currentMember, disabled, readOnly, label = "Ask Hive or mention a teammate", placeholder, maxLength, autoFocus = false }: {
+export function MentionInput({ value, onChange, onSubmit, members, currentMember, disabled, readOnly, label = "Ask Hive or mention a teammate", placeholder, maxLength, autoFocus = false, className }: {
   value: string;
   onChange: (value: string) => void;
   onSubmit: () => void;
@@ -19,6 +20,7 @@ export function MentionInput({ value, onChange, onSubmit, members, currentMember
   placeholder?: string;
   maxLength?: number;
   autoFocus?: boolean;
+  className?: string;
 }) {
   const textarea = useRef<HTMLTextAreaElement>(null);
   const initiallyFocused = useRef(false);
@@ -68,7 +70,7 @@ export function MentionInput({ value, onChange, onSubmit, members, currentMember
       <Autocomplete.Input
         aria-label={label}
         aria-multiline="true"
-        className="field-sizing-content max-h-[min(12rem,30dvh)] min-h-[5.25rem] min-w-0 flex-1 resize-none bg-transparent px-2 py-2 text-base leading-6 outline-none placeholder:text-[#999] sm:text-sm"
+        className={cn("field-sizing-content max-h-[min(12rem,30dvh)] min-h-[5.25rem] min-w-0 flex-1 resize-none bg-transparent px-2 py-2 text-base leading-6 outline-none placeholder:text-[#999] sm:text-sm", className)}
         onBlur={() => setFocused(false)}
         onCompositionEnd={() => setComposing(false)}
         onCompositionStart={() => setComposing(true)}
@@ -118,10 +120,10 @@ export function MentionInput({ value, onChange, onSubmit, members, currentMember
             <Autocomplete.List aria-label="Mention a teammate" className="max-h-52 overflow-y-auto">
               {(member: TeamMember) => (
                 <Autocomplete.Item className="flex cursor-default items-center gap-2.5 rounded-md px-2.5 py-2 outline-none data-highlighted:bg-[#f2f2f2]" key={member.id} value={member}>
-                  <span className="grid size-7 shrink-0 place-items-center rounded-full border border-[#dedede] bg-[#fafafa] text-[10px] font-medium">{member.initials}</span>
+                  <span className="grid size-7 shrink-0 place-items-center rounded-full border border-[#dedede] bg-[#fafafa] text-xs font-medium">{member.initials}</span>
                   <span className="min-w-0">
                     <span className="block truncate text-xs font-medium text-[#171717]">{member.name}</span>
-                    <span className="block truncate text-[11px] text-[#737373]">@{teammateMentionHandle(member)}</span>
+                    <span className="block truncate text-xs text-[#737373]">@{teammateMentionHandle(member)}</span>
                   </span>
                 </Autocomplete.Item>
               )}

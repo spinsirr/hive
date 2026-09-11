@@ -13,9 +13,9 @@ import type { Experimental_SandboxSession } from "ai";
 import { hiveAgentFailureMessage, HiveAgentError } from "@/lib/hive-agent";
 import { consumeAgentText } from "@/lib/agent-stream";
 import { createHiveCodex } from "@/lib/codex-harness";
-import { createHiveClaude, CLAUDE_GATEWAY_MODEL, CLAUDE_SUBSCRIPTION_MODEL } from "@/lib/claude-harness";
+import { createHiveClaude } from "@/lib/claude-harness";
 import { claudeSubscriptionToken } from "@/lib/claude-subscription";
-import { SUBSCRIPTION_MODEL } from "@/lib/codex-subscription-credentials";
+import { codexModel, codingModelOptions, selectedCodingModel } from "@/lib/coding-models";
 import { getRepositoryCloneCredentials } from "@/lib/github-app";
 import { buildHivePrompt } from "@/lib/hive-prompt";
 import { createHiveMemory } from "@/lib/hive-memory";
@@ -38,7 +38,6 @@ import {
   type WorkspaceFile,
 } from "@/lib/task-session";
 
-const DEFAULT_MODEL = "openai/gpt-5.1-codex-mini";
 const HARNESS_BRIDGE_PORT = 4319;
 const MAX_OUTPUT_CHARS = 20_000;
 const MAX_DIFF_CHARS = 60_000;
@@ -294,6 +293,13 @@ export async function runHiveCodingTask(
     );
   const runtime = taskSession.workspace.agentSession?.runtime ?? "codex";
   const claudeToken = runtime === "claude-code" ? claudeSubscriptionToken(taskSession, process.env) : undefined;
+  const model = selectedCodingModel(
+    codingModelOptions(codexModel(process.env.HIVE_CODEX_MODEL, auth?.preferSubscription), Boolean(claudeToken)),
+    runtime, taskSession.workspace.codingModel,
+  );
+  if (!model) throw new HiveAgentError("Choose a model available with this task's current connection.", new Error("Selected coding model is unavailable."));
+  const effort = model.efforts.length ? taskSession.workspace.codingEffort ?? model.efforts[0] : undefined;
+  if (effort && !model.efforts.includes(effort)) throw new HiveAgentError("Choose a supported effort for this model.", new Error("Selected coding effort is unavailable."));
   const failureMessage = (error: unknown) => hiveAgentFailureMessage(error, claudeToken ? "claude-subscription" : "gateway");
   const authentication = runtime === "claude-code" ? (claudeToken ? "claude-subscription" : "gateway") : undefined;
   if (runtime === "claude-code" && taskSession.workspace.agentSession?.resumeFrom &&
@@ -347,6 +353,9 @@ export async function runHiveCodingTask(
     const sandbox = createVercelSandbox({ sandbox: persistentSandbox });
     const harness: HarnessV1 = runtime === "claude-code" ? createHiveClaude({
         gatewayAuth,
+        effort,
+        supportsEffort: model.efforts.length > 0,
+        adaptiveRequired: model.thinking === "adaptive-required",
         subscriptionToken: claudeToken,
         ...(auth?.toolConnection ? { mcpServers: { hive: {
           type: "http", url: auth.toolConnection.url,
@@ -354,14 +363,14 @@ export async function runHiveCodingTask(
         } } } : {}),
       }) : createHiveCodex({
         auth: gatewayAuth,
-        reasoningEffort: "low",
+        reasoningEffort: effort,
         webSearch: false,
         codexConfig: { model_verbosity: "low" },
         // Only a short-lived, run-scoped capability enters the VM. The Mem0
         // credential and database access remain in the authenticated host route.
         ...(auth?.toolConnection ? { mcpServers: { hive: {
           url: auth.toolConnection.url,
-          http_headers: { Authorization: `Bearer ${auth.toolConnection.token}`, "X-Hive-Control": auth.toolConnection.controlCapability, "X-Hive-Run-Id": auth.toolConnection.runId, ...(auth.preferSubscription ? { "X-Hive-Auth": "prefer-chatgpt", "X-Hive-Gateway-Model": process.env.HIVE_CODEX_MODEL?.trim() || DEFAULT_MODEL } : {}) },
+          http_headers: { Authorization: `Bearer ${auth.toolConnection.token}`, "X-Hive-Control": auth.toolConnection.controlCapability, "X-Hive-Run-Id": auth.toolConnection.runId, ...(auth.preferSubscription ? { "X-Hive-Auth": "prefer-chatgpt", "X-Hive-Gateway-Model": codexModel(process.env.HIVE_CODEX_MODEL) } : {}) },
           startup_timeout_sec: 10,
           tool_timeout_sec: 15,
         } } } : {}),
@@ -371,9 +380,7 @@ export async function runHiveCodingTask(
     const agent = new HarnessAgent({
       id: "hive-coding-agent",
       harness,
-      model: runtime === "claude-code"
-        ? claudeToken ? CLAUDE_SUBSCRIPTION_MODEL : CLAUDE_GATEWAY_MODEL
-        : auth?.preferSubscription ? SUBSCRIPTION_MODEL : process.env.HIVE_CODEX_MODEL?.trim() || DEFAULT_MODEL,
+      model: model.modelId,
       ...(runtime === "claude-code" ? {
         // Hive's child-control protocol currently belongs to Codex. Do not
         // expose an untracked second delegation system through Claude's Agent tool.

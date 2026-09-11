@@ -3,6 +3,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { getSessionMember, HIVE_SESSION_COOKIE } from "@/lib/auth-session";
 import { createReplyWriter } from "@/lib/agent-stream";
 import { codeReferenceSchema } from "@/lib/code-reference";
+import { isCodingEffort } from "@/lib/coding-effort";
 import { HiveAgentError } from "@/lib/hive-agent";
 import { runHiveConversation } from "@/lib/hive-conversation";
 import { hiveErrorCopy } from "@/lib/hive-error-copy";
@@ -78,6 +79,7 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
   if (
     payload.type !== "send-message" &&
     payload.type !== "select-harness" &&
+    payload.type !== "set-coding-effort" &&
     payload.type !== "annotate-message" &&
     payload.type !== "annotate-code" &&
     payload.type !== "steer-message-annotation" &&
@@ -96,6 +98,14 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
   if (payload.type === "select-harness" &&
     (!("runtime" in payload) || (payload.runtime !== "codex" && payload.runtime !== "claude-code"))) {
     return NextResponse.json({ error: "Choose Codex or Claude Code" }, { status: 400 });
+  }
+
+  if (payload.type === "set-coding-effort" && (!("effort" in payload) || !isCodingEffort(payload.effort))) {
+    return NextResponse.json({ error: "Choose a supported thinking effort" }, { status: 400 });
+  }
+  if ((payload.type === "select-harness" || payload.type === "set-coding-effort") &&
+    ("modelId" in payload && (typeof payload.modelId !== "string" || !payload.modelId || payload.modelId.length > 120))) {
+    return NextResponse.json({ error: "Choose a supported model" }, { status: 400 });
   }
 
   if (

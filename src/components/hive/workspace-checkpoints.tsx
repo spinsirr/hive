@@ -73,7 +73,7 @@ export function WorkspaceCheckpoints({ sessionId, revision, onRestored }: { sess
             <History className="mt-0.5 size-4 shrink-0 text-[#737373]" />
             <div className="min-w-0 flex-1">
               <p className="text-xs font-medium">{dateLabel(checkpoint.createdAt)}{checkpoint.current ? <span className="ml-2 font-normal text-[#737373]">Current</span> : null}</p>
-              <p className="mt-1 truncate font-mono text-[11px] text-[#737373]" title={checkpoint.id}>{checkpoint.id}</p>
+              <p className="mt-1 truncate text-xs text-[#737373]" title={checkpoint.id}>{checkpoint.id}</p>
               {!checkpoint.restorable ? <p className="mt-1 text-xs text-[#737373]">No matching agent checkpoint</p> : null}
             </div>
             <Button aria-label={`Restore checkpoint from ${dateLabel(checkpoint.createdAt)}`} className="h-7 shrink-0 text-xs" disabled={!checkpoint.restorable || Boolean(current.data?.blockedReason) || restoring} onClick={() => { setRestoreError(""); setConfirm({ request: { id: crypto.randomUUID(), snapshotId: checkpoint.id, version: current.data!.version }, createdAt: checkpoint.createdAt }); }} size="sm" variant="outline"><RotateCcw className="size-3" /> Restore</Button>

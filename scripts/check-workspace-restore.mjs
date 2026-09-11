@@ -59,6 +59,8 @@ try {
   const { GET: files } = await import("../src/app/api/sessions/[sessionId]/files/route.ts");
   const post = (body, origin = "https://hive.example") => POST(new NextRequest("https://hive.example/api/sessions/restore-qa/checkpoints", { method: "POST", headers: { "Content-Type": "application/json", origin }, body: JSON.stringify(body) }), { params: Promise.resolve({ sessionId: "restore-qa" }) });
   fresh();
+  session.workspace.codingModel = "gpt-5.6-luna";
+  session.workspace.codingEffort = "xhigh";
   const input = { id: "8d723141-b7ab-46fc-b6b8-2ff1e1a8ba4f", snapshotId: "snap-old", version: session.version };
   admitted = false; assert.equal((await post(input)).status, 401); admitted = true;
   assert.equal((await post(input, "https://attacker.example")).status, 403);
@@ -69,6 +71,8 @@ try {
   const response = await post({ ...input, by: { id: "forged-author" } });
   assert.equal(response.status, 200);
   assert.equal(session.workspace.files[0].content, "old");
+  assert.equal(session.workspace.codingModel, "gpt-5.6-luna");
+  assert.equal(session.workspace.codingEffort, "xhigh", "Restoring files/history must not undo the team's current model preferences");
   assert.deepEqual(session.workspace.agentSession.resumeFrom.data, { thread: "old", private: "NATIVE SECRET" });
   assert.equal(session.workspace.lastRestore.by, "github-101");
   assert.equal(sourceSnapshotId, "snap-old");

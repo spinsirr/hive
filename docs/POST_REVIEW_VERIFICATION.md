@@ -4,6 +4,27 @@ Initial tested revision: `30f692e626c2a3de75645566ace2c286f84456f7` (Fable's pus
 
 **Latest status:** the owner subsequently requested the timestamp fix. The [local follow-up](#follow-up-local-timestamp-fix) passes the original reproduction and the full test suite; `e24bbab` deployed it and the [fresh-page production check](#follow-up-production-timestamp-check) passed. The original test round's findings below remain dated evidence, not the current timestamp verdict.
 
+## September 10 Pacific — release recheck
+
+Observed through **2026-09-11 01:52 UTC**. Local checks used the working tree based on `3d11457`, including the uncommitted model/effort controls. They are not evidence that those controls have been deployed.
+
+| Check | Result and scope |
+| --- | --- |
+| Full local suite | Exit 0: 179 unit tests, 8 memory checks, hydration scenarios and the remaining controlled runner/component regressions |
+| Lint, typecheck and diff check | Exit 0 |
+| Production build | `pnpm build --webpack` exited 0; no default-Turbopack build pass is claimed |
+| First login, task creation and access isolation | `test:onboarding` exited 0 against disposable local Postgres and actual routes, with the GitHub/cookie boundary controlled |
+| Authentication storage and refresh | `test:auth` exited 0, including 24 unit tests and real local Postgres checks |
+| Presence and data transfer | `test:session-egress` exited 0 with actual loopback WebSockets/Postgres; typing caused zero task reads, a 31-second idle interval caused zero table queries, and reconnect read one public task snapshot |
+
+The database checks used loopback-only disposable databases, not production Neon. No model or Mem0 request was sent during this recheck.
+
+A fresh authenticated production page for the [prepared acceptance task](https://hive-roan-mu.vercel.app/sessions/label-the-return-to-latest-messa-qvezdg) reached **Live / 1 online** as Spinsirr. It retained the attributed discussion and two-file diff. Expanding Runs showed the actual saved `pnpm test && pnpm typecheck && git diff --check` command, **Exit 0**, and **125 sandbox-revision tests**. That retained result is distinct from the 179 current local unit tests above. Files finished loading with a full workspace tree, file-type icons and colored Monaco syntax highlighting. At **375 × 812**, the invitation control remained visible and the existing one-reply Thread opened with its reply composer and close control. No reply, steer, approval, reset, restore or new execution was submitted.
+
+Publication status was checked separately: the repository remains private. Remote `main` was `3239afe` (the merged typography PR), with a successful Vercel status. Local `3d11457` and remote `main` have diverged; the remote typography branch did not include the local Claude integration. The completed, uncommitted CI work in the shared checkout was also preserved. This recheck does not merge, commit or publish either set of changes.
+
+**Still open:** integration and deployment of the current local changes, fresh second-account production acceptance, live subagent acceptance as recorded in [SUBAGENTS.md](SUBAGENTS.md), the timed narrated rehearsal, and owner-controlled reviewer access/submission timing. A second-account login was requested; the inspected Chrome profile had no Hive tab. Do not count the retained Joseph-authored history as a fresh second-account login.
+
 ## Result
 
 | Check | Result | Boundary |

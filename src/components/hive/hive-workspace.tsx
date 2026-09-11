@@ -15,7 +15,6 @@ import {
   Play,
   RotateCcw,
   Search,
-  Send,
   WifiOff,
   X,
 } from "lucide-react";
@@ -27,12 +26,10 @@ import {
   ConversationContent,
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
-import { Message, MessageContent } from "@/components/ai-elements/message";
-import { AgentResponse } from "@/components/hive/agent-response";
+import { ConversationComposer } from "@/components/hive/conversation-composer";
+import { ConversationMessage } from "@/components/hive/conversation-message";
 import { DiffPane } from "@/components/hive/diff-pane";
-import { MentionInput } from "@/components/hive/mention-input";
 import { MessageThread } from "@/components/hive/message-thread";
-import { MessageThreadPreview } from "@/components/hive/message-thread-preview";
 import { MessageTime } from "@/components/hive/message-time";
 import { WorkspaceSplit } from "@/components/hive/workspace-split";
 import { WorkspaceFiles } from "@/components/hive/workspace-files";
@@ -43,13 +40,12 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useSharedSession } from "@/hooks/use-shared-session";
-import { SubagentActivity } from "@/components/hive/subagent-activity";
 import { HiveMark } from "@/components/hive/hive-mark";
-import { CodingAgentSelect } from "@/components/hive/coding-agent-select";
 import { useMessageDraft } from "@/hooks/use-message-draft";
 import { useStalledRun } from "@/hooks/use-stalled-run";
 import type { MessageSubmission } from "@/lib/message-draft";
-import { codeReferenceLabel } from "@/lib/code-reference";
+import type { CodingEffort } from "@/lib/coding-effort";
+import type { CodingModelOption } from "@/lib/coding-models";
 import { displayHiveErrorMessage } from "@/lib/hive-error-copy";
 import { workspaceReadRevision } from "@/lib/workspace-files";
 import {
@@ -58,11 +54,11 @@ import {
   canApplyNextSteer,
   canApproveChanges,
   canSelectHarness,
+  canSetCodingEffort,
   type CodingRuntime,
   isHiveRunActive,
   conversationMessages,
   isDirectedAtTeammate,
-  MESSAGE_BODY_LIMIT,
   STALLED_RUN_AFTER_MS,
   type MemberId,
   type RepositoryState,
@@ -108,7 +104,7 @@ function OnlineMembers({
         <span
           aria-label={`${member.name} · online`}
           className={cn(
-            "relative grid size-7 place-items-center rounded-full border border-[#d8d8d8] bg-white text-[9px] font-semibold",
+            "relative grid size-7 place-items-center rounded-full border border-[#d8d8d8] bg-white text-xs font-semibold",
             index > 0 && "-ml-1.5",
             index === 0 && "bg-[#171717] text-white",
           )}
@@ -137,9 +133,6 @@ function ProductHeader({
   onCopyInvite,
   onSignOut,
   onReset,
-  codingRuntime,
-  harnessLocked,
-  onSelectHarness,
 }: {
   activeMembers: MemberId[];
   copied: boolean;
@@ -153,9 +146,6 @@ function ProductHeader({
   onCopyInvite: () => void;
   onSignOut: () => void;
   onReset: () => void;
-  codingRuntime: CodingRuntime;
-  harnessLocked: boolean;
-  onSelectHarness: (runtime: CodingRuntime) => void;
 }) {
   return (
     <header className="flex h-13 shrink-0 items-center justify-between gap-3 border-b border-[#e8e8e8] bg-white px-3 sm:px-4">
@@ -167,14 +157,13 @@ function ProductHeader({
         <span className="text-[#d4d4d4]">/</span>
         <div className="min-w-0">
           <p className="truncate text-xs font-medium text-[#3d3d3d]">{sessionTitle}</p>
-          <p className="hidden truncate text-[10px] text-[#929292] md:block">
+          <p className="hidden truncate text-xs text-[#929292] md:block">
             {repository?.name ?? "Repository not attached"}
           </p>
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-1 sm:gap-2">
-        <CodingAgentSelect value={codingRuntime} disabled={harnessLocked} onChange={onSelectHarness} />
-        <div className="hidden items-center gap-1.5 text-[11px] text-[#777] sm:flex">
+        <div className="hidden items-center gap-1.5 text-xs text-[#777] sm:flex">
           {syncError ? (
             <WifiOff className="size-3" />
           ) : (
@@ -205,7 +194,7 @@ function ProductHeader({
           title={`Sign out @${currentMember.githubLogin ?? currentMember.shortName}`}
           variant="outline"
         >
-          <span className="grid size-4 place-items-center rounded-full bg-[#171717] text-[7px] font-semibold text-white">
+          <span className="grid size-6 shrink-0 place-items-center rounded-full bg-[#171717] text-xs font-semibold text-white">
             {currentMember.initials}
           </span>
           <span className="hidden sm:inline">{currentMember.shortName}</span>
@@ -234,22 +223,22 @@ function AnnotationCard({ members, queued, queuedBy, queuePosition, steered, ste
     <div className="mx-4 mb-3 overflow-hidden rounded-lg border border-[#d5d5d5] bg-white shadow-[0_8px_24px_rgba(0,0,0,0.05)]">
       <div className="flex items-center justify-between border-b border-[#eeeeee] px-3 py-2">
         <div className="flex items-center gap-2">
-          <span className="grid size-5 place-items-center rounded-full bg-[#171717] text-[7px] font-semibold text-white">MC</span>
-          <span className="text-[11px] font-medium">Maya annotated Preview</span>
+          <span className="grid size-6 shrink-0 place-items-center rounded-full bg-[#171717] text-xs font-semibold text-white">MC</span>
+          <span className="text-xs font-medium">Maya annotated Preview</span>
         </div>
-        <span className="text-[11px] text-[#8a8a8a]">Preview</span>
+        <span className="text-xs text-[#8a8a8a]">Preview</span>
       </div>
       <div className="space-y-2 px-3 py-3">
-        <p className="text-[13px] font-medium leading-5">Keep the parent expanded, but highlight only the active child route.</p>
+        <p className="text-sm font-medium leading-5">Keep the parent expanded, but highlight only the active child route.</p>
       </div>
       <div className="flex items-center justify-between gap-1.5 border-t border-[#eeeeee] bg-[#fafafa] px-2.5 py-2">
         {steered ? (
-          <span className="flex items-center gap-1.5 px-1 text-[11px] font-medium"><Check className="size-3.5" /> Steered by {steeredBy ? resolveMember(steeredBy, members).shortName : "team"} · added to run</span>
+          <span className="flex items-center gap-1.5 px-1 text-xs font-medium"><Check className="size-3.5" /> Steered by {steeredBy ? resolveMember(steeredBy, members).shortName : "team"} · added to run</span>
         ) : queued ? (
-          <span className="flex items-center gap-1.5 px-1 text-[11px] font-medium"><span className="grid size-4 place-items-center rounded bg-[#171717] text-[9px] text-white">{queuePosition ?? "·"}</span> Queued by {queuedBy ? resolveMember(queuedBy, members).shortName : "team"}</span>
+          <span className="flex items-center gap-1.5 px-1 text-xs font-medium"><span className="grid h-5 min-w-5 shrink-0 place-items-center rounded bg-[#171717] px-1 text-xs text-white">{queuePosition ?? "·"}</span> Queued by {queuedBy ? resolveMember(queuedBy, members).shortName : "team"}</span>
         ) : (
           <>
-            <span className="px-1 text-[11px] text-[#777]">{stage === "running" ? "Hive is working" : "Start a follow-up turn"}</span>
+            <span className="px-1 text-xs text-[#777]">{stage === "running" ? "Hive is working" : "Start a follow-up turn"}</span>
             <div className="flex items-center gap-1.5">
               <Button className="h-7 rounded-md text-xs" size="sm" variant="ghost">Reply</Button>
               <Button className="h-7 rounded-md bg-[#171717] px-2.5 text-xs text-white" onClick={onSteer} size="sm">{stage === "waiting" ? "Steer Hive" : "Queue steer"}</Button>
@@ -276,11 +265,11 @@ function SteeringQueue({ activeSteer, canApply, items, members, onApply, onMove,
     <div className="shrink-0 border-b border-[#dedede] bg-[#f7f7f7] px-3 py-2">
       <div className="mb-1.5 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-[11px] font-semibold">Queued steering</span>
-          <span className="grid min-w-4 place-items-center rounded bg-[#171717] px-1 text-[9px] text-white">{items.length}</span>
+          <span className="text-xs font-semibold">Queued steering</span>
+          <span className="grid min-w-4 place-items-center rounded bg-[#171717] px-1 text-xs text-white">{items.length}</span>
         </div>
         {items.length > 0 ? (
-          <Button className="h-7 rounded px-2 text-[11px]" disabled={!canApply} onClick={onApply} size="sm" variant="outline">
+          <Button className="h-7 rounded px-2 text-xs" disabled={!canApply} onClick={onApply} size="sm" variant="outline">
             <Play className="size-3" /> Apply next steer
           </Button>
         ) : null}
@@ -288,7 +277,7 @@ function SteeringQueue({ activeSteer, canApply, items, members, onApply, onMove,
       {activeSteer ? (
         <div className="mb-1.5 flex items-center gap-2 border border-[#171717] bg-[#171717] px-2 py-1.5 text-white">
           <span className="size-1.5 animate-pulse rounded-full bg-white" />
-          <span className="min-w-0 flex-1 truncate text-[11px]">Applying {resolveMember(activeSteer.authorId, members).shortName}’s steer</span>
+          <span className="min-w-0 flex-1 truncate text-xs">Applying {resolveMember(activeSteer.authorId, members).shortName}’s steer</span>
         </div>
       ) : null}
       <div className="max-h-28 space-y-1 overflow-y-auto">
@@ -296,10 +285,10 @@ function SteeringQueue({ activeSteer, canApply, items, members, onApply, onMove,
           const member = resolveMember(item.authorId, members);
           return (
             <div className="group/queue flex items-center gap-2 border border-[#e3e3e3] bg-white px-2 py-1.5" key={item.id}>
-              <span className="grid size-5 shrink-0 place-items-center rounded-sm bg-[#171717] text-[9px] text-white">{index + 1}</span>
+              <span className="grid h-5 min-w-5 shrink-0 place-items-center rounded-sm bg-[#171717] px-1 text-xs text-white">{index + 1}</span>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-[12px] font-medium">{item.source.kind === "message-thread" ? item.sourceLabel : item.body}</p>
-                <p className="mt-0.5 truncate text-[11px] text-[#8a8a8a]">{member.shortName}</p>
+                <p className="truncate text-xs font-medium">{item.source.kind === "message-thread" ? item.sourceLabel : item.body}</p>
+                <p className="mt-0.5 truncate text-xs text-[#8a8a8a]">{member.shortName}</p>
               </div>
               <div className="flex items-center opacity-0 transition group-hover/queue:opacity-100 group-focus-within/queue:opacity-100">
                 <button aria-label={`Move steer ${index + 1} up`} className="grid size-5 place-items-center text-[#737373] hover:bg-[#f2f2f2] hover:text-[#171717] disabled:opacity-25" disabled={index === 0} onClick={() => onMove(item.id, "up")} type="button"><ArrowUp className="size-3" /></button>
@@ -314,7 +303,7 @@ function SteeringQueue({ activeSteer, canApply, items, members, onApply, onMove,
   );
 }
 
-function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, runActive, runStalled, onRecoverRun, queued, queuedBy, queuePosition, steered, steeredBy, steeringQueue, currentMember, disabled, members, messages, onAdvance, onOpenThread, onSteerReply, selectedThreadId, onMoveSteer, onRemoveSteer, onSteer, onSend, onTyping, stage, typingMembers, workspaceAnnotation, compact = false }: {
+function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, runActive, runStalled, onRecoverRun, queued, queuedBy, queuePosition, steered, steeredBy, steeringQueue, currentMember, disabled, members, messages, onAdvance, onOpenThread, onSteerReply, selectedThreadId, onMoveSteer, onRemoveSteer, onSteer, onSend, onTyping, stage, typingMembers, workspaceAnnotation, codingRuntime, codingModel, codingModels, harnessLocked, harnessDisabled, onSelectHarness, effort, effortLocked, onEffortChange, compact = false }: {
   sessionId: string;
   activeMembers: MemberId[];
   activeSteer?: ActiveSteer;
@@ -344,6 +333,15 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
   stage: RunStage;
   typingMembers: MemberId[];
   workspaceAnnotation: string;
+  codingRuntime: CodingRuntime;
+  codingModel?: string;
+  codingModels?: CodingModelOption[];
+  harnessLocked: boolean;
+  harnessDisabled: boolean;
+  onSelectHarness: (runtime: CodingRuntime, modelId: string) => void;
+  effort: CodingEffort;
+  effortLocked: boolean;
+  onEffortChange: (effort: CodingEffort, modelId?: string) => void;
   compact?: boolean;
 }) {
   const deliveredIds = useMemo(() => new Set(
@@ -366,95 +364,62 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
         <div className="flex items-center gap-2">
           <MessageSquare className="size-3.5 text-[#666]" />
           <h2 className="text-xs font-semibold">Task conversation</h2>
-          <span className="text-[11px] text-[#8a8a8a]">{activeMembers.length} online</span>
+          <span className="text-xs text-[#8a8a8a]">{activeMembers.length} online</span>
         </div>
       </div>
       <SteeringQueue activeSteer={activeSteer} canApply={canApplySteer} items={steeringQueue} members={members} onApply={onAdvance} onMove={onMoveSteer} onRemove={onRemoveSteer} />
       <Conversation className="min-h-0 flex-1">
-        <ConversationContent className={cn("gap-5 px-3 py-5 sm:px-5 sm:py-6", compact && "gap-4")}>
+        <ConversationContent className={cn("gap-7 px-4 py-5 sm:px-6 sm:py-7", compact && "gap-5")}>
           {messages.map((message) => {
-            const isCurrentMember = message.memberId === currentMember;
-            const hasReplies = Boolean(message.annotations?.length);
             if (message.status === "error") {
               return (
                 <div
-                  className="flex items-center gap-2 px-1 text-[11px] text-[#8a8a8a]"
+                  className="flex items-center gap-2 px-1 text-xs text-[#8a8a8a]"
                   key={message.id}
                   role="status"
                 >
                   <WifiOff className="size-3 shrink-0" />
                   <span>{displayHiveErrorMessage(message.body)}</span>
-                  <MessageTime className="text-[10px] text-[#b0b0b0]" message={message} />
+                  <MessageTime className="text-xs text-[#b0b0b0]" message={message} />
                 </div>
               );
             }
             return (
-              <Message className={cn("min-w-0 max-w-full gap-2 rounded-lg", selectedThreadId === message.id && "outline-1 outline-offset-8 outline-[#e0e0e0]")} from={message.role === "agent" || !isCurrentMember ? "assistant" : "user"} key={message.id}>
-                <div className={cn("flex items-center gap-2", isCurrentMember && "justify-end")}>
-                  {message.role === "agent" ? <HiveMark className="size-5 rounded-full border border-[#dedede]" light /> : <span className="grid size-5 place-items-center rounded-full border border-[#dedede] bg-[#fafafa] text-[8px] font-semibold">{message.initials}</span>}
-                  <span className="text-[12px] font-medium">{message.name}</span>
-                  <MessageTime className="text-[10px] text-[#999]" message={message} />
-                  {!disabled && message.status !== "streaming" ? (
-                    <button
-                      aria-label={`Reply in thread to ${message.name}'s message`}
-                      className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-[#8f8f8f] transition hover:bg-[#f2f2f2] hover:text-[#171717] focus:opacity-100 group-hover:opacity-100 sm:opacity-0"
-                      onClick={() => onOpenThread(message.id)}
-                      type="button"
-                    >
-                      <MessageSquare className="size-3" /> Reply
-                    </button>
-                  ) : null}
-                </div>
-                {message.subagents?.length ? <SubagentActivity live={message.status === "streaming" && runActive && !disabled} sessionId={sessionId} tasks={message.subagents} /> : null}
-                {message.body ? <MessageContent className={cn("w-fit max-w-full rounded-lg border border-[#e8e8e8] px-3 py-2.5 text-sm leading-6 shadow-none sm:max-w-[94%]", hasReplies && "w-full sm:max-w-full", message.role === "agent" ? "bg-[#fafafa] text-[#4d4d4d]" : isCurrentMember ? "ml-auto bg-white" : "bg-white")}>
-                  {message.role === "agent" ? <AgentResponse streaming={message.status === "streaming"}>{message.body}</AgentResponse> : message.codeReference ? <div><p className="break-all font-mono text-[11px] text-[#737373]">{codeReferenceLabel(message.codeReference)}</p><pre className="mt-2 max-h-40 overflow-auto whitespace-pre font-mono text-[11px] leading-5">{message.codeReference.quote}</pre></div> : message.body}
-                </MessageContent> : null}
-
-                <MessageThreadPreview disabled={disabled} members={members} message={message} onOpen={() => onOpenThread(message.id)} onSteerReply={onSteerReply} queueing={runActive || steeringQueue.length > 0} />
-              </Message>
+              <ConversationMessage key={message.id} message={message} currentMember={currentMember} members={members} sessionId={sessionId} disabled={disabled} runActive={runActive} queueing={runActive || steeringQueue.length > 0} selected={selectedThreadId === message.id} onOpenThread={onOpenThread} onSteerReply={onSteerReply} />
             );
           })}
           {runActive && runStalled ? (
-            <div className="flex flex-wrap items-center gap-2 rounded-md border border-[#e8e8e8] bg-[#fafafa] px-3 py-2 text-[11px] text-[#525252]" role="status">
+            <div className="flex flex-wrap items-center gap-2 rounded-md border border-[#e8e8e8] bg-[#fafafa] px-3 py-2 text-xs text-[#525252]" role="status">
               <WifiOff className="size-3 shrink-0" />
               <span className="min-w-0 flex-1">Hive hasn’t reported for over {STALLED_RUN_AFTER_MS / 60_000} minutes; its execution process was probably lost. Marking it lost keeps the discussion, partial output and queued steers, and reruns nothing.</span>
-              <Button className="h-7 rounded px-2 text-[11px]" disabled={disabled} onClick={onRecoverRun} size="sm" variant="outline">Mark run as lost</Button>
+              <Button className="h-7 rounded px-2 text-xs" disabled={disabled} onClick={onRecoverRun} size="sm" variant="outline">Mark run as lost</Button>
             </div>
-          ) : runActive && !activeSteer ? <p className="flex items-center gap-2 px-1 text-[11px] text-[#777]" role="status"><LoaderCircle className="size-3 animate-spin" /> Hive is working…</p> : null}
-          {otherTyping.length > 0 ? <p className="px-1 text-[11px] text-[#8f8f8f]">{otherTyping.map((memberId) => resolveMember(memberId, members).shortName).join(", ")} {otherTyping.length === 1 ? "is" : "are"} typing…</p> : null}
+          ) : runActive && !activeSteer ? <p className="flex items-center gap-2 px-1 text-xs text-[#777]" role="status"><LoaderCircle className="size-3 animate-spin" /> Hive is working…</p> : null}
+          {otherTyping.length > 0 ? <p className="px-1 text-xs text-[#8f8f8f]">{otherTyping.map((memberId) => resolveMember(memberId, members).shortName).join(", ")} {otherTyping.length === 1 ? "is" : "are"} typing…</p> : null}
         </ConversationContent>
         <ConversationScrollButton />
       </Conversation>
       {workspaceAnnotation ? <AnnotationCard members={members} onSteer={onSteer} queuePosition={queuePosition} queued={queued} queuedBy={queuedBy} stage={stage} steered={steered} steeredBy={steeredBy} /> : null}
-      <div className="shrink-0 border-t border-[#ebebeb] bg-[#fafafa] p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:p-3">
-        <div className="rounded-xl border border-[#d9d9d9] bg-white p-2 shadow-[0_1px_2px_rgba(0,0,0,0.03)] focus-within:border-[#999]">
-          <div className="flex items-end gap-2">
-          <MentionInput
-            currentMember={currentMember}
-            disabled={disabled || !draft}
-            maxLength={MESSAGE_BODY_LIMIT}
-            members={members}
-            onChange={(value) => {
-              messageDraft.edit(value);
-              onTyping(Boolean(value.trim()));
-            }}
-            onSubmit={submit}
-            readOnly={sending}
-            value={draft?.body ?? ""}
-          />
-            <Button
-              aria-label={sending ? "Sending message" : draft?.status === "unconfirmed" ? "Retry message" : "Send message"}
-              className="size-10 shrink-0 rounded-lg sm:size-9"
-              disabled={disabled || !draft?.body.trim() || sending}
-              onClick={submit}
-              size="icon"
-            >
-              {sending ? <LoaderCircle className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
-            </Button>
-          </div>
-        </div>
-        {draft?.status === "unconfirmed" ? <p className="mt-1.5 px-1 text-[11px] text-[#737373]" role="status">Delivery unconfirmed. Retry when connected.</p> : null}
-      </div>
+      <ConversationComposer
+        value={draft?.body ?? ""}
+        onChange={(value) => { messageDraft.edit(value); onTyping(Boolean(value.trim())); }}
+        onSubmit={submit}
+        currentMember={currentMember}
+        members={members}
+        disabled={disabled || !draft}
+        sending={sending}
+        unconfirmed={draft?.status === "unconfirmed"}
+        queueing={runActive || steeringQueue.length > 0}
+        runtime={codingRuntime}
+        modelId={codingModel}
+        models={codingModels}
+        agentLocked={harnessLocked}
+        agentDisabled={harnessDisabled}
+        effort={effort}
+        effortLocked={effortLocked}
+        onEffortChange={onEffortChange}
+        onSelectAgent={onSelectHarness}
+      />
     </section>
   );
 }
@@ -572,7 +537,7 @@ function RepositorySetup({ sessionId }: { sessionId: string }) {
                 <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-[#8a8a8a]" />
                 <Input
                   aria-label="Search repositories"
-                  className="h-9 rounded-md border-[#dedede] pl-9 text-xs shadow-none"
+                  className="h-9 rounded-md border-[#dedede] pl-9 text-base shadow-none sm:text-sm"
                   onChange={(event) => setQuery(event.target.value)}
                   placeholder="Search repositories"
                   value={query}
@@ -590,9 +555,9 @@ function RepositorySetup({ sessionId }: { sessionId: string }) {
                 >
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-medium">{candidate.name}</span>
-                    <span className="mt-0.5 block text-[11px] text-[#888]">{candidate.defaultBranch} · {candidate.visibility}</span>
+                    <span className="mt-0.5 block text-xs text-[#888]">{candidate.defaultBranch} · {candidate.visibility}</span>
                   </span>
-                  {connectingId === candidate.id ? <LoaderCircle className="size-4 shrink-0 animate-spin" /> : <span className="shrink-0 text-[11px] font-medium text-[#666]">Select</span>}
+                  {connectingId === candidate.id ? <LoaderCircle className="size-4 shrink-0 animate-spin" /> : <span className="shrink-0 text-xs font-medium text-[#666]">Select</span>}
                 </button>
               ))}
               {filteredRepositories.length === 0 ? (
@@ -603,8 +568,8 @@ function RepositorySetup({ sessionId }: { sessionId: string }) {
                 </p>
               ) : null}
             </div>
-            <Button className="mt-2 h-8 px-2 text-[11px]" disabled={loading || connectingId !== null} onClick={() => void loadRepositories()} size="sm" variant="ghost">Refresh repositories</Button>
-            <a className="ml-2 text-[11px] text-[#666] underline underline-offset-4" href={`/api/github/install?session_id=${encodeURIComponent(sessionId)}`}>Manage GitHub access</a>
+            <Button className="mt-2 h-8 px-2 text-xs" disabled={loading || connectingId !== null} onClick={() => void loadRepositories()} size="sm" variant="ghost">Refresh repositories</Button>
+            <a className="ml-2 text-xs text-[#666] underline underline-offset-4" href={`/api/github/install?session_id=${encodeURIComponent(sessionId)}`}>Manage GitHub access</a>
           </div>
         ) : (
           <Button className="mt-5 h-10 rounded-md px-4 text-sm" disabled={loading} onClick={() => void loadRepositories()}>
@@ -641,7 +606,7 @@ function Workspace({ repository, sessionId, tab, workspace, onTabChange, fileCol
             return (
               <Button
                 className={cn(
-                  "h-7 rounded-md px-2.5 text-[11px] text-[#777]",
+                  "h-7 rounded-md px-2.5 text-xs text-[#777]",
                   tab === item.key && "bg-[#f1f1f1] text-[#171717]",
                 )}
                 key={item.key}
@@ -727,6 +692,8 @@ export function HiveWorkspace({
   const runActive = isHiveRunActive(session);
   const runStalled = useStalledRun(session);
   const workspaceLocked = Boolean(workspace.restore);
+  const harnessLocked = !canSelectHarness(session);
+  const effortLocked = !canSetCodingEffort(session);
   // Reset is irreversible for every member; require an idle task and a confirmation.
   const resetDisabled = workspaceLocked || runActive || Boolean(activeSteer) || steeringQueue.length > 0;
   const canApplySteer = canApplyNextSteer(session);
@@ -791,10 +758,16 @@ export function HiveWorkspace({
       (message) => message.memberId === currentMember.id && message.clientId === clientId && message.body === body,
     ) ?? false;
   }, [currentMember.id, dispatch, repository, teamMembers, harnessSaving]);
-  const selectHarness = useCallback(async (runtime: CodingRuntime) => {
+  const selectHarness = useCallback(async (runtime: CodingRuntime, modelId: string) => {
     if (harnessSaving) return;
     setHarnessSaving(true);
-    try { await dispatch({ type: "select-harness", runtime }); }
+    try { await dispatch({ type: "select-harness", runtime, modelId }); }
+    finally { setHarnessSaving(false); }
+  }, [dispatch, harnessSaving]);
+  const setCodingEffort = useCallback(async (effort: CodingEffort, modelId?: string) => {
+    if (harnessSaving) return;
+    setHarnessSaving(true);
+    try { await dispatch({ type: "set-coding-effort", effort, modelId }); }
     finally { setHarnessSaving(false); }
   }, [dispatch, harnessSaving]);
   const advance = useCallback(() => {
@@ -836,6 +809,15 @@ export function HiveWorkspace({
     typingMembers,
     steeringQueue,
     workspaceAnnotation: annotation.text,
+    codingRuntime: workspace.agentSession?.runtime ?? "codex",
+    codingModel: workspace.codingModel,
+    codingModels: snapshot.codingModels,
+    harnessLocked,
+    harnessDisabled: workspaceLocked || harnessSaving || syncing || syncError,
+    onSelectHarness: selectHarness,
+    effort: workspace.codingEffort ?? "low",
+    effortLocked,
+    onEffortChange: setCodingEffort,
     onOpenThread: openThread,
     onSteerReply: steerMessageAnnotation,
     selectedThreadId: threadMessage?.id ?? null,
@@ -846,11 +828,11 @@ export function HiveWorkspace({
     onTyping: setTyping,
     onAdvance: advance,
     onTabChange: setTab,
-  }), [activeMembers, activeSteer, advance, openThread, steerMessageAnnotation, threadMessage?.id, annotation.queuedBy, annotation.steeredBy, annotation.text, canApplySteer, currentMember.id, workspaceLocked, harnessSaving, messages, moveSteer, queuePosition, queued, recoverRun, removeSteer, runActive, runStalled, send, sessionId, setTyping, stage, steer, steered, steeringQueue, tab, teamMembers, typingMembers]);
+  }), [activeMembers, activeSteer, advance, openThread, steerMessageAnnotation, threadMessage?.id, annotation.queuedBy, annotation.steeredBy, annotation.text, canApplySteer, currentMember.id, workspaceLocked, harnessSaving, messages, moveSteer, queuePosition, queued, recoverRun, removeSteer, runActive, runStalled, send, sessionId, setTyping, stage, steer, steered, steeringQueue, tab, teamMembers, typingMembers, workspace.agentSession?.runtime, workspace.codingModel, harnessLocked, syncing, syncError, selectHarness, workspace.codingEffort, effortLocked, setCodingEffort, snapshot.codingModels]);
 
   return (
     <main className="flex h-dvh min-h-0 flex-col overflow-hidden bg-[#fafafa] text-[#171717]">
-      <ProductHeader activeMembers={activeMembers} copied={copied} currentMember={currentMember} members={teamMembers} onCopyInvite={copyInvite} onSignOut={signOut} onReset={openReset} repository={repository} sessionTitle={sessionTitle} resetDisabled={resetDisabled} syncing={syncing} syncError={syncError} codingRuntime={workspace.agentSession?.runtime ?? "codex"} harnessLocked={!canSelectHarness(session) || harnessSaving || syncing || syncError} onSelectHarness={(runtime) => { void selectHarness(runtime); }} />
+      <ProductHeader activeMembers={activeMembers} copied={copied} currentMember={currentMember} members={teamMembers} onCopyInvite={copyInvite} onSignOut={signOut} onReset={openReset} repository={repository} sessionTitle={sessionTitle} resetDisabled={resetDisabled} syncing={syncing} syncError={syncError} />
       <Dialog onOpenChange={setResetOpen} open={resetOpen}>
         <DialogContent>
           <DialogHeader>
@@ -871,7 +853,7 @@ export function HiveWorkspace({
         <button
           aria-pressed={pane === "chat"}
           className={cn(
-            "flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md text-[11px] text-[#777]",
+            "flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md text-xs text-[#777]",
             pane === "chat" && "border border-[#e1e1e1] bg-white text-[#171717] shadow-sm",
           )}
           onClick={() => setPane("chat")}
@@ -882,7 +864,7 @@ export function HiveWorkspace({
         <button
           aria-pressed={pane === "workspace"}
           className={cn(
-            "flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md text-[11px] text-[#777]",
+            "flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md text-xs text-[#777]",
             pane === "workspace" && "border border-[#e1e1e1] bg-white text-[#171717] shadow-sm",
           )}
           onClick={() => setPane("workspace")}
@@ -890,7 +872,7 @@ export function HiveWorkspace({
         >
           <Code2 className="size-3.5" /> {threadMessage ? "Thread" : "Workspace"}
           {!threadMessage && workspace.changedFiles.length > 0 ? (
-            <span className="grid size-4 place-items-center rounded-full bg-[#171717] font-mono text-[8px] text-white">
+            <span className="grid h-5 min-w-5 place-items-center rounded-full bg-[#171717] px-1 text-xs text-white">
               {workspace.changedFiles.length}
             </span>
           ) : null}

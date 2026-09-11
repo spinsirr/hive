@@ -2,7 +2,6 @@ import { createHash, hkdfSync } from "node:crypto";
 import { EncryptJWT, jwtDecrypt } from "jose";
 import { z } from "zod";
 
-export const SUBSCRIPTION_MODEL = "gpt-5.6-luna";
 const audience = "hive-codex-subscription";
 const authSchema = z.object({
   auth_mode: z.literal("chatgpt"),

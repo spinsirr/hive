@@ -3,7 +3,8 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { codexSubscriptions, taskSessionMembers, taskSessions } from "@/db/schema";
 import type { HiveToolScope } from "./hive-tool-token.ts";
-import { codexAuthNeedsRefresh, externalCodexTokens, openCodexAuth, sealCodexAuth, SUBSCRIPTION_MODEL } from "./codex-subscription-credentials.ts";
+import { codexAuthNeedsRefresh, externalCodexTokens, openCodexAuth, sealCodexAuth } from "./codex-subscription-credentials.ts";
+import { CODEX_SUBSCRIPTION_MODEL } from "./coding-models.ts";
 import { refreshCodexSubscription } from "./codex-subscription-refresh.ts";
 
 export class SubscriptionAccessDenied extends Error {}
@@ -54,5 +55,5 @@ export async function readCodexSubscription(scope: HiveToolScope, forceRefresh =
   // to a stale runtime, even if the native refresh itself succeeded.
   const current = await authorizedTask(scope);
   if (current.ownerId !== binding.ownerId || current.repository?.id !== binding.repositoryId || current.repository.visibility !== "private") throw new SubscriptionAccessDenied("Repository access changed.");
-  return { model: SUBSCRIPTION_MODEL, ...externalCodexTokens(auth) };
+  return { model: CODEX_SUBSCRIPTION_MODEL, ...externalCodexTokens(auth) };
 }

@@ -5,6 +5,9 @@ import { customAlphabet } from "nanoid";
 import { db } from "@/db";
 import { taskSessionMembers, taskSessions, users } from "@/db/schema";
 import { sessionNotification } from "@/lib/session-events";
+import { codexModel, codingModelOptions, type CodingModelOption } from "./coding-models.ts";
+import { prefersCodexSubscription } from "./codex-subscription-store.ts";
+import { claudeSubscriptionToken } from "./claude-subscription.ts";
 import { assertHiveToolRun, hiveThreadReply, type HiveToolContext } from "@/lib/hive-tool-context";
 import type { HiveToolScope } from "@/lib/hive-tool-token";
 import { subagentUpdateSchema, type HiveSubagent, type SubagentSession } from "./hive-subagents.ts";
@@ -30,6 +33,7 @@ export type TaskSessionSnapshot = {
   activeMembers: MemberId[];
   members: TeamMember[];
   typingMembers: MemberId[];
+  codingModels?: CodingModelOption[];
 };
 const randomSuffix = customAlphabet("abcdefghijklmnopqrstuvwxyz0123456789", 6);
 
@@ -240,6 +244,8 @@ export async function applyTaskSessionAction(
   now = Date.now(),
 ) {
   const storedMembers = await getSessionMembers(sessionId);
+  const changingModel = action.type === "select-harness" || action.type === "set-coding-effort";
+  const preferSubscription = changingModel && await prefersCodexSubscription(sessionId);
   const members = actor
     ? [actor, ...storedMembers.filter((member) => member.id !== actor.id)]
     : storedMembers;
@@ -262,7 +268,13 @@ export async function applyTaskSessionAction(
       action,
       now,
       members,
+      changingModel ? codingModelOptions(codexModel(process.env.HIVE_CODEX_MODEL, preferSubscription), Boolean(claudeSubscriptionToken(previousSession, process.env))) : undefined,
     );
+    if (changingModel && nextSession === previousSession) {
+      // Return the current shared state on a no-op or stale selection. Do not
+      // broadcast a fabricated version or overwrite a teammate's newer model.
+      return { session: previousSession, startedRun: false };
+    }
     const startedRun = didStartHiveRun(previousSession, nextSession);
     if (startedRun) {
       nextSession.workspace = {
@@ -507,9 +519,14 @@ export async function getTaskSessionSnapshot(
 
 /** Durable reads contain the roster. Only live connections can assert who is online. */
 async function snapshotWithMembers(session: TaskSessionState): Promise<TaskSessionSnapshot> {
+  const [members, preferSubscription] = await Promise.all([
+    getSessionMembers(session.sessionId),
+    prefersCodexSubscription(session.sessionId),
+  ]);
   return {
     session,
-    members: await getSessionMembers(session.sessionId),
+    members,
+    codingModels: codingModelOptions(codexModel(process.env.HIVE_CODEX_MODEL, preferSubscription), Boolean(claudeSubscriptionToken(session, process.env))),
     activeMembers: [],
     typingMembers: [],
   };

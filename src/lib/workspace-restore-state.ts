@@ -48,6 +48,8 @@ export function completeWorkspaceRestore(session: TaskSessionState, operationId:
     stage: hasChanges && !checkpoint.error ? "review" : "waiting", activeSteer: undefined,
     workspace: {
       ...checkpoint.result, status: checkpoint.error ? "error" : hasChanges ? "review" : "ready", error: checkpoint.error, completedAt: now,
+      codingEffort: session.workspace.codingEffort,
+      codingModel: session.workspace.codingModel,
       checkpoints: session.workspace.checkpoints,
       lastRestore: { id: operation.id, snapshotId: checkpoint.id, by: operation.by.id, at: now },
     },

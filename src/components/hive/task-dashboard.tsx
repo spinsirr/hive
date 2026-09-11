@@ -32,7 +32,7 @@ function NewTask({ createAction }: { createAction: (formData: FormData) => Promi
             <input
               autoComplete="off"
               autoFocus
-              className="h-10 w-full rounded-md border border-[#dedede] bg-white px-3 text-sm outline-none placeholder:text-[#aaa] focus:border-[#737373] focus:ring-2 focus:ring-[#171717]/10"
+              className="h-10 w-full rounded-md border border-[#dedede] bg-white px-3 text-base outline-none sm:text-sm placeholder:text-[#aaa] focus:border-[#737373] focus:ring-2 focus:ring-[#171717]/10"
               id="new-task-title"
               maxLength={120}
               name="title"
@@ -81,7 +81,7 @@ export function TaskDashboard({ tasks, memberName, memberInitials, loadedAt, cre
         </Link>
         <div className="flex min-w-0 items-center gap-2 text-xs text-[#737373]">
           <span className="truncate">{memberName}</span>
-          <span aria-hidden="true" className="grid size-7 shrink-0 place-items-center rounded-full border border-[#dedede] text-[9px] font-medium text-[#333]">{memberInitials}</span>
+          <span aria-hidden="true" className="grid size-7 shrink-0 place-items-center rounded-full border border-[#dedede] text-xs font-medium text-[#333]">{memberInitials}</span>
         </div>
       </header>
 
@@ -95,7 +95,7 @@ export function TaskDashboard({ tasks, memberName, memberInitials, loadedAt, cre
         </div>
 
         <section aria-label="Task list" className="overflow-hidden rounded-lg border border-[#e1e1e1] bg-white">
-          <div aria-hidden="true" className="grid grid-cols-[minmax(0,1fr)_70px] gap-4 border-b border-[#ebebeb] bg-[#fcfcfc] px-5 py-3 text-[11px] text-[#888] sm:grid-cols-[minmax(0,1fr)_minmax(0,0.6fr)_80px_16px]">
+          <div aria-hidden="true" className="grid grid-cols-[minmax(0,1fr)_70px] gap-4 border-b border-[#ebebeb] bg-[#fcfcfc] px-5 py-3 text-xs text-[#888] sm:grid-cols-[minmax(0,1fr)_minmax(0,0.6fr)_80px_16px]">
             <span>Task</span>
             <span className="hidden sm:block">Repository</span>
             <span>Updated</span>
@@ -109,15 +109,15 @@ export function TaskDashboard({ tasks, memberName, memberInitials, loadedAt, cre
                     <div className="min-w-0">
                       <p className="flex items-center gap-2 text-sm font-medium tracking-[-0.015em]">
                         <span className="truncate" title={task.title}>{task.title}</span>
-                        {onPreviewTask ? <span className="shrink-0 rounded bg-[#f2f2f2] px-1.5 py-0.5 text-[10px] font-normal tracking-normal text-[#737373]">Preview</span> : null}
+                        {onPreviewTask ? <span className="shrink-0 rounded bg-[#f2f2f2] px-1.5 py-0.5 text-xs font-normal tracking-normal text-[#737373]">Preview</span> : null}
                       </p>
-                      <p className="mt-1 truncate text-[11px] text-[#888] sm:hidden">{task.repositoryName ?? "No repository attached"}</p>
+                      <p className="mt-1 truncate text-xs text-[#888] sm:hidden">{task.repositoryName ?? "No repository attached"}</p>
                     </div>
                     <span className="hidden min-w-0 items-center gap-1.5 text-xs text-[#737373] sm:flex">
                       <FolderGit2 aria-hidden="true" className="size-3.5 shrink-0" />
                       <span className="truncate">{task.repositoryName ?? "Not attached"}</span>
                     </span>
-                    <time className="text-[11px] text-[#888]" dateTime={new Date(task.updatedAt).toISOString()}>{taskUpdatedLabel(task.updatedAt, loadedAt)}</time>
+                    <time className="text-xs text-[#888]" dateTime={new Date(task.updatedAt).toISOString()}>{taskUpdatedLabel(task.updatedAt, loadedAt)}</time>
                     {onPreviewTask ? <Eye aria-hidden="true" className="hidden size-3.5 text-[#aaa] group-hover:text-[#171717] sm:block" /> : <ArrowRight aria-hidden="true" className="hidden size-3.5 text-[#aaa] group-hover:text-[#171717] sm:block" />}
                   </>
                 );

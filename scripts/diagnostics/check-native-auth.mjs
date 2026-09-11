@@ -7,7 +7,8 @@ import { createInterface } from "node:readline";
 import { mkdtemp, readFile, realpath, access } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
-import { parseManagedCodexAuth, externalCodexTokens, codexAuthNeedsRefresh, SUBSCRIPTION_MODEL } from "../../src/lib/codex-subscription-credentials.ts";
+import { parseManagedCodexAuth, externalCodexTokens, codexAuthNeedsRefresh } from "../../src/lib/codex-subscription-credentials.ts";
+import { CODEX_SUBSCRIPTION_MODEL } from "../../src/lib/coding-models.ts";
 
 assert.ok(process.argv[2] && process.argv[3], "Provide an isolated SDK installation and explicitly authorized seed file");
 const require = createRequire(await realpath(path.resolve(process.argv[2], "node_modules/@openai/codex-sdk/package.json")));
@@ -48,7 +49,7 @@ try {
   assert.equal(login.type, "chatgptAuthTokens");
   const { account } = await rpc("account/read", {});
   assert.equal(account.type, "chatgpt");
-  const { thread } = await rpc("thread/start", { model: SUBSCRIPTION_MODEL, cwd: home, ephemeral: true, sandbox: "read-only", approvalPolicy: "never", config: {
+  const { thread } = await rpc("thread/start", { model: CODEX_SUBSCRIPTION_MODEL, cwd: home, ephemeral: true, sandbox: "read-only", approvalPolicy: "never", config: {
     model_provider: "openai", cli_auth_credentials_store: "ephemeral", web_search: "disabled", model_verbosity: "low", model_reasoning_effort: "low",
   } });
   await rpc("turn/start", { threadId: thread.id, input: [{ type: "text", text: 'Do not call tools or inspect files. Reply with exactly: "Hive native authentication verified."', text_elements: [] }] });
