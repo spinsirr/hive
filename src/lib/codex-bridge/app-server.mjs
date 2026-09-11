@@ -237,7 +237,10 @@ async function runNativeTurn({
           // Host refresh happens before each bounded run; never hand a real
           // account token to repository code or replay this turn on paid auth.
           send({ id: message.id, error: { code: -32000, message: "Reconnect the Codex subscription." } });
-          throw new SubscriptionUnavailable("authentication_unavailable");
+          // This account-wide request can originate from optional background
+          // settings, not inference. Refuse it, then let the native turn report
+          // its outcome; genuine inference auth failures still fail below.
+          continue;
         }
         // Approval/input requests are not silently granted or left hanging.
         send({ id: message.id, error: { code: -32601, message: "Interactive requests are not supported by Hive." } });
