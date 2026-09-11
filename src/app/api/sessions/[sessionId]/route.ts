@@ -25,6 +25,7 @@ import {
   checkpointSubagents,
   getPublicTaskSessionSnapshot,
   isTaskSessionMember,
+  TaskSessionAccessError,
 } from "@/lib/task-session-store";
 import type { TaskSessionSnapshot } from "@/lib/task-session-store";
 
@@ -64,6 +65,9 @@ export async function GET(request: NextRequest, context: TaskSessionRouteContext
 }
 
 export async function POST(request: NextRequest, context: TaskSessionRouteContext) {
+  if (request.headers.get("origin") !== request.nextUrl.origin) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403, headers: { "Cache-Control": "private, no-store" } });
+  }
   const auth = await authenticatedSession(request, context);
   if (!auth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -173,6 +177,7 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
   let applied;
   try { applied = await applyTaskSessionAction(sessionId, action, member, actionAt); }
   catch (error) {
+    if (error instanceof TaskSessionAccessError) return NextResponse.json({ error: error.message }, { status: 403, headers: { "Cache-Control": "private, no-store" } });
     if (error instanceof WorkspaceRestoreError) return NextResponse.json({ error: error.message }, { status: error.status });
     throw error;
   }

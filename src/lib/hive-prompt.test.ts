@@ -6,11 +6,11 @@ import { appendHiveReply, createInitialTaskSessionState, reduceTaskSession, type
 
 test("Codex receives attributed team context and an attributed active task", () => {
   const session = reduceTaskSession(
-    reduceTaskSession(
+    appendHiveReply(reduceTaskSession(
       createInitialTaskSessionState(1),
       { type: "send-message", actor: "spencer", body: "Prefer the compact menu" },
       2,
-    ),
+    ), "Ready for the next request", 2.5),
     { type: "send-message", actor: "maya", body: "Keep keyboard navigation" },
     3,
   );
@@ -181,6 +181,7 @@ test("a queued message remains the selected task even after its author sends som
   for (const mode of ["coding", "planning"] as const) {
     const prompt = buildHivePrompt(session, input.actor, input.steer, input.actorName, mode);
     assert.ok(prompt.endsWith("Message to execute:\nFirst: check author names"));
+    assert.doesNotMatch(prompt, /Second: check keyboard labels/, "Pending work must not enter the active model context");
   }
 });
 
@@ -202,6 +203,9 @@ test("a missing steering source cannot silently become another task", () => {
   assert.throws(() => buildHiveRunInput(createInitialTaskSessionState(1), {
     type: "steer-message-annotation", actor: "github-101", messageId: "missing", annotationId: "missing",
   }, githubMembers), /steered annotation is no longer available/);
+  assert.throws(() => buildHiveRunInput(createInitialTaskSessionState(1), {
+    type: "apply-next-steer", actor: "github-101",
+  }, githubMembers), /selected steer is no longer available/i);
 });
 
 test("whole-thread memory recall uses the task title rather than uploading the discussion", () => {

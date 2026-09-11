@@ -138,3 +138,39 @@ test("real MCP client can read, remember, recall and reply without starting anot
     assert.equal(providerBodies.length, 2);
   } finally { await client.close(); }
 });
+
+for (const kind of ["message", "message-annotation", "message-thread"] as const) {
+test(`pending ${kind} content is not readable or shareable as memory by the active agent`, async () => {
+  const context = fixture();
+  const messageId = kind === "message" ? "queued-message" : "human-one";
+  const replyId = kind === "message" ? undefined : "queued-reply";
+  if (kind === "message") {
+    context.messages.push({ ...context.messages[0], id: messageId, body: "FUTURE_REQUEST_ONLY" });
+  } else {
+    context.messages[0].annotations = [{ id: "queued-reply", body: "FUTURE_REQUEST_ONLY", authorId: "spencer", createdAt: 2, status: kind === "message-annotation" ? "queued" : "open" }];
+    if (kind === "message-thread") context.messages[0].threadSteer = {
+      id: "queue-one", throughReplyId: "queued-reply", replyCount: 1, requestedBy: "spencer", requestedAt: 2, status: "queued",
+    };
+  }
+  context.steeringQueue.push({ id: "queue-one", authorId: "spencer", body: "FUTURE_REQUEST_ONLY", queuedAt: 2,
+    source: kind === "message" ? { kind, messageId } : kind === "message-thread" ? { kind, messageId, steerId: "queue-one" } : { kind, messageId, annotationId: "queued-reply" }, sourceLabel: "Spencer's message" });
+  const client = new Client({ name: "queue-boundary", version: "1" });
+  const writes: unknown[] = [];
+  await client.connect(new StreamableHTTPClientTransport(new URL("https://hive.test/agent-tools"), {
+    fetch: (input, init) => handleHiveMcp(new Request(input, init), scope, {
+      read: async () => context,
+      reply: async () => { throw new Error("No reply requested"); },
+    }, createHiveMemory("local-fixture", async (_url, options) => {
+      writes.push(options?.body);
+      return Response.json({ results: [{ id: "must-not-save" }] });
+    })),
+  }));
+  try {
+    const result = await client.callTool({ name: "get_context", arguments: {} });
+    assert.match(JSON.stringify(result), /queue-one/);
+    assert.doesNotMatch(JSON.stringify(result), /FUTURE_REQUEST_ONLY/);
+    assert.equal((await client.callTool({ name: "remember_memory", arguments: { messageId, ...(replyId ? { replyId } : {}) } })).isError, true);
+    assert.deepEqual(writes, [], "Unapplied requests must never leave this task as shared memory");
+  } finally { await client.close(); }
+});
+}

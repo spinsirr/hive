@@ -129,6 +129,22 @@ try {
   assert.deepEqual(await store.listTaskSessions(newcomer.member.id), []);
   console.log("PASS: first GitHub login needs no invitation and starts with an empty, isolated dashboard.");
 
+  const untouched = await store.getPublicTaskSessionSnapshot(privateTask.sessionId);
+  await assert.rejects(store.applyTaskSessionAction(privateTask.sessionId, {
+    type: "send-message", actor: newcomer.member.id, body: "Must not enter another task", clientId: randomUUID(),
+  }, newcomer.member), /access to this task/i);
+  await assert.rejects(store.applyTaskSessionAction(privateTask.sessionId, {
+    type: "send-message", actor: owner.member.id, body: "Must not impersonate the owner", clientId: randomUUID(),
+  }, newcomer.member), /access to this task/i);
+  await assert.rejects(store.applyTaskSessionAction(privateTask.sessionId, {
+    type: "send-message", actor: owner.member.id, body: "An actor ID alone is not an authenticated identity", clientId: randomUUID(),
+  }), /access to this task/i);
+  await assert.rejects(store.startTaskWorkspaceRestore(privateTask.sessionId, {
+    id: randomUUID(), snapshotId: "foreign-checkpoint", version: privateTask.version,
+  }, newcomer.member), /access to this task/i);
+  assert.deepEqual(await store.getPublicTaskSessionSnapshot(privateTask.sessionId), untouched);
+  console.log("PASS: task writes enforce membership at the storage boundary, not just the HTTP route.");
+
   const form = new FormData();
   form.set("title", "Newcomer's first task");
   form.set("creator", owner.member.id); // The server must ignore caller-supplied identity.
@@ -197,6 +213,19 @@ try {
   const ownUrl = `https://hive.test/api/sessions/${ownTasks[0].id}`;
   const ownHeaders = { cookie: browserCookie(newcomer), origin: "https://hive.test", "Content-Type": "application/json" };
   const ownSnapshot = await (await snapshot(new NextRequest(ownUrl, { headers: ownHeaders }), ownContext)).json();
+  for (const origin of ["https://untrusted.hive.test", undefined]) {
+    const headers = new Headers(ownHeaders);
+    if (origin) headers.set("origin", origin);
+    else headers.delete("origin");
+    const rejected = await action(new NextRequest(ownUrl, {
+      method: "POST", headers,
+      body: JSON.stringify({ type: "annotate-message", messageId: ownSnapshot.session.messages[0].id,
+        body: "Must not be submitted by another origin", clientId: randomUUID() }),
+    }), ownContext);
+    assert.equal(rejected.status, 403);
+  }
+  assert.deepEqual((await (await snapshot(new NextRequest(ownUrl, { headers: ownHeaders }), ownContext)).json()).session, ownSnapshot.session);
+  console.log("PASS: even a valid login cannot mutate tasks through a foreign or missing browser origin.");
   assert.equal("lifecycle" in ownSnapshot.session, false);
   assert.equal("completedAt" in ownSnapshot.session, false);
   assert.ok((await store.listTaskSessions(newcomer.member.id)).some((task) => task.id === ownTasks[0].id));
