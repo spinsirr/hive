@@ -10,6 +10,7 @@ registerHooks({ resolve(specifier, context, next) {
 let settings, stopped = 0, starts = 0, fail = false, native, runtime;
 mock.module("@vercel/sandbox", { namedExports: { Sandbox: { async create(options) {
   assert.equal(options.source, undefined); assert.equal(options.persistent, undefined);
+  assert.equal(options.resources.vcpus, runtime === "claude-code" ? 2 : 1, "Claude's pinned native bootstrap requires 4 GiB; Codex keeps its existing size");
   starts++; return { async stop() { stopped++; } };
 } } } });
 mock.module("@ai-sdk/sandbox-vercel", { namedExports: { createVercelSandbox() { return {}; } } });
