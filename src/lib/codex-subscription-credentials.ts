@@ -13,6 +13,7 @@ const authSchema = z.object({
   last_refresh: z.string().min(1),
 }).passthrough();
 export type ManagedCodexAuth = z.infer<typeof authSchema>;
+// Immutable enrollment provenance authenticates the stored envelope, not callers.
 export type SubscriptionBinding = { accountHash: string; sessionId: string; ownerId: string; repositoryId: number };
 
 export function parseManagedCodexAuth(value: unknown): ManagedCodexAuth {

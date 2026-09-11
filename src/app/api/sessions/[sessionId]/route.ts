@@ -9,7 +9,8 @@ import { runHiveConversation } from "@/lib/hive-conversation";
 import { hiveErrorCopy } from "@/lib/hive-error-copy";
 import { isClientSubmissionId } from "@/lib/message-draft";
 import { runHiveCodingTask } from "@/lib/hive-runner";
-import { prefersCodexSubscription } from "@/lib/codex-subscription-store";
+import { readCodexSubscription } from "@/lib/codex-subscription-store";
+import { usesPlatformSubscriptions } from "@/lib/platform-models";
 import { buildHiveRunInput } from "@/lib/hive-prompt";
 import { createHiveToolToken, hiveToolEndpoint } from "@/lib/hive-tool-token";
 import { MESSAGE_BODY_LIMIT, type TaskSessionAction } from "@/lib/task-session";
@@ -236,6 +237,15 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
       action,
       snapshot.members,
     );
+    let codexSubscription;
+    if (usesPlatformSubscriptions(process.env) && snapshot.session.workspace.agentSession?.runtime !== "claude-code") {
+      try {
+        codexSubscription = await readCodexSubscription({ sessionId, memberId: member.id, runId: replyId });
+      } catch {
+        // Vault/provider failures must never include credentials or change billing.
+        throw new HiveAgentError("Reconnect the Codex subscription.", new Error("Platform credential unavailable."));
+      }
+    }
     if (!snapshot.session.repository) {
       const reply = await runHiveConversation(
         snapshot.session,
@@ -243,6 +253,7 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
         actorName,
         writer.push,
         steer,
+        codexSubscription,
       );
       await writer.close();
       return sessionResponse(
@@ -265,7 +276,7 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
       runId: replyId,
     } : undefined;
     const runResult = await runHiveCodingTask(snapshot.session, runActor, steer, {
-      preferSubscription: snapshot.session.workspace.agentSession?.runtime !== "claude-code" && await prefersCodexSubscription(sessionId),
+      codexSubscription,
       actorName,
       memoryQuery,
       vercelOidcToken,

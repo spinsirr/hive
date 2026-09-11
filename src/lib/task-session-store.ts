@@ -5,9 +5,8 @@ import { customAlphabet } from "nanoid";
 import { db } from "@/db";
 import { taskSessionMembers, taskSessions, users } from "@/db/schema";
 import { sessionNotification } from "@/lib/session-events";
-import { codexModel, codingModelOptions, type CodingModelOption } from "./coding-models.ts";
-import { prefersCodexSubscription } from "./codex-subscription-store.ts";
-import { claudeSubscriptionToken } from "./claude-subscription.ts";
+import { type CodingModelOption } from "./coding-models.ts";
+import { platformCodingModels } from "./platform-models.ts";
 import { assertHiveToolRun, hiveThreadReply, type HiveToolContext } from "@/lib/hive-tool-context";
 import type { HiveToolScope } from "@/lib/hive-tool-token";
 import { subagentUpdateSchema, type HiveSubagent, type SubagentSession } from "./hive-subagents.ts";
@@ -252,7 +251,6 @@ export async function applyTaskSessionAction(
   const storedMembers = await getSessionMembers(sessionId);
   if (!storedMembers.some((member) => member.id === action.actor)) throw new TaskSessionAccessError();
   const changingModel = action.type === "select-harness" || action.type === "set-coding-effort";
-  const preferSubscription = changingModel && await prefersCodexSubscription(sessionId);
   const members = [actor, ...storedMembers.filter((member) => member.id !== actor.id)];
 
   const applied = await db.transaction(async (transaction) => {
@@ -279,7 +277,7 @@ export async function applyTaskSessionAction(
       action,
       now,
       members,
-      changingModel ? codingModelOptions(codexModel(process.env.HIVE_CODEX_MODEL, preferSubscription), Boolean(claudeSubscriptionToken(previousSession, process.env))) : undefined,
+      changingModel ? platformCodingModels(process.env) : undefined,
     );
     if (changingModel && nextSession === previousSession) {
       // Return the current shared state on a no-op or stale selection. Do not
@@ -534,14 +532,11 @@ export async function getTaskSessionSnapshot(
 
 /** Durable reads contain the roster. Only live connections can assert who is online. */
 async function snapshotWithMembers(session: TaskSessionState): Promise<TaskSessionSnapshot> {
-  const [members, preferSubscription] = await Promise.all([
-    getSessionMembers(session.sessionId),
-    prefersCodexSubscription(session.sessionId),
-  ]);
+  const members = await getSessionMembers(session.sessionId);
   return {
     session,
     members,
-    codingModels: codingModelOptions(codexModel(process.env.HIVE_CODEX_MODEL, preferSubscription), Boolean(claudeSubscriptionToken(session, process.env))),
+    codingModels: platformCodingModels(process.env),
     activeMembers: [],
     typingMembers: [],
   };

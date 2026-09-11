@@ -28,7 +28,7 @@ let reducer;
 let codeRunInput;
 let codeRuns = 0;
 mock.module(new URL("../src/lib/codex-subscription-store.ts", import.meta.url).href, { namedExports: {
-  prefersCodexSubscription: async () => false,
+  readCodexSubscription: async () => { throw new Error("File browsing must not request a model credential"); },
 } });
 mock.module(new URL("../src/lib/auth-session.ts", import.meta.url).href, { namedExports: {
   HIVE_SESSION_COOKIE: "hive_session", getSessionMember: async () => member,
