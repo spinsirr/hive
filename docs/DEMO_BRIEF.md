@@ -20,8 +20,6 @@
 
 ## The product segment
 
-**中文开场提示：**“团队已经共享代码仓库，但往往没有共享正在替他们写代码的 agent。Hive 把几个人放进同一个任务：大家可以讨论、明确哪些意见需要执行，再一起检查真实的 diff 和命令结果。下面先展示已经完成的真实代码任务，然后演示讨论如何进入执行队列。准备好的结果、现场运行和 UI 样例会分别说明，不混在一起。”
-
 1. Check the identity menus, not just avatars. Show that the repository was attached after the task began.
 2. Open the existing implementation Thread. Joseph specified the default accessible name and preserved caller override; Spinsirr required real regression checks and no pushing. The third localization reply was excluded. **“2 replies steered”** describes the old frozen boundary; do not click **Steer entire thread with 3 replies** on this discussion.
 3. Show the actual two-file Diff and full file explorer. Expand the current combined check in Runs. Its recorded result is **125 sandbox-revision unit tests**, the controlled regressions and TypeScript passing, with **Exit 0**. These belong to the saved Sandbox checkout, not the current app release's local test suite. Say that the implementation was completed beforehand and required repair guidance.
