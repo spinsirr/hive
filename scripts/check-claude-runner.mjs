@@ -105,7 +105,9 @@ try {
         delete process.env.HIVE_CLAUDE_OAUTH_TOKEN;
         delete process.env.HIVE_CLAUDE_SUBSCRIPTION_SCOPE;
         const before = starts;
-        await assert.rejects(runHiveCodingTask(task, "owner"), /change its authentication/);
+        process.env.HIVE_CODEX_AUTH_SECRET = "fixture-platform-secret";
+        await assert.rejects(runHiveCodingTask(task, "owner"), /Reconnect the Claude subscription/);
+        delete process.env.HIVE_CODEX_AUTH_SECRET;
         assert.equal(starts, before, "An auth change must never replay the task using a different account");
       }
     }

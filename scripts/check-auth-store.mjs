@@ -1,4 +1,4 @@
-// Real Postgres and the production auth route; no OAuth, Neon or model calls.
+// Real Postgres and the host-only vault; no OAuth, Neon or model calls.
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { registerHooks } from "node:module";
@@ -9,7 +9,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Client, Pool } from "pg";
 import { codexAccountHash, sealCodexAuth, openCodexAuth } from "../src/lib/codex-subscription-credentials.ts";
-import { createHiveToolToken } from "../src/lib/hive-tool-token.ts";
+import { readFile } from "node:fs/promises";
 
 const url = new URL(process.env.HIVE_AUTH_TEST_DATABASE_URL || "invalid:");
 assert.ok(["postgres:", "postgresql:"].includes(url.protocol) && ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname) && !url.search,
@@ -40,11 +40,11 @@ try {
   await admin.connect(); await admin.query(`CREATE DATABASE "${name}"`); created = true;
   await migrate(drizzle(pool), { migrationsFolder: fileURLToPath(new URL("../drizzle", import.meta.url)) });
   const { db } = await import("../src/db/index.ts");
-  const { taskSessions, codexSubscriptions } = await import("../src/db/schema.ts");
+  const { taskSessions, taskSessionMembers, users, codexSubscriptions } = await import("../src/db/schema.ts");
   const { createUserSession } = await import("../src/lib/auth-session.ts");
   const store = await import("../src/lib/task-session-store.ts");
-  const { readCodexSubscription, prefersCodexSubscription, SubscriptionAccessDenied } = await import("../src/lib/codex-subscription-store.ts");
-  const { POST } = await import("../src/app/api/sessions/[sessionId]/codex-auth/route.ts");
+  const { readCodexSubscription, SubscriptionAccessDenied } = await import("../src/lib/codex-subscription-store.ts");
+  await assert.rejects(readFile(new URL("../src/app/api/sessions/[sessionId]/codex-auth/route.ts", import.meta.url)), { code: "ENOENT" }, "No runtime HTTP route may return a platform account token");
   const [owner, teammate, outsider] = await Promise.all([991, 992, 993].map(id => createUserSession({ id, login: `auth-${id}`, name: `Auth ${id}` })));
   const session = await store.createTaskSession("Credential boundary fixture", owner.member);
   const id = session.sessionId;
@@ -62,45 +62,43 @@ try {
   const binding = { accountHash: codexAccountHash(auth), sessionId: id, ownerId: owner.member.id, repositoryId: 42 };
   const envelope = await sealCodexAuth(auth, binding, process.env.HIVE_CODEX_AUTH_SECRET);
   const readBinding = async () => (await db.select().from(codexSubscriptions))[0];
-  const token = (member = owner.member.id, runId = scope.runId) => createHiveToolToken({ ...scope, memberId: member, runId }, process.env.HIVE_INVITE_SECRET);
-  const call = (bearer = token(), force = false) => POST(new Request(`https://hive.test/api/sessions/${id}/codex-auth`, {
-    method: "POST", headers: { ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}), ...(force ? { "X-Hive-Refresh": "1" } : {}) },
-  }), { params: Promise.resolve({ sessionId: id }) });
-
-  assert.equal(await prefersCodexSubscription(id), false);
-  assert.equal((await call()).status, 404);
+  const call = (overrides = {}) => readCodexSubscription({ ...scope, ...overrides });
+  await assert.rejects(call(), /Reconnect/);
   await db.insert(codexSubscriptions).values({ ...binding, encryptedAuth: envelope });
-  assert.equal(await prefersCodexSubscription(id), true);
-  const response = await call();
-  assert.equal(response.status, 200);
-  assert.match(response.headers.get("cache-control"), /no-store/);
-  const body = await response.json();
+  const body = await call();
   assert.deepEqual(Object.keys(body).sort(), ["accessToken", "chatgptAccountId", "model"]);
   assert.doesNotMatch(JSON.stringify(body), /PRIVATE_REFRESH|PRIVATE_ID/);
-  assert.equal((await call(token(teammate.member.id))).status, 200);
-  for (const bearer of [undefined, "invalid"]) assert.equal((await call(bearer === undefined ? "" : bearer)).status, 401);
-  assert.equal((await call(token(outsider.member.id))).status, 403);
-  assert.equal((await call(token(owner.member.id, "old-run"))).status, 403);
+  assert.ok(await call({ memberId: teammate.member.id }));
+  for (const memberId of ["", "invalid", outsider.member.id]) await assert.rejects(call({ memberId }), SubscriptionAccessDenied);
+  await assert.rejects(call({ runId: "old-run" }), SubscriptionAccessDenied);
+  // Account identity no longer restricts repository/owner. A no-repo task can plan.
   for (const repository of [null, { ...original.repository, id: 43 }, { ...original.repository, visibility: "public" }]) {
     await db.update(taskSessions).set({ repository }).where(eq(taskSessions.id, id));
-    assert.equal((await call()).status, 403);
+    assert.ok(await call());
   }
   await db.update(taskSessions).set({ repository: original.repository, createdBy: outsider.member.id }).where(eq(taskSessions.id, id));
-  assert.equal((await call()).status, 403);
+  assert.ok(await call());
   await db.update(taskSessions).set({ createdBy: owner.member.id, stage: "review" }).where(eq(taskSessions.id, id));
-  assert.equal((await call()).status, 403);
+  await assert.rejects(call(), SubscriptionAccessDenied);
   await db.update(taskSessions).set({ stage: "running", workspace: { ...original.workspace, restore: { status: "running" } } }).where(eq(taskSessions.id, id));
-  assert.equal((await call()).status, 403);
+  await assert.rejects(call(), SubscriptionAccessDenied);
   await db.update(taskSessions).set({ workspace: original.workspace }).where(eq(taskSessions.id, id));
   assert.equal(refreshCalls, 0, "Cached access does not refresh or contact native auth");
-  console.log("PASS: live membership, owner, private repo, active run and restoration fence credential access; response excludes refresh/ID tokens.");
+  console.log("PASS: current task membership/run/restore checks remain; operator identity does not grant another task's access.");
+
+  const second = await store.createTaskSession("Another user's own task", outsider.member);
+  const secondRun = await store.applyTaskSessionAction(second.sessionId, { type: "send-message", actor: outsider.member.id, body: "Plan only", clientId: randomUUID() }, outsider.member);
+  const secondScope = { sessionId: second.sessionId, memberId: outsider.member.id, runId: secondRun.snapshot.session.workspace.liveReply.id };
+  assert.ok(await readCodexSubscription(secondScope));
+  await assert.rejects(readCodexSubscription({ ...secondScope, memberId: owner.member.id }), SubscriptionAccessDenied);
+  assert.deepEqual((await store.getTaskSessionSnapshot(second.sessionId)).codingModels, (await store.getTaskSessionSnapshot(id)).codingModels);
 
   const entered = Promise.withResolvers(), release = Promise.withResolvers();
   const fresh = { ...auth, tokens: { ...auth.tokens, refresh_token: "ROTATED_REFRESH" } };
   refresh = async () => { entered.resolve(); await release.promise; return fresh; };
   const first = readCodexSubscription(scope, true);
   await entered.promise;
-  await assert.rejects(readCodexSubscription(scope, true), /refresh|reconnect/);
+  await assert.rejects(readCodexSubscription(secondScope, true), /refresh|reconnect/);
   assert.equal(refreshCalls, 1);
   release.resolve(); await first;
   const row = await readBinding();
@@ -115,15 +113,30 @@ try {
   };
   await assert.rejects(readCodexSubscription(scope, true), SubscriptionAccessDenied);
   await db.update(taskSessions).set({ stage: "running" }).where(eq(taskSessions.id, id));
+  refresh = async () => {
+    await db.update(taskSessions).set({ repository: { ...original.repository, id: 99 } }).where(eq(taskSessions.id, id));
+    return fresh;
+  };
+  await assert.rejects(readCodexSubscription(scope, true), SubscriptionAccessDenied);
+  await db.update(taskSessions).set({ repository: original.repository }).where(eq(taskSessions.id, id));
+  refresh = async () => {
+    await db.delete(taskSessionMembers).where(eq(taskSessionMembers.memberId, teammate.member.id));
+    return fresh;
+  };
+  await assert.rejects(readCodexSubscription({ ...scope, memberId: teammate.member.id }, true), SubscriptionAccessDenied);
   refresh = async () => { throw new Error("Uncertain native refresh failure PRIVATE_REFRESH"); };
   await assert.rejects(readCodexSubscription(scope, true), /Uncertain/);
   assert.ok((await readBinding()).refreshLock);
   const count = refreshCalls;
-  const blocked = await call();
-  assert.equal(blocked.status, 503);
-  assert.doesNotMatch(await blocked.text(), /PRIVATE_REFRESH|Uncertain/);
+  await assert.rejects(call(), /reconnect|refresh/);
   assert.equal(refreshCalls, count, "Never retry an old token after uncertain refresh/write-back");
   assert.doesNotMatch(JSON.stringify(await store.getTaskSessionSnapshot(id)), /PRIVATE_REFRESH|ROTATED_REFRESH|PRIVATE_ID|ACCOUNT_FIXTURE|encryptedAuth/);
+  await db.delete(taskSessions).where(eq(taskSessions.id, id));
+  await db.delete(users).where(eq(users.id, owner.member.id));
+  assert.ok(await readBinding(), "Deleting enrolling task/user must not cascade-delete platform credentials");
+  await assert.rejects(call(), SubscriptionAccessDenied);
+  await db.update(codexSubscriptions).set({ refreshLock: null });
+  assert.ok(await readCodexSubscription(secondScope), "Other users' own tasks still use the same platform account");
   console.log("PASS: access is rechecked after refresh; uncertain failure stays fenced without token replay; shared snapshots contain no vault data.");
 } finally {
   await pool.end();

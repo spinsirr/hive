@@ -2,18 +2,32 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { createCodex, type CodexHarnessSettings } from "@ai-sdk/harness-codex";
 import { subagentUpdateSchema, type HiveSubagentUpdate } from "./hive-subagents.ts";
+import { codexAccessPlaceholder, codexOAuthTransformations, type CodexAccess } from "./codex-subscription-broker.ts";
 
 /** Keep the existing harness lifecycle/auth; replace only its sandbox turn driver. */
 export function createHiveCodex(
   settings: CodexHarnessSettings,
   onGatewayDiagnostic?: (attributes: Record<string, unknown>) => void,
   onSubagents?: (update: HiveSubagentUpdate) => void,
+  subscription?: CodexAccess,
 ) {
-  const harness = createCodex(settings);
+  const placeholder = subscription ? codexAccessPlaceholder(subscription) : undefined;
+  const harness = createCodex(subscription ? {
+    ...settings, auth: {},
+    codexConfig: { ...settings.codexConfig, hive_subscription_tokens: placeholder },
+  } : settings);
   const getBootstrap = harness.getBootstrap;
   return {
     ...harness,
     async doStart(options: Parameters<typeof harness.doStart>[0]) {
+      if (subscription && placeholder) {
+        const session = options.sandboxSession;
+        if (!("setRequestTransformations" in session) || !session.setRequestTransformations) {
+          throw new Error("Codex requires sandbox credential brokering.");
+        }
+        // Replace stale forwarding rules when resuming an earlier Gateway run.
+        await session.setRequestTransformations(codexOAuthTransformations(subscription, placeholder));
+      }
       return harness.doStart({
         ...options,
         // The framework's global debug sink also prints raw console lines.

@@ -1,8 +1,9 @@
 export class SubscriptionUnavailable extends Error {
-  constructor(reason, threadId) {
-    super("Codex subscription unavailable.");
+  constructor(reason) {
+    super(reason === "quota_unavailable" || reason === "quota_or_auth_unavailable"
+      ? "Subscription limit reached. Try again after the limit resets."
+      : "Reconnect the Codex subscription.");
     this.reason = reason;
-    this.threadId = threadId;
   }
 }
 
@@ -43,30 +44,12 @@ export function portableNativeHistory(thread, rejectedTurnId) {
 }
 
 export function subscriptionPreferred(start) {
-  return start.mcpServers?.hive?.http_headers?.["X-Hive-Auth"] === "prefer-chatgpt";
+  return start.codexConfig?.hive_subscription_tokens !== undefined;
 }
 
-export async function readSubscriptionTokens(start, signal, forceRefresh = false) {
-  const server = start.mcpServers?.hive;
-  const url = new URL(server.url);
-  if (!url.pathname.endsWith("/agent-tools")) throw new Error("Invalid runtime authentication endpoint.");
-  url.pathname = url.pathname.replace(/\/agent-tools$/, "/codex-auth");
-  url.search = "";
-  let response;
-  try {
-    response = await fetch(url, { method: "POST", redirect: "error", cache: "no-store",
-      headers: { Authorization: server.http_headers.Authorization, ...(forceRefresh ? { "X-Hive-Refresh": "1" } : {}) },
-      signal: AbortSignal.any([signal, AbortSignal.timeout(forceRefresh ? 9_000 : 110_000)]),
-    });
-  } catch {
-    signal.throwIfAborted();
-    throw new SubscriptionUnavailable("authentication_unavailable");
-  }
-  if (response.status === 401 || response.status === 403) throw new Error("This runtime no longer has access to the task.");
-  if (!response.ok) throw new SubscriptionUnavailable("authentication_unavailable");
-  let body;
-  try { body = await response.json(); } catch { throw new SubscriptionUnavailable("authentication_unavailable"); }
-  if (typeof body.accessToken !== "string" || !body.accessToken || typeof body.chatgptAccountId !== "string" || !body.chatgptAccountId) {
+export function readSubscriptionTokens(start) {
+  const body = start.codexConfig?.hive_subscription_tokens;
+  if (typeof body?.accessToken !== "string" || !body.accessToken || typeof body?.chatgptAccountId !== "string" || !body.chatgptAccountId) {
     throw new SubscriptionUnavailable("authentication_unavailable");
   }
   return { accessToken: body.accessToken, chatgptAccountId: body.chatgptAccountId };

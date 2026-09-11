@@ -17,7 +17,7 @@ test("credential envelope is encrypted and bound to task, owner, repository and 
   await assert.rejects(openCodexAuth(sealed, binding, "x".repeat(64)));
   await assert.rejects(sealCodexAuth(auth, binding, "short"));
 });
-test("only short-lived access data reaches the native task process", () => {
+test("only short-lived access data reaches the host-side sandbox broker", () => {
   assert.deepEqual(Object.keys(externalCodexTokens(auth)), ["accessToken", "chatgptAccountId"]);
   assert.doesNotMatch(JSON.stringify(externalCodexTokens(auth)), /private-refresh|private-id-token/);
   assert.equal(codexAuthNeedsRefresh(auth, now), false);
