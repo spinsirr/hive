@@ -26,6 +26,8 @@ First-time visitors can sign in with GitHub and create their own tasks. A new ac
 
 The public `/demo` route uses the real dashboard component with invented, page-local sample data. It supports a recent-first task list, New task, and Empty state without a database or model. It is UI context, not execution evidence.
 
+**Message actions release candidate:** [PR #5](https://github.com/spinsirr/hive/pull/5) adds editing your own messages, retained edit history and compact queue actions. Try the separate [conversation preview](https://hive-git-feat-message-actions-spinsirrs-projects.vercel.app/demo/conversation). At the September 10 Pacific verification, its CI and deployed UI checks passed, but it had not been merged or promoted to the live application. Edits never replay earlier agent work; see the [behavior and evidence](docs/MESSAGE_EDITING.md).
+
 ## What Hive is — and is not
 
 Hive focuses on one shared coding task: one conversation, at most one attached repository, and one mutating agent run at a time. A person can start alone and invite teammates. Discussion, explicit steering and code review form the core workflow; approving a diff keeps the conversation open.
@@ -34,7 +36,7 @@ Hive is not a general team chat, a multi-agent orchestration system or a full co
 
 ## Architecture
 
-Hive owns shared task state, input ordering and review. The existing Codex harness owns coding execution inside Vercel Sandbox. Postgres preserves team history and private recovery records.
+Hive owns shared task state, input ordering and review. The selected existing coding harness owns execution inside Vercel Sandbox. Postgres preserves team history and private recovery records.
 
 ```mermaid
 flowchart LR
@@ -56,7 +58,7 @@ flowchart LR
     class Runtime,Gateway execution
 ```
 
-This is a responsibility diagram. Runtime output reaches the shared UI through Hive; teammates do not connect directly to the Sandbox.
+This responsibility diagram illustrates the Codex/Gateway path. The runtime choices are listed below. Runtime output reaches the shared UI through Hive; teammates do not connect directly to the Sandbox.
 
 
 | Layer | Responsibility |
@@ -87,7 +89,7 @@ The [runner](src/lib/hive-runner.ts), [restore path](src/lib/workspace-restore.t
 - **Show honest failures.** Runs displays process exit codes and original output, not an inferred test verdict. It shows the latest turn, so a later text-only reply can correctly show no commands. Diff shows real old/new file line numbers; the captured diff is capped at 60 KB, changed-file previews at 12 files of 20 KB each, and each command's output at 20 KB, with a visible truncation notice.
 - **A lost run is recoverable without losing the team's work.** Execution is bound to one request of at most five minutes. If a run has not reported for six minutes, any member can mark it as lost: the discussion, partial reply and queued steers stay, nothing reruns, and the task becomes steerable again. This is a manual, disclosed recovery, not automatic resumption after hard worker termination.
 - **Reset is deliberate.** Resetting a task clears the shared conversation for everyone and cannot be undone, so it requires a confirmation and an idle task (no active run, applied steer or queued input). Conversation messages carry timestamps shown in each viewer's local time; a message may hold up to 8,000 characters, Thread replies 4,000 and code annotations 500.
-- **Bound the submission.** No PR creation, sandbox branch push, issue triage, uploads, or multi-team administration. Vercel Workflow remains deferred. The owner's subsequent, narrow request for repository memory is described below; one bounded live round on September 10 (UTC) saved a selected reply and recalled it in another task on the same repository, while the source-task citation defect, live cross-repository isolation and Gateway rate limits remain open. Browser reconnection and caught-failure checkpoints do not guarantee automatic recovery after hard worker termination.
+- **Bound the submission.** No product PR creation, sandbox branch push, issue triage, uploads, or multi-team administration. Vercel Workflow remains deferred. The owner's subsequent, narrow request for repository memory is described below; one bounded live round on September 10 (UTC) saved a selected reply and recalled it in another task on the same repository. A later [source-citation retest](docs/POST_REVIEW_VERIFICATION.md#live-reset-and-memory-source-citation) passed in a new task; live cross-repository isolation and Gateway rate limits remain open. Browser reconnection and caught-failure checkpoints do not guarantee automatic recovery after hard worker termination.
 
 Task membership and GitHub repository access are separate. An invitation shares only that task's conversation and attached working copy, not the inviter's other tasks or repository pool. Repository listing and attachment both query GitHub using the current user's access token, including when several users share an App installation. The user's encrypted, HttpOnly GitHub cookie is bound to one Hive login, expires within eight hours (or sooner if GitHub specifies), and is cleared on logout. Missing, expired or revoked authorization asks for **Reconnect GitHub**; it never falls back to App-wide access. The existing OAuth client secret derives a purpose-specific encryption key; invitation signing is unchanged and no new secret or database migration is required. [GitHub's user-scoped repository API](https://docs.github.com/en/rest/apps/installations#list-repositories-accessible-to-the-user-access-token).
 

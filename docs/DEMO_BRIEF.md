@@ -6,6 +6,8 @@
 
 **Go/no-go:** check the [current availability gate](GOAL.md#completion-checklist) first. Both accounts must freshly load the same real task and reconnect successfully before rehearsal. A cached task page or the sample-data UI demo does not clear a database outage.
 
+**Release and model check:** use the canonical live application for the prepared coding result. Message editing is a separate [PR #5 preview](https://hive-git-feat-message-actions-spinsirrs-projects.vercel.app/demo/conversation), not part of that result or proof of production two-account editing. Read the actual task's runtime/model controls before presenting; do not switch them to match old notes. The recorded 125-test check used GPT-5.1-Codex Mini on an older Sandbox checkout. It is not the model or test count of every current task.
+
 ## Run of show
 
 | Time | Show | Main point |
@@ -17,6 +19,8 @@
 | 18–20 min | Scope, limitations, questions | One team, one task, one late-attached repo. The product is the shared control loop, not another agent runtime. |
 
 ## The product segment
+
+**中文开场提示：**“团队已经共享代码仓库，但往往没有共享正在替他们写代码的 agent。Hive 把几个人放进同一个任务：大家可以讨论、明确哪些意见需要执行，再一起检查真实的 diff 和命令结果。下面先展示已经完成的真实代码任务，然后演示讨论如何进入执行队列。准备好的结果、现场运行和 UI 样例会分别说明，不混在一起。”
 
 1. Check the identity menus, not just avatars. Show that the repository was attached after the task began.
 2. Open the existing implementation Thread. Joseph specified the default accessible name and preserved caller override; Spinsirr required real regression checks and no pushing. The third localization reply was excluded. **“2 replies steered”** describes the old frozen boundary; do not click **Steer entire thread with 3 replies** on this discussion.
@@ -60,6 +64,7 @@ Postgres owns who said what, which replies become instructions, and who may run 
 - No PR automation, issue triage, attachment ingestion or multi-team administration is in this demo. Repository-scoped memory exists and passed one bounded live round, but it is not demonstrated live; do not claim it is fully verified.
 - If a run has not reported for six minutes, use **Mark run as lost** rather than Reset: it keeps the discussion and queue. Reset needs confirmation and an idle task, and it erases the shared conversation for everyone.
 - The public dashboard preview is not a fake substitute for the real task.
+- Model/effort menus describe the installed adapter's supported choices, not proof that every choice has passed a live run. Keep [SDK compatibility limits](VERCEL_HARNESS_DECISION.md#current-decision-and-sdk-compatibility-boundaries), memory, subagents and preview-only message editing for Q&A; do not turn the 20-minute core demo into a feature tour.
 
 ## Before submission
 

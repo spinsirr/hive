@@ -37,7 +37,7 @@ The useful unit is one task, with one repository attached when needed and one mu
 
 - **A general team chat or project tracker.** Discussion is organized around a specific coding task; there are no permanent channels, sprint boards or organization administration workflows.
 - **A multi-agent orchestration product.** Multiplayer means several humans working with one coding agent, not a separate agent for every teammate.
-- **A new coding runtime or full collaborative IDE.** Codex supplies execution inside Sandbox. Hive supplies shared task state, attributed input, steering and review. The file viewer supports inspection and annotation, not simultaneous human editing.
+- **A new coding runtime or full collaborative IDE.** The selected Codex or Claude Code harness supplies execution inside Sandbox. Hive supplies shared task state, attributed input, steering and review. The file viewer supports inspection and annotation, not simultaneous human editing.
 - **An autonomous delivery pipeline.** This submission stops at inspectable changes and human review; it does not create PRs, push sandbox branches, merge or deploy the agent's changes.
 - **An automatic consensus engine.** A Thread reply is discussion until explicitly steered. Retrieved memory is fallible background, not a decision on behalf of the team.
 
@@ -155,7 +155,7 @@ Use the owner-authorized [Label the return-to-latest message action](https://hiv
 - Use `Spinsirr` and `josephmreb1` in separate authenticated browsers on the same task URL. Check the identity menus, not only the online avatars. Both identities were rechecked on September 8; this does not verify a new reviewer's invitation/sign-in.
 - Inspect current **Diff**, **Files** and the expanded combined command in **Runs** before starting anything. Read the actual output and exit code. **Exit 0** is a command result, not an automatic test verdict. The old 92-test result belongs to a different repository revision and is not a substitute.
 - The new read-only Thread below is for rehearsing collaboration after implementation passes. Do not re-steer the existing three-reply implementation thread: its third, future-localization reply was deliberately excluded from the earlier two-reply steer.
-- The owner-selected GPT-5.1-Codex Mini is deployed. The final check needed two successful Gateway calls; earlier longer turns exhausted bounded retries on 429. Plan for that risk rather than silently changing models, buying credits or replaying a failed task. Confirm the presentation date/time before calculating the 24-hour submission deadline. Keep the repository private and do not send invitations or submission material to outside reviewers without the owner's approval.
+- The recorded successful check used GPT-5.1-Codex Mini and needed two successful Gateway calls; earlier longer turns exhausted bounded retries on 429. Runtime/model selection was added later: read the current task's actual controls instead of presenting this historical choice as a global default. Plan for rate-limit risk rather than silently changing models, buying credits or replaying a failed task. Confirm the presentation date/time before calculating the 24-hour submission deadline. Keep the repository private and do not send invitations or submission material to outside reviewers without the owner's approval.
 
 Read-only UI navigation is verified separately in the dated evidence log. Neither the earlier 170-second preflight nor the September 8 route reconciliation is a 20-minute narrated rehearsal. Record the actual start/end time, observed outcomes and any skipped steps when that rehearsal happens.
 
@@ -222,9 +222,9 @@ Keep the evidence distinctions visible: original two-account execution and no-re
 - Durable transcript, Thread replies, frozen whole-thread steers, queue, review, and workspace state in Postgres. Presence and typing follow live connections.
 - Row-locked mutations so concurrent teammate messages survive.
 - Conversation with Hive before repository attachment.
-- Team-level GitHub App installations and repository picker; one immutable repository per task.
+- GitHub App installations with current-user-scoped repository listing and attachment; one immutable repository per task.
 - Fresh repository-scoped installation tokens for private Sandbox clones.
-- AI SDK Harness with Codex and a persistent named Vercel Sandbox.
+- AI SDK Harness with a selected Codex or Claude Code adapter and a persistent named Vercel Sandbox; native history stays with that adapter.
 - Successful and failed Codex checkpoints persisted server-side; opaque resume state stripped from clients.
 - Full on-demand read-only file navigation, command exit codes/output, and git diff; no fake PR, preview, test, or tool-result cards. Runs is the latest turn, not a run-history browser.
 - IME-aware message submission that avoids duplicate CJK sends.

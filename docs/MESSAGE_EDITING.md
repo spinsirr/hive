@@ -24,3 +24,11 @@ Messages and revisions use the existing Postgres JSON message records, row-locke
 - Browser UI preview: edited a historical sample message; queued, edited and removed a follow-up; checked the **Edited** marker and unchanged discussion after removal. At 390 × 844, document/editor width was 390 px and the open menu remained within the viewport. Temporary viewport override was reset.
 
 These are local/fixture and browser-preview results. They are not a claim of production two-account message-edit acceptance; that remains a post-deployment check. Preview edits intentionally reset on reload, unlike authenticated task data.
+
+## Published preview — September 10 Pacific
+
+Implementation head `49760db34bbfcf22de840bfbcf34faeccc89ed29` is in draft [PR #5](https://github.com/spinsirr/hive/pull/5), based on `d15d2c0`. [CI run 34562528572](https://github.com/spinsirr/hive/actions/runs/34562528572) passed Tests (including the complete disposable-Postgres integration chain), Lint and types, and Production build. The matching [Vercel deployment](https://vercel.com/spinsirrs-projects/hive/2qvMMsmwju3HYGJBLbQ97VjMQt7L) is Ready.
+
+The [deployed conversation preview](https://hive-git-feat-message-actions-spinsirrs-projects.vercel.app/demo/conversation) was clicked through: historical edit → save → old-version history; working-state follow-up → queue → edit with matching conversation/queue text; queue removal → discussion retained. Its recorded browser error/warning log was empty. This is deployed sample-data UI evidence, not an authenticated production edit or model run.
+
+At this check the branch was not merged or promoted to the canonical live application. External independent review still requires approval to share the private repository. Preserve the prepared real coding task and its latest Runs while that gate is open.
