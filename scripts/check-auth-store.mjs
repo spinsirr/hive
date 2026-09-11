@@ -7,7 +7,8 @@ import { mock } from "node:test";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
-import { Client, Pool } from "pg";
+import { Client } from "pg";
+import { createFixturePool } from "./fixture-pool.mjs";
 import { codexAccountHash, sealCodexAuth, openCodexAuth } from "../src/lib/codex-subscription-credentials.ts";
 import { createHiveToolToken } from "../src/lib/hive-tool-token.ts";
 
@@ -22,7 +23,7 @@ url.pathname = `/${name}`;
 process.env.DATABASE_URL = url.toString();
 process.env.HIVE_INVITE_SECRET = "auth-fixture-secret-".repeat(4);
 process.env.HIVE_CODEX_AUTH_SECRET = "vault-fixture-secret-".repeat(4);
-const pool = new Pool({ connectionString: url.toString(), max: 5 });
+const { pool, closePool } = createFixturePool({ connectionString: url.toString(), max: 5 });
 globalThis.__hiveDatabasePool = pool;
 registerHooks({ resolve(specifier, context, next) {
   if (specifier === "server-only") return next("next/dist/compiled/server-only/empty.js", context);
@@ -126,7 +127,7 @@ try {
   assert.doesNotMatch(JSON.stringify(await store.getTaskSessionSnapshot(id)), /PRIVATE_REFRESH|ROTATED_REFRESH|PRIVATE_ID|ACCOUNT_FIXTURE|encryptedAuth/);
   console.log("PASS: access is rechecked after refresh; uncertain failure stays fenced without token replay; shared snapshots contain no vault data.");
 } finally {
-  await pool.end();
+  await closePool();
   // Pool shutdown can precede socket close; FORCE would kill those closing clients.
   if (created) { await admin.query(`DROP DATABASE "${name}"`); console.log("CLEANUP: removed only this run's disposable local auth database."); }
   await admin.end();

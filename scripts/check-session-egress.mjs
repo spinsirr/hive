@@ -9,7 +9,8 @@ import { mock } from "node:test";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { eq } from "drizzle-orm";
-import { Client, Pool } from "pg";
+import { Client } from "pg";
+import { createFixturePool } from "./fixture-pool.mjs";
 import { WebSocket, WebSocketServer } from "ws";
 
 const configured = process.env.HIVE_EGRESS_TEST_DATABASE_URL;
@@ -24,7 +25,7 @@ const admin = new Client({ connectionString: url.toString() });
 url.pathname = `/${databaseName}`;
 process.env.DATABASE_URL = url.toString();
 process.env.DATABASE_URL_DIRECT = url.toString();
-const pool = new Pool({ connectionString: url.toString(), max: 5 });
+const { pool, closePool } = createFixturePool({ connectionString: url.toString(), max: 5 });
 globalThis.__hiveDatabasePool = pool;
 const queries = [];
 const notifications = [];
@@ -233,7 +234,7 @@ try {
     for (const socket of server.clients) socket.terminate();
     await new Promise((resolve) => server.close(resolve));
   }
-  await pool.end();
+  await closePool();
   // Pool shutdown can precede socket close; FORCE would kill those closing clients.
   if (created) await admin.query(`DROP DATABASE "${databaseName}"`);
   await admin.end();

@@ -2,7 +2,7 @@
 
 Deliver a working, shareable multiplayer coding agent and an evidence-backed take-home presentation.
 
-**Latest recheck — September 10 Pacific:** the current local working tree passes 179 unit tests and the controlled checks, local Postgres onboarding/authentication/egress tests, lint, typecheck and the explicit Webpack build. A fresh production page preserves the prepared two-file result, its actual Exit 0 / 125-test command, colored Files view and usable narrow-screen Thread. Local changes are not yet integrated with remote typography or deployed; second-account acceptance and the rehearsal/submission gates remain open. See the [dated release recheck and exact evidence boundaries](POST_REVIEW_VERIFICATION.md#september-10-pacific--release-recheck).
+**Latest recheck — September 10 Pacific:** `4ef15ff` integrates the model controls, Claude work, CI and remote typography and has deployed successfully. The 179-test local suite, controlled checks, lint, typecheck and explicit Webpack build pass. Both real accounts retain the prepared result and a new, explicitly labeled Joseph-authored human-only reply across live delivery and refresh, without starting an agent. The first remote CI run exposed a test-cleanup race; a red-to-green regression and full Node.js 24 Postgres integration recheck cover the fixture-only fix. Use [GitHub checks](https://github.com/spinsirr/hive/actions/workflows/ci.yml) for its remote verdict. Fresh-user production access checks, live subagent acceptance, rehearsal and owner-controlled submission remain open. See the [release follow-up and evidence boundaries](POST_REVIEW_VERIFICATION.md#september-10-pacific--release-and-second-account-follow-up).
 
 ### September 10 owner-requested addition: bounded subagents
 

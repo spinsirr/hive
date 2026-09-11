@@ -8,7 +8,8 @@ import { mock } from "node:test";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
-import { Client, Pool } from "pg";
+import { Client } from "pg";
+import { createFixturePool } from "./fixture-pool.mjs";
 
 const configured = process.env.HIVE_RECOVERY_TEST_DATABASE_URL;
 if (!configured) throw new Error("Set HIVE_RECOVERY_TEST_DATABASE_URL to disposable loopback Postgres.");
@@ -23,7 +24,7 @@ const admin = new Client({ connectionString: url.toString(), connectionTimeoutMi
 url.pathname = `/${databaseName}`;
 process.env.DATABASE_URL = url.toString();
 process.env.DATABASE_URL_DIRECT = url.toString();
-const pool = new Pool({ connectionString: url.toString(), max: 5, connectionTimeoutMillis: 5000 });
+const { pool, closePool } = createFixturePool({ connectionString: url.toString(), max: 5, connectionTimeoutMillis: 5000 });
 globalThis.__hiveDatabasePool = pool;
 registerHooks({ resolve(specifier, context, next) {
   if (specifier === "server-only") return next("next/dist/compiled/server-only/empty.js", context);
@@ -155,7 +156,7 @@ try {
   console.log("PASS: late callbacks are fenced; concurrent Apply grants one next run; recovery itself makes zero execution attempts.");
   console.log("PASS: concurrent text/subagent JSON patches preserve both; stale child results cannot overwrite a recovered or newer run.");
 } finally {
-  await pool.end();
+  await closePool();
   if (created) {
     // Pool shutdown can precede socket close; FORCE would kill those closing clients.
     await admin.query(`DROP DATABASE "${databaseName}"`);

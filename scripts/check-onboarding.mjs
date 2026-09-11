@@ -9,7 +9,8 @@ import { mock } from "node:test";
 import { fileURLToPath } from "node:url";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
-import { Client, Pool } from "pg";
+import { Client } from "pg";
+import { createFixturePool } from "./fixture-pool.mjs";
 import { transpileModule, JsxEmit, ModuleKind } from "typescript";
 
 const configured = process.env.HIVE_ONBOARDING_TEST_DATABASE_URL;
@@ -28,7 +29,7 @@ process.env.GITHUB_APP_CLIENT_SECRET = "onboarding-local-fixture-not-a-real-secr
 process.env.GITHUB_APP_CALLBACK_URL = "https://hive.test/api/github/callback";
 process.env.GITHUB_APP_ID = "1";
 process.env.GITHUB_APP_PRIVATE_KEY = generateKeyPairSync("rsa", { modulusLength: 2048 }).privateKey.export({ type: "pkcs8", format: "pem" });
-const pool = new Pool({ connectionString: url.toString(), max: 5 });
+const { pool, closePool } = createFixturePool({ connectionString: url.toString(), max: 5 });
 globalThis.__hiveDatabasePool = pool;
 const requestCookies = new AsyncLocalStorage();
 registerHooks({ resolve(specifier, context, next) {
@@ -275,7 +276,7 @@ try {
   assert.ok(await getSessionMember(owner.token));
   console.log("PASS: logout revokes this login and clears GitHub access without signing out another account.");
 } finally {
-  await pool.end();
+  await closePool();
   // Pool shutdown can precede socket close; FORCE would kill those closing clients.
   if (created) await admin.query(`DROP DATABASE "${databaseName}"`);
   await admin.end();

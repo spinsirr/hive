@@ -17,7 +17,7 @@
     "test:onboarding": "node --experimental-test-module-mocks scripts/check-onboarding.mjs",
     "test:recovery": "node --experimental-test-module-mocks scripts/check-stalled-run.mjs",
     "test:live-transport": "node scripts/check-live-transport.ts",
-    "test:integration": "pnpm test:auth && pnpm test:onboarding && pnpm test:session-egress && pnpm test:recovery && pnpm test:live-transport",
+    "test:integration": "node scripts/check-fixture-pool.mjs && pnpm test:auth && pnpm test:onboarding && pnpm test:session-egress && pnpm test:recovery && pnpm test:live-transport",
     "typecheck": "next typegen && tsc --noEmit",
     "start": "next start",
     "lint": "eslint",
