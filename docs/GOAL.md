@@ -2,7 +2,13 @@
 
 Deliver a working, shareable multiplayer coding agent and an evidence-backed take-home presentation.
 
-**Latest recheck — September 10 Pacific:** the current local working tree passes 179 unit tests and the controlled checks, local Postgres onboarding/authentication/egress tests, lint, typecheck and the explicit Webpack build. A fresh production page preserves the prepared two-file result, its actual Exit 0 / 125-test command, colored Files view and usable narrow-screen Thread. Local changes are not yet integrated with remote typography or deployed; second-account acceptance and the rehearsal/submission gates remain open. See the [dated release recheck and exact evidence boundaries](POST_REVIEW_VERIFICATION.md#september-10-pacific--release-recheck).
+**Latest recheck — September 10 Pacific:** message actions remain in draft [PR #5](https://github.com/spinsirr/hive/pull/5), not the canonical production release. Head `b0ab5e8` has green [CI](https://github.com/spinsirr/hive/actions/runs/34564150694) and a successful [Vercel preview](https://vercel.com/spinsirrs-projects/hive/G9MMqXcTdGL3TDscEEoAwFLAxi9q). A fresh production page still reaches Live and preserves the prepared two-file result and actual Exit 0 / 125-test command. The later documentation-only finalization and its verification are recorded in [the finalization preflight](POST_REVIEW_VERIFICATION.md#september-10-pacific--scope-freeze-preflight). Fresh-account acceptance, second-account recheck, independent review and the narrated rehearsal remain distinct open gates.
+
+**Confirmed presentation:** September 14, 2026, **9:30–11:00 AM PDT**. The four-item submission deadline is **September 13, 9:30 AM PDT**. See the [submission packet](SUBMISSION.md); repository visibility and external sending still require explicit owner approval.
+
+### Final scope freeze — September 10 Pacific
+
+After rereading the original recruiter email and official guide, Spencer confirmed that no more product features should be added. The guide's roughly six focused hours refers to the whole assignment, not a separate design phase. Hive already exceeds that intended scope; do not call the accumulated build a six-hour effort. Remaining work is core-flow verification, blocking fixes, focused code explanation and submission preparation. Memory, subagents, model controls and preview-only message editing are supporting/Q&A material, not additional live-demo segments. Preserve their honest verification limits; do not claim that moving them out of the demo makes an untested feature pass.
 
 ### September 10 owner-requested addition: bounded subagents
 

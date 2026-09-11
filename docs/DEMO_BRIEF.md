@@ -2,6 +2,8 @@
 
 **Purpose:** keep the take-home demo focused on a working multiplayer coding task. This is the speaking outline, not a claim that a 20-minute narrated rehearsal has happened.
 
+**Timing:** September 14, 2026, **9:30–11:00 AM PDT**; submit all four items by **September 13, 9:30 AM PDT**. The [official guide](https://vercel.notion.site/Take-Home-Build-Submission-Guide-3ade06b059c481aa8a31f6be0e18b30f) requires key-code explanation, not a fixed five-minute code segment. Its roughly six-hour expectation applies to the whole build, not just design. Our work exceeded that intended scope; be honest about the iteration and keep this demo to the shared control loop.
+
 **Open beforehand:** the [real acceptance task](https://hive-roan-mu.vercel.app/sessions/label-the-return-to-latest-messa-qvezdg) as Spinsirr and josephmreb1 in separate browsers. The [public UI demo](https://hive-roan-mu.vercel.app/demo) uses sample data; it is optional design context, never execution evidence.
 
 **Go/no-go:** check the [current availability gate](GOAL.md#completion-checklist) first. Both accounts must freshly load the same real task and reconnect successfully before rehearsal. A cached task page or the sample-data UI demo does not clear a database outage.
@@ -66,4 +68,4 @@ Postgres owns who said what, which replies become instructions, and who may run 
 
 ## Before submission
 
-Use the existing [two-paragraph summary](SUBMISSION.md#summary-blurb), confirmed by Spencer on September 8, 2026. Run the narrated rehearsal with a timer and record actual outcomes, not just elapsed browsing time. Public repository access and external sending still require separate explicit approval. The presentation is not scheduled yet; once it is, all four items must arrive at least 24 hours beforehand.
+Use the existing [two-paragraph summary](SUBMISSION.md#summary-blurb), confirmed by Spencer on September 8, 2026. Run the narrated rehearsal with a timer and record actual outcomes, not just elapsed browsing time. Public repository access and external sending still require separate explicit approval. The confirmed submission deadline is September 13, 2026, 9:30 AM PDT, at least 24 hours before the presentation.

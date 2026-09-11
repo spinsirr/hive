@@ -1,6 +1,6 @@
 # Hive — Presentation Notes
 
-This is the source of truth for the take-home story. Update it when a product decision changes or a claim gains evidence.
+These are working notes for the take-home story, not the employer's rubric. The [official submission guide](https://vercel.notion.site/Take-Home-Build-Submission-Guide-3ade06b059c481aa8a31f6be0e18b30f) is authoritative for requirements. Update these notes when a product decision changes or a claim gains evidence.
 
 ## Submission checklist
 
@@ -12,6 +12,10 @@ Send all four at least 24 hours before the presentation:
 - One-to-two paragraph summary blurb.
 
 The presentation is 90 minutes; the product demo is about 20 minutes in this order: problem, solution, code, AI journey.
+
+**Confirmed schedule:** Monday, September 14, 2026, **9:30–11:00 AM PDT** (recruiter confirmation received September 9). The four items are due no later than **Sunday, September 13, 9:30 AM PDT**. Publication and external sending still need Spencer's explicit approval.
+
+**Workload and code expectations:** the guide describes the whole assignment as roughly six focused hours, not six hours for a separate design phase; it does not state an automatic disqualification cutoff. Hive has expanded beyond that intended size. Do not present the accumulated work as a six-hour build or invent an exact effort total. Spencer has now frozen further feature development: finish the existing core flow, fix blockers and prepare the submission. The code segment should explain the key implementation and tradeoffs, not tour every file. Its five-minute allocation below is our presentation choice, not a Vercel requirement.
 
 Current app: [hive-roan-mu.vercel.app](https://hive-roan-mu.vercel.app/)
 
@@ -47,7 +51,7 @@ The useful unit is one task, with one repository attached when needed and one mu
 
 **Supporting behavior:** streaming, queued input at run boundaries, refresh/reconnection, and paired filesystem/native-context checkpoints. Explain their tested boundaries; do not turn each into a separate live demonstration.
 
-**Optional extension:** repository-scoped memory and task-aware agent tools. Keep memory out of the core live route until actual save/recall acceptance is recorded. Configuration and controlled tests alone are not live service evidence.
+**Optional extension:** repository-scoped memory, task-aware tools, subagents and model controls stay in Q&A, not the core live route. The bounded memory save/recall and source-citation retest passed; live subagent acceptance remains open. Configuration and controlled tests alone are not live service evidence. Message editing is a separate preview-only release candidate.
 
 **Deferred:** Workflow integration, automatic recovery after hard worker termination, PR automation, uploads and multi-team administration. These are scope boundaries, not promises required to finish this presentation. Current release and service readiness remain tracked in [GOAL.md](GOAL.md).
 
@@ -155,7 +159,7 @@ Use the owner-authorized [Label the return-to-latest message action](https://hiv
 - Use `Spinsirr` and `josephmreb1` in separate authenticated browsers on the same task URL. Check the identity menus, not only the online avatars. Both identities were rechecked on September 8; this does not verify a new reviewer's invitation/sign-in.
 - Inspect current **Diff**, **Files** and the expanded combined command in **Runs** before starting anything. Read the actual output and exit code. **Exit 0** is a command result, not an automatic test verdict. The old 92-test result belongs to a different repository revision and is not a substitute.
 - The new read-only Thread below is for rehearsing collaboration after implementation passes. Do not re-steer the existing three-reply implementation thread: its third, future-localization reply was deliberately excluded from the earlier two-reply steer.
-- The recorded successful check used GPT-5.1-Codex Mini and needed two successful Gateway calls; earlier longer turns exhausted bounded retries on 429. Runtime/model selection was added later: read the current task's actual controls instead of presenting this historical choice as a global default. Plan for rate-limit risk rather than silently changing models, buying credits or replaying a failed task. Confirm the presentation date/time before calculating the 24-hour submission deadline. Keep the repository private and do not send invitations or submission material to outside reviewers without the owner's approval.
+- The recorded successful check used GPT-5.1-Codex Mini and needed two successful Gateway calls; earlier longer turns exhausted bounded retries on 429. Runtime/model selection was added later: read the current task's actual controls instead of presenting this historical choice as a global default. Plan for rate-limit risk rather than silently changing models, buying credits or replaying a failed task. Use the confirmed schedule in the submission checklist above. Keep the repository private and do not send invitations or submission material to outside reviewers without the owner's approval.
 
 Read-only UI navigation is verified separately in the dated evidence log. Neither the earlier 170-second preflight nor the September 8 route reconciliation is a 20-minute narrated rehearsal. Record the actual start/end time, observed outcomes and any skipped steps when that rehearsal happens.
 
