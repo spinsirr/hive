@@ -9,8 +9,8 @@ export function DiffPane({ diff }: { diff: string }) {
   return (
     <div className="h-full overflow-auto bg-white p-5">
       <div className="mx-auto max-w-5xl overflow-hidden rounded-lg border border-[#e2e2e2]">
-        <div className="border-b border-[#ebebeb] bg-[#fafafa] px-3 py-2 font-mono text-[11px]">git diff --no-ext-diff HEAD</div>
-        <div className="overflow-x-auto py-2 font-mono text-[12px] leading-6">
+        <div className="border-b border-[#ebebeb] bg-[#fafafa] px-3 py-2 font-mono text-xs">git diff --no-ext-diff HEAD</div>
+        <div className="overflow-x-auto py-2 font-mono text-xs leading-6">
           <div className="w-max min-w-full">
             {annotateUnifiedDiff(diff).map(({ text, change, oldLine, newLine }, index) => {
               const gutter = cn(

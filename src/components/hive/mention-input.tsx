@@ -118,10 +118,10 @@ export function MentionInput({ value, onChange, onSubmit, members, currentMember
             <Autocomplete.List aria-label="Mention a teammate" className="max-h-52 overflow-y-auto">
               {(member: TeamMember) => (
                 <Autocomplete.Item className="flex cursor-default items-center gap-2.5 rounded-md px-2.5 py-2 outline-none data-highlighted:bg-[#f2f2f2]" key={member.id} value={member}>
-                  <span className="grid size-7 shrink-0 place-items-center rounded-full border border-[#dedede] bg-[#fafafa] text-[10px] font-medium">{member.initials}</span>
+                  <span className="grid size-7 shrink-0 place-items-center rounded-full border border-[#dedede] bg-[#fafafa] text-xs font-medium">{member.initials}</span>
                   <span className="min-w-0">
                     <span className="block truncate text-xs font-medium text-[#171717]">{member.name}</span>
-                    <span className="block truncate text-[11px] text-[#737373]">@{teammateMentionHandle(member)}</span>
+                    <span className="block truncate text-xs text-[#737373]">@{teammateMentionHandle(member)}</span>
                   </span>
                 </Autocomplete.Item>
               )}

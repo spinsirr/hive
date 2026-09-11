@@ -62,9 +62,9 @@ export function MessageThread({ sessionId, message, members, currentMember, disa
       <Conversation className="min-h-0 flex-1">
         <ConversationContent className="gap-5 px-3 py-5 sm:px-5">
           <article className="border-b border-[#ebebeb] pb-5">
-            <div className="mb-2 flex items-center gap-2 text-xs"><span className="grid size-6 shrink-0 place-items-center rounded-full border border-[#dedede] bg-[#fafafa] text-[9px] font-medium">{message.initials}</span><span className="font-medium">{message.name}</span><MessageTime className="text-[#999]" message={message} /></div>
+            <div className="mb-2 flex items-center gap-2 text-xs"><span className="grid size-6 shrink-0 place-items-center rounded-full border border-[#dedede] bg-[#fafafa] text-xs font-medium">{message.initials}</span><span className="font-medium">{message.name}</span><MessageTime className="text-[#999]" message={message} /></div>
             <div className="min-w-0 break-words text-sm leading-6">
-              {message.role === "agent" ? <AgentResponse>{message.body}</AgentResponse> : message.codeReference ? <><p className="break-all font-mono text-xs text-[#737373]">{codeReferenceLabel(message.codeReference)}</p><pre className="mt-2 max-h-52 overflow-auto font-mono text-xs leading-5">{message.codeReference.quote}</pre></> : <p className="whitespace-pre-wrap">{message.body}</p>}
+              {message.role === "agent" ? <AgentResponse>{message.body}</AgentResponse> : message.codeReference ? <><p className="break-all text-xs text-[#737373]">{codeReferenceLabel(message.codeReference)}</p><pre className="mt-2 max-h-52 overflow-auto font-mono text-xs leading-5">{message.codeReference.quote}</pre></> : <p className="whitespace-pre-wrap">{message.body}</p>}
             </div>
           </article>
           {(replies?.length ?? 0) === 0 ? <p className="text-xs text-[#737373]">Start a discussion about this message.</p> : replies?.map((reply) => <ThreadReply disabled={disabled} key={reply.id} members={members} onSteer={() => onSteerReply(message.id, reply.id)} queueing={queueing} reply={reply} showTimestamp />)}
@@ -81,7 +81,7 @@ export function MessageThread({ sessionId, message, members, currentMember, disa
           <MentionInput autoFocus currentMember={currentMember} disabled={disabled || !draft} label="Reply in thread" maxLength={4000} members={members} onChange={edit} onSubmit={() => { if (!disabled) void submit(); }} placeholder={disabled ? "Replies are paused." : "Reply or @mention a teammate…"} readOnly={sending} value={draft?.body ?? ""} />
           <Button aria-label={sending ? "Sending reply" : draft?.status === "unconfirmed" ? "Retry reply" : "Send reply"} className="size-10 shrink-0 rounded-lg sm:size-9" disabled={disabled || !draft?.body.trim() || sending} onClick={() => void submit()} size="icon">{sending ? <LoaderCircle className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}</Button>
         </div>
-        <p className="mt-2 px-1 text-[11px] text-[#737373]" role="status">{draft?.status === "unconfirmed" ? "Delivery unconfirmed. Your reply is saved; retry when connected." : "Replies stay in the thread until you steer Hive."}</p>
+        <p className="mt-2 px-1 text-xs text-[#737373]" role="status">{draft?.status === "unconfirmed" ? "Delivery unconfirmed. Your reply is saved; retry when connected." : "Replies stay in the thread until you steer Hive."}</p>
       </footer>
     </section>
   );
