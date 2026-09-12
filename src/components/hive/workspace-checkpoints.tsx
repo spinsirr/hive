@@ -20,13 +20,16 @@ export function WorkspaceCheckpoints({ sessionId, revision, onRestored }: { sess
   const [confirm, setConfirm] = useState<{ request: RestoreWorkspaceRequest; createdAt?: number }>();
   const [restoring, setRestoring] = useState(false);
   const [restoreError, setRestoreError] = useState("");
-  const [readyRetry, setReadyRetry] = useState("");
+  const [now, setNow] = useState(Date.now);
+  const [checking, setChecking] = useState(false);
+  const [checkRequest, setCheckRequest] = useState(0);
+  const [recoveryNotice, setRecoveryNotice] = useState("");
   const cancelButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     const controller = new AbortController();
     async function load() {
       try {
-        const response = await client.request(`/api/sessions/${encodeURIComponent(sessionId)}/checkpoints`, { cache: "no-store", signal: controller.signal });
+        const response = await client.request(`/api/sessions/${encodeURIComponent(sessionId)}/checkpoints`, { cache: "no-store", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)]) });
         const body = await response.json();
         if (!response.ok) throw new Error(body.error || "Checkpoints could not be loaded.");
         const data = workspaceCheckpointsResponse.parse(body);
@@ -40,28 +43,67 @@ export function WorkspaceCheckpoints({ sessionId, revision, onRestored }: { sess
   }, [key, sessionId, client]);
   const current = state?.key === key ? state : undefined;
   const recovery = current?.data?.restore;
-  const retryKey = recovery ? `${recovery.id}:${recovery.retryAfter}` : "";
+  const retrySeconds = recovery ? Math.max(0, Math.ceil((recovery.retryAfter - now) / 1000)) : 0;
   // A teammate can archive or advance the task while this dialog is open.
-  const confirmDisabled = restoring || !current?.data || (recovery
-    ? readyRetry !== retryKey
+  const confirmDisabled = restoring || checking || !current?.data || (recovery
+    ? retrySeconds > 0
     : Boolean(current.data.blockedReason) || confirm?.request.version !== current.data.version);
   useEffect(() => {
     if (!recovery) return;
-    const timer = setTimeout(() => setReadyRetry(retryKey), Math.max(0, recovery.retryAfter - Date.now()));
-    return () => clearTimeout(timer);
-  }, [recovery, retryKey]);
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [recovery]);
+  useEffect(() => {
+    if (!recovery || restoring) return;
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
+    let attempts = 0;
+    async function check() {
+      setChecking(true);
+      try {
+        const response = await client.request(`/api/sessions/${encodeURIComponent(sessionId)}/checkpoints`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode: "check", id: recovery!.id, snapshotId: recovery!.snapshotId, version: revision }),
+          signal: AbortSignal.any([controller.signal, AbortSignal.timeout(12_000)]),
+        });
+        const body = await response.json();
+        if (controller.signal.aborted) return;
+        if (response.status === 200) {
+          onRestored(body);
+          setConfirm(undefined);
+          setRestoreError("");
+          setRecoveryNotice("");
+          setRefresh((value) => value + 1);
+          return;
+        }
+        if (response.status !== 202) throw new Error(body.error || "Restore status could not be checked. Try checking again.");
+        // Poll metadata only, briefly and only for this pending operation. Never
+        // silently replay a restore, or leave a permanent background heartbeat.
+        if (++attempts < 12) {
+          setRecoveryNotice("Waiting for Sandbox confirmation. Checking status does not restore files again.");
+          timer = setTimeout(() => void check(), 10_000);
+        } else setRecoveryNotice("Not confirmed yet. Check status again, or retry the same checkpoint.");
+      } catch (error) {
+        if (!controller.signal.aborted) setRecoveryNotice(error instanceof Error ? error.message : "Restore status could not be checked. Try checking again.");
+      } finally {
+        if (!controller.signal.aborted) setChecking(false);
+      }
+    }
+    timer = setTimeout(() => void check(), Math.max(0, recovery.retryAfter - Date.now()));
+    return () => { controller.abort(); clearTimeout(timer); };
+  }, [client, sessionId, revision, recovery, restoring, checkRequest, onRestored]);
   const restore = async () => {
     if (!confirm || confirmDisabled) return;
     setRestoring(true);
     setRestoreError("");
     try {
-      const response = await client.request(`/api/sessions/${encodeURIComponent(sessionId)}/checkpoints`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(confirm.request) });
+      const response = await client.request(`/api/sessions/${encodeURIComponent(sessionId)}/checkpoints`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(confirm.request), signal: AbortSignal.timeout(55_000) });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || "Restore could not be confirmed. Refresh Checkpoints before retrying.");
       onRestored(body);
       setConfirm(undefined);
     } catch (error) {
-      setRestoreError(error instanceof Error ? error.message : "Restore could not be confirmed. Refresh Checkpoints before retrying.");
+      setRestoreError(error instanceof Error && error.name !== "TimeoutError" ? error.message : "The restore response timed out. We will check whether it finished; files stay paused until confirmed.");
       setConfirm(undefined);
     } finally { setRestoring(false); setRefresh((value) => value + 1); }
   };
@@ -71,7 +113,14 @@ export function WorkspaceCheckpoints({ sessionId, revision, onRestored }: { sess
         <p className="text-xs text-[#737373]">Workspace recovery points</p>
         <Button aria-label="Refresh checkpoints" className="size-7 shrink-0" onClick={() => setRefresh((value) => value + 1)} size="icon" variant="ghost"><RotateCw className="size-3.5" /></Button>
       </div>
-      {current?.data?.blockedReason ? <div className="flex items-center justify-between gap-3 border-b border-[#ebebeb] bg-[#fafafa] px-4 py-3 text-xs text-[#737373]" role="status"><p>{current.data.blockedReason}</p>{recovery ? <Button disabled={restoring || readyRetry !== retryKey} onClick={() => { setRestoreError(""); setConfirm({ request: { id: recovery.id, snapshotId: recovery.snapshotId, version: current.data!.version } }); }} size="sm" variant="outline">Retry restore</Button> : null}</div> : null}
+      {current?.data?.blockedReason ? <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#ebebeb] bg-[#fafafa] px-4 py-3 text-xs text-[#737373]">
+        <div role="status" className="min-w-0 flex-1 basis-48"><p>{current.data.blockedReason}</p>{recovery ? <p className="mt-1">{retrySeconds > 0 ? `Checking safely in ${retrySeconds}s. This prevents overlapping restores.` : checking ? "Checking the existing restore…" : recoveryNotice || "Checking status does not restore files again."}</p> : null}</div>
+        {recovery ? <div className="flex flex-wrap gap-2">
+          <Button disabled={restoring || checking || retrySeconds > 0} onClick={() => setCheckRequest((value) => value + 1)} size="sm" variant="outline">Check status</Button>
+          <Button disabled={restoring || checking || retrySeconds > 0} onClick={() => { setRestoreError(""); setConfirm({ request: { id: recovery.id, snapshotId: recovery.snapshotId, version: current.data!.version } }); }} size="sm" variant="ghost">Retry restore</Button>
+        </div> : null}
+      </div> : null}
+      {restoring && !confirm ? <p className="px-4 py-3 text-xs text-muted-foreground" role="status">Restoring the checkpoint. You can keep reading the discussion; closing the dialog does not cancel recovery.</p> : null}
       {restoreError ? <p className="px-4 py-3 text-xs text-[#737373]" role="status">{restoreError}</p> : null}
       <div className="min-h-0 flex-1 overflow-auto">
         {!current ? <p className="p-6 text-xs text-[#737373]" role="status">Loading checkpoints…</p> : current.error ? <p className="p-6 text-xs text-[#737373]" role="status">{current.error}</p> : current.data?.checkpoints.length === 0 ? <p className="p-6 text-xs text-[#737373]">No saved checkpoint yet.</p> : current.data?.checkpoints.map((checkpoint) => (
@@ -87,15 +136,16 @@ export function WorkspaceCheckpoints({ sessionId, revision, onRestored }: { sess
         ))}
       </div>
       <p className="shrink-0 border-t border-[#ebebeb] px-4 py-3 text-xs text-[#737373]">Only checkpoints saved with matching agent context can be restored.{current?.data?.retentionCount ? ` Up to ${current.data.retentionCount} sandbox recovery points are retained.` : ""}</p>
-      <Dialog open={Boolean(confirm)} onOpenChange={(open) => { if (!open && !restoring) setConfirm(undefined); }}>
-        <DialogContent initialFocus={cancelButton} showCloseButton={!restoring}>
+      <Dialog open={Boolean(confirm)} onOpenChange={(open) => { if (!open) setConfirm(undefined); }}>
+        <DialogContent initialFocus={cancelButton}>
           <DialogHeader>
             <DialogTitle>Restore this checkpoint?</DialogTitle>
             <DialogDescription>{confirm?.createdAt ? `Restore files and Codex context to ${dateLabel(confirm.createdAt)}. ` : "Retry restoring the selected files and Codex context. "}Team discussion and queued steers will stay; nothing will run automatically. GitHub commits and pull requests are not changed.</DialogDescription>
           </DialogHeader>
           {current?.data?.blockedReason && !recovery ? <p className="text-xs text-muted-foreground" role="status">{current.data.blockedReason}</p> : null}
+          {restoring ? <p className="text-xs text-muted-foreground" role="status">Saving the current workspace and restoring the checkpoint. You can close this dialog; recovery will continue and no agent will run.</p> : recovery && retrySeconds > 0 ? <p className="text-xs text-muted-foreground" role="status">Waiting {retrySeconds}s before checking the previous attempt. A second restore cannot start yet.</p> : null}
           <DialogFooter>
-            <Button disabled={restoring} onClick={() => setConfirm(undefined)} ref={cancelButton} variant="outline">Cancel</Button>
+            <Button onClick={() => setConfirm(undefined)} ref={cancelButton} variant="outline">{restoring ? "Close dialog" : "Cancel"}</Button>
             <Button disabled={confirmDisabled} onClick={() => void restore()}>{restoring ? <LoaderCircle className="size-3.5 animate-spin" /> : <RotateCcw className="size-3.5" />}{restoring ? "Restoring…" : "Restore checkpoint"}</Button>
           </DialogFooter>
         </DialogContent>

@@ -98,7 +98,6 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
     payload.type !== "remove-queued-steer" &&
     payload.type !== "reorder-queued-steer" &&
     payload.type !== "steer-agent" &&
-    payload.type !== "advance-run" &&
     payload.type !== "recover-stalled-run" &&
     payload.type !== "reset"
   ) {

@@ -54,6 +54,7 @@ export function resolveMember(
     }
   );
 }
+// Historical approved snapshots remain readable; new reviews resolve only in their Thread.
 export type RunStage = "waiting" | "running" | "review" | "approved";
 
 export type SteeringSource =
@@ -193,6 +194,8 @@ export type WorkspaceRestore = {
   by: TeamMember;
   startedAt: number;
   retryAfter: number;
+  /** Durable identity of the VM before any destructive restore step. */
+  sourceSessionId?: string;
   status: "restoring" | "unconfirmed";
 };
 
@@ -293,7 +296,6 @@ export type TaskSessionAction =
       direction: "up" | "down";
     }
   | { type: "steer-agent"; actor: MemberId }
-  | { type: "advance-run"; actor: MemberId }
   | { type: "recover-stalled-run"; actor: MemberId }
   | { type: "reset"; actor: MemberId };
 
@@ -428,16 +430,6 @@ export function canApplyNextSteer(state: TaskSessionState): boolean {
     state.steeringQueue.length > 0 &&
     !state.activeSteer &&
     !isHiveRunActive(state);
-}
-
-export function canApproveChanges(state: TaskSessionState): boolean {
-  return !state.archived && !state.workspace.restore &&
-    Boolean(state.repository) &&
-    state.stage === "review" &&
-    state.workspace.status === "review" &&
-    state.workspace.diff.trim().length > 0 &&
-    state.steeringQueue.length === 0 &&
-    !state.activeSteer;
 }
 
 export function didStartHiveRun(previous: TaskSessionState, next: TaskSessionState): boolean {
@@ -1126,23 +1118,6 @@ export function reduceTaskSession(
       steeringQueue,
       updatedAt: now,
     };
-  }
-
-  if (action.type === "advance-run") {
-    if (canApproveChanges(state)) {
-      const member = actor;
-      return {
-        ...state,
-        version: state.version + 1,
-        stage: "approved",
-        messages: appendAgentMessage(
-          state,
-          `${member.shortName} approved the current diff.`,
-          now,
-        ),
-        updatedAt: now,
-      };
-    }
   }
 
   return state;

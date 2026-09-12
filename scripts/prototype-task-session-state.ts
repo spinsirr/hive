@@ -27,7 +27,7 @@ function render() {
   console.log(`${bold}messages${reset}    ${state.messages.length}`);
   console.log(`\n${dim}${state.messages.at(-1)?.body}${reset}`);
   console.log(`\n${bold}[p]${reset} switch person  ${bold}[m]${reset} prompt Hive  ${bold}[s]${reset} steer from annotation`);
-  console.log(`${bold}[f]${reset} finish run     ${bold}[a]${reset} approve       ${bold}[r]${reset} reset  ${bold}[q]${reset} quit`);
+  console.log(`${bold}[r]${reset} reset  ${bold}[q]${reset} quit`);
 }
 
 emitKeypressEvents(process.stdin);
@@ -40,7 +40,6 @@ process.stdin.on("keypress", (_input, key) => {
   if (key.name === "p") actor = actor === "spencer" ? "maya" : "spencer";
   if (key.name === "m") state = reduceTaskSession(state, { type: "send-message", actor, body: "I agree with the proposed behavior." });
   if (key.name === "s") state = reduceTaskSession(state, { type: "steer-agent", actor });
-  if (key.name === "f" || key.name === "a") state = reduceTaskSession(state, { type: "advance-run", actor });
   if (key.name === "r") state = reduceTaskSession(state, { type: "reset", actor });
   render();
 });

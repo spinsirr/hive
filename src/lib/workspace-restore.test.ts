@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyHiveRunError, applyHiveRunResult, canApplyNextSteer, canApproveChanges, createInitialTaskSessionState, reduceTaskSession, resolveMember, type TaskSessionState } from "./task-session.ts";
+import { applyHiveRunError, applyHiveRunResult, canApplyNextSteer, createInitialTaskSessionState, reduceTaskSession, resolveMember, type TaskSessionState } from "./task-session.ts";
 import { publicTaskSessionSnapshot } from "./task-session-snapshot.ts";
-import { beginWorkspaceRestore, completeWorkspaceRestore, failWorkspaceRestore } from "./workspace-restore-state.ts";
+import { assertWorkspaceRestoreAttempt, beginWorkspaceRestore, completeWorkspaceRestore, failWorkspaceRestore, recordWorkspaceRestoreSource } from "./workspace-restore-state.ts";
 
 function fixture() {
   const session = createInitialTaskSessionState(1, "restore-qa");
@@ -15,8 +15,8 @@ function fixture() {
       summary: `Finished turn ${turn}`, diff: `+ turn ${turn}`, files: [{ path: "nav.ts", content: `turn ${turn}` }], commands: [{ command: "test", output: `Test ${turn}`, exitCode: 0 }], changedFiles: ["nav.ts"],
     }, turn * 10);
   }
-  state = reduceTaskSession(state, { type: "advance-run", actor: "spencer" }, 41);
-  return state;
+  // A saved historical approval must not survive restoring a different revision.
+  return { ...state, stage: "approved" as const };
 }
 const request = { id: "ec594c84-9b30-4241-a31f-af8f76d270ff", snapshotId: "snap-2", version: 0 };
 
@@ -35,7 +35,6 @@ test("restore replaces files and native context together, preserves conversation
   session.steeringQueue = [{ id: "keep-this", authorId: "maya", body: "Check focus later", queuedAt: 42, source: { kind: "message", messageId: "message" }, sourceLabel: "Follow-up" }];
   const started = beginWorkspaceRestore(session, { ...request, version: session.version }, resolveMember("spencer"), 50);
   assert.equal(canApplyNextSteer(started), false);
-  assert.equal(canApproveChanges(started), false);
   assert.equal(reduceTaskSession(started, { type: "reset", actor: "spencer" }), started);
   assert.equal(reduceTaskSession(started, { type: "send-message", actor: "maya", body: "New task" }), started);
   const restored = completeWorkspaceRestore(started, request.id, 60);
@@ -76,7 +75,7 @@ test("restoring a failed-run checkpoint keeps its failure status and cannot appr
   assert.equal(restored.workspace.status, "error");
   assert.equal(restored.workspace.error, "The run was interrupted.");
   assert.equal(restored.workspace.commands[0].exitCode, 1);
-  assert.equal(canApproveChanges(restored), false);
+  assert.notEqual(restored.stage, "approved");
 });
 
 test("a failed or interrupted restore keeps the task fenced and only permits the same bounded operation to retry", () => {
@@ -84,11 +83,25 @@ test("a failed or interrupted restore keeps the task fenced and only permits the
   const started = beginWorkspaceRestore(session, { ...request, version: session.version }, resolveMember("spencer"), 50);
   const failed = failWorkspaceRestore(started, request.id);
   assert.equal(failed.workspace.restore?.status, "unconfirmed");
-  assert.equal(reduceTaskSession(failed, { type: "advance-run", actor: "maya" }), failed);
+  assert.equal(reduceTaskSession(failed, { type: "send-message", actor: "maya", body: "Must remain fenced" }), failed);
   assert.throws(() => beginWorkspaceRestore(failed, { ...request, version: failed.version }, resolveMember("maya"), 60));
   assert.throws(() => beginWorkspaceRestore(failed, { ...request, id: "other-operation", version: failed.version }, resolveMember("maya"), 100_000));
   const retry = beginWorkspaceRestore(failed, { ...request, version: session.version }, resolveMember("maya"), 100_000);
   assert.equal(retry.workspace.restore?.by.id, "spencer");
   assert.equal(retry.workspace.restore?.status, "restoring");
   assert.equal(completeWorkspaceRestore(retry, "stale-operation"), retry);
+});
+
+test("restore evidence survives retries and stale workers cannot record or finish a newer attempt", () => {
+  const session = fixture();
+  const started = beginWorkspaceRestore(session, { ...request, version: session.version }, resolveMember("spencer"), 50);
+  const recorded = recordWorkspaceRestoreSource(started, request.id, 50, "vm-before-restore");
+  assert.equal(recorded.workspace.restore?.sourceSessionId, "vm-before-restore");
+  const retry = beginWorkspaceRestore(failWorkspaceRestore(recorded, request.id), request, resolveMember("maya"), 100_000);
+  assert.equal(retry.workspace.restore?.sourceSessionId, "vm-before-restore");
+  assert.equal(retry.workspace.restore?.by.id, "spencer");
+  assert.throws(() => assertWorkspaceRestoreAttempt(retry, request.id, 50), /attempt changed/);
+  assert.throws(() => recordWorkspaceRestoreSource(retry, request.id, 50, "wrong-vm"), /attempt changed/);
+  assert.doesNotThrow(() => assertWorkspaceRestoreAttempt(retry, request.id, 100_000));
+  assert.equal(recordWorkspaceRestoreSource(retry, request.id, 100_000, "another-vm"), retry, "the original evidence is immutable");
 });

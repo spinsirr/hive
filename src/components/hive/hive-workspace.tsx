@@ -2,6 +2,7 @@
 
 import {
   ArrowDown,
+  ArrowLeft,
   ArrowUp,
   Check,
   Code2,
@@ -33,6 +34,7 @@ import { ConversationMessage } from "@/components/hive/conversation-message";
 import { DiffPane } from "@/components/hive/diff-pane";
 import { MessageThread } from "@/components/hive/message-thread";
 import { MessageTime } from "@/components/hive/message-time";
+import { PeerRequestSummary } from "@/components/hive/peer-request-summary";
 import { WorkspaceSplit } from "@/components/hive/workspace-split";
 import { WorkspaceFiles } from "@/components/hive/workspace-files";
 import { WorkspaceCheckpoints } from "@/components/hive/workspace-checkpoints";
@@ -55,7 +57,6 @@ import {
   type ActiveSteer,
   type ChatMessage,
   canApplyNextSteer,
-  canApproveChanges,
   canArchiveTask,
   canSelectHarness,
   canSetCodingEffort,
@@ -322,7 +323,7 @@ function SteeringQueue({ activeSteer, canApply, items, members, onApply, onMove,
   );
 }
 
-function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, runActive, runStalled, onRecoverRun, queued, queuedBy, queuePosition, steered, steeredBy, steeringQueue, currentMember, disabled, members, messages, onAdvance, onOpenThread, onSteerReply, selectedThreadId, onMoveSteer, onRemoveSteer, onSteer, onSend, onTyping, stage, typingMembers, workspaceAnnotation, codingRuntime, codingModel, codingModels, harnessLocked, harnessDisabled, onSelectHarness, effort, effortLocked, onEffortChange, compact = false }: {
+function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, runActive, runStalled, onRecoverRun, queued, queuedBy, queuePosition, steered, steeredBy, steeringQueue, currentMember, disabled, members, messages, onApplySteer, onOpenThread, onSteerReply, selectedThreadId, onMoveSteer, onRemoveSteer, onSteer, onSend, onTyping, stage, typingMembers, workspaceAnnotation, codingRuntime, codingModel, codingModels, harnessLocked, harnessDisabled, onSelectHarness, effort, effortLocked, onEffortChange, compact = false }: {
   sessionId: string;
   activeMembers: MemberId[];
   activeSteer?: ActiveSteer;
@@ -340,7 +341,7 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
   disabled: boolean;
   members: TeamMember[];
   messages: ChatMessage[];
-  onAdvance: () => void;
+  onApplySteer: () => void;
   onOpenThread: (messageId: string) => void;
   onSteerReply: (messageId: string, replyId: string) => void;
   selectedThreadId: string | null;
@@ -386,7 +387,7 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
           <span className="text-xs text-[#8a8a8a]">{activeMembers.length} online</span>
         </div>
       </div>
-      <SteeringQueue activeSteer={activeSteer} canApply={canApplySteer} items={steeringQueue} members={members} onApply={onAdvance} onMove={onMoveSteer} onRemove={onRemoveSteer} />
+      <SteeringQueue activeSteer={activeSteer} canApply={canApplySteer} items={steeringQueue} members={members} onApply={onApplySteer} onMove={onMoveSteer} onRemove={onRemoveSteer} />
       <Conversation className="min-h-0 flex-1">
         <ConversationContent className={cn("gap-7 px-4 py-5 sm:px-6 sm:py-7", compact && "gap-5")}>
           {messages.map((message) => {
@@ -652,20 +653,6 @@ function Workspace({ repository, sessionId, tab, workspace, onTabChange, fileCol
   );
 }
 
-function ApprovalBar({ onApprove }: { onApprove: () => void }) {
-  return (
-    <div className="flex h-12 shrink-0 items-center justify-end border-t border-[#ebebeb] bg-[#fafafa] px-3 sm:px-4">
-      <Button
-        className="h-8 shrink-0 rounded-md bg-[#171717] px-3 text-xs text-white"
-        onClick={onApprove}
-        size="sm"
-      >
-        <Check className="size-3.5" /> Approve changes
-      </Button>
-    </div>
-  );
-}
-
 type SharedProps = Parameters<typeof SharedSession>[0] & {
   tab: WorkspaceTab;
   onTabChange: (tab: WorkspaceTab) => void;
@@ -706,6 +693,8 @@ export function HiveWorkspaceView({
   const [tab, setTab] = useState<WorkspaceTab>("diff");
   const [copied, setCopied] = useState(false);
   const [threadId, setThreadId] = useState<string | null>(null);
+  const [viewingReviewChanges, setViewingReviewChanges] = useState(false);
+  const backToReviewRef = useRef<HTMLButtonElement>(null);
   const [threadTrigger, setThreadTrigger] = useState<HTMLElement | null>(null);
   const [resetOpen, setResetOpen] = useState(false);
   const [harnessSaving, setHarnessSaving] = useState(false);
@@ -718,14 +707,25 @@ export function HiveWorkspaceView({
   const { activeSteer, annotation, repository, stage, steeringQueue, workspace } = session;
   const messages = useMemo(() => conversationMessages(session), [session]);
   const codeAnnotationIds = useMemo(() => new Set(messages.filter((message) => message.codeReference && message.memberId === currentMember.id && message.clientId).map((message) => message.clientId!)), [currentMember.id, messages]);
-  const threadMessage = messages.find((message) => message.id === threadId);
+  const selectedThread = messages.find((message) => message.id === threadId);
+  const reviewContext = viewingReviewChanges && selectedThread?.interaction?.kind === "review" ? selectedThread : undefined;
+  const workspaceReviews = useMemo(() => reviewContext ? [reviewContext] : tab === "diff" && workspace.reviewRevision
+    ? messages.filter((message) => message.interaction?.kind === "review" && message.interaction.revision === workspace.reviewRevision)
+    : [], [messages, reviewContext, tab, workspace.reviewRevision]);
+  const threadMessage = reviewContext ? undefined : selectedThread;
+  const selectedThreadId = threadMessage?.id ?? null;
+  useEffect(() => {
+    if (viewingReviewChanges) backToReviewRef.current?.focus();
+  }, [viewingReviewChanges]);
   const openThread = useCallback((messageId: string) => {
     setThreadTrigger(document.activeElement instanceof HTMLElement ? document.activeElement : null);
     setThreadId(messageId);
+    setViewingReviewChanges(false);
     setPane("workspace");
   }, []);
   const closeThread = useCallback(() => {
     setThreadId(null);
+    setViewingReviewChanges(false);
     setPane("chat");
     requestAnimationFrame(() => threadTrigger?.focus());
   }, [threadTrigger]);
@@ -834,11 +834,9 @@ export function HiveWorkspaceView({
     try { await dispatch({ type: "set-coding-effort", effort, modelId }); }
     finally { setHarnessSaving(false); }
   }, [dispatch, harnessSaving]);
-  const advance = useCallback(() => {
-    const action = canApplySteer
-      ? ({ type: "apply-next-steer" } as const)
-      : ({ type: "advance-run" } as const);
-    void dispatch(action).then((nextSnapshot) => {
+  const applySteer = useCallback(() => {
+    if (!canApplySteer) return;
+    void dispatch({ type: "apply-next-steer" }).then((nextSnapshot) => {
       if (nextSnapshot?.session.stage === "review") setTab("diff");
     });
   }, [canApplySteer, dispatch]);
@@ -884,15 +882,15 @@ export function HiveWorkspaceView({
     onEffortChange: setCodingEffort,
     onOpenThread: openThread,
     onSteerReply: steerMessageAnnotation,
-    selectedThreadId: threadMessage?.id ?? null,
+    selectedThreadId,
     onMoveSteer: moveSteer,
     onRemoveSteer: removeSteer,
     onSteer: steer,
     onSend: send,
     onTyping: setTyping,
-    onAdvance: advance,
+    onApplySteer: applySteer,
     onTabChange: setTab,
-  }), [activeMembers, activeSteer, advance, openThread, steerMessageAnnotation, threadMessage?.id, annotation.queuedBy, annotation.steeredBy, annotation.text, canApplySteer, currentMember.id, workspaceLocked, harnessSaving, messages, moveSteer, queuePosition, queued, recoverRun, removeSteer, runActive, runStalled, send, sessionId, setTyping, stage, steer, steered, steeringQueue, tab, teamMembers, typingMembers, workspace.agentSession?.runtime, workspace.codingModel, harnessLocked, syncing, syncError, selectHarness, workspace.codingEffort, effortLocked, setCodingEffort, snapshot.codingModels]);
+  }), [activeMembers, activeSteer, applySteer, openThread, steerMessageAnnotation, selectedThreadId, annotation.queuedBy, annotation.steeredBy, annotation.text, canApplySteer, currentMember.id, workspaceLocked, harnessSaving, messages, moveSteer, queuePosition, queued, recoverRun, removeSteer, runActive, runStalled, send, sessionId, setTyping, stage, steer, steered, steeringQueue, tab, teamMembers, typingMembers, workspace.agentSession?.runtime, workspace.codingModel, harnessLocked, syncing, syncError, selectHarness, workspace.codingEffort, effortLocked, setCodingEffort, snapshot.codingModels]);
 
   return (
     <main className="flex h-dvh min-h-0 flex-col overflow-hidden bg-[#fafafa] text-[#171717]">
@@ -949,14 +947,31 @@ export function HiveWorkspaceView({
         conversation={<SharedSession {...shared} compact />}
         workspace={
           <>
-            <div className={cn("min-h-0 flex-1", threadMessage && "hidden")}>
-              <Workspace active={!threadMessage} repository={repository} sessionId={sessionId} tab={shared.tab} workspace={workspace} checkpointRevision={session.version} onRestored={receiveSnapshot} onTabChange={shared.onTabChange} fileCollaboration={{ memberId: currentMember.id, deliveredIds: codeAnnotationIds, disabled: workspaceLocked, onAnnotate: annotateCode }} />
+            <div className={cn("flex min-h-0 flex-1 flex-col", threadMessage && "hidden")}>
+              {workspaceReviews.length > 0 ? <section aria-label="Workspace reviews" className="shrink-0 border-b border-border bg-white px-3 py-2">
+                {workspaceReviews.map((review) => <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-1" key={review.id}>
+                  <div className="min-w-0 flex-1 basis-48">
+                    <PeerRequestSummary className="mb-0" message={review} members={teamMembers} />
+                    {workspaceReviews.length > 1 ? <p className="mt-1 truncate text-xs text-muted-foreground" title={review.body}>{review.body}</p> : null}
+                  </div>
+                  <Button ref={reviewContext ? backToReviewRef : undefined} className="h-7 shrink-0 px-2 text-xs" onClick={() => {
+                    if (reviewContext) { setViewingReviewChanges(false); setPane("workspace"); }
+                    else openThread(review.id);
+                  }} size="sm" variant="ghost">
+                    {reviewContext ? <><ArrowLeft className="size-3.5" /> Back to review</> : <><MessageSquare className="size-3.5" /> Open review</>}
+                  </Button>
+                </div>)}
+                <p className="mt-1 text-xs text-muted-foreground">{archived ? "Archived · Read-only" : "Viewing changes only · Verify in the review thread"}</p>
+                {reviewContext && (!reviewContext.interaction?.revision || reviewContext.interaction.revision !== workspace.reviewRevision) ? <p className="mt-1 text-xs text-muted-foreground">This review does not match the current diff. Return to the thread for context.</p> : null}
+              </section> : null}
+              <div className="min-h-0 flex-1">
+                <Workspace active={!threadMessage} repository={repository} sessionId={sessionId} tab={shared.tab} workspace={workspace} checkpointRevision={session.version} onRestored={receiveSnapshot} onTabChange={shared.onTabChange} fileCollaboration={{ memberId: currentMember.id, deliveredIds: codeAnnotationIds, disabled: workspaceLocked, onAnnotate: annotateCode }} />
+              </div>
             </div>
-            {!threadMessage && canApproveChanges(session) ? <ApprovalBar onApprove={shared.onAdvance} /> : null}
             {threadMessage ? <MessageThread currentMember={currentMember.id} disabled={workspaceLocked} key={threadMessage.id} members={teamMembers} message={threadMessage} onClose={closeThread} onReply={annotate} onAnswerQuestion={answerQuestion} onSteerReply={steerMessageAnnotation} onSteerThread={steerThread} queue={steeringQueue} runActive={runActive} sessionId={sessionId}
               reviewReady={canResolvePeerReview(session, threadMessage, currentMember.id, threadMessage.interaction?.revision ?? "")}
-              reviewCurrent={!runActive && !workspaceLocked && Boolean(workspace.reviewRevision && workspace.reviewRevision === threadMessage.interaction?.revision)}
-              onResolveReview={resolveReview} onViewChanges={() => { closeThread(); setPane("workspace"); setTab("diff"); }} /> : null}
+              reviewCurrent={!runActive && !workspace.restore && Boolean(workspace.reviewRevision && workspace.reviewRevision === threadMessage.interaction?.revision)}
+              onResolveReview={resolveReview} onViewChanges={() => { setViewingReviewChanges(true); setPane("workspace"); setTab("diff"); }} /> : null}
           </>
         }
       />

@@ -3,6 +3,7 @@ import { ARCHIVED_TASK_MESSAGE, isHiveRunActive, timeLabel, type TaskSessionStat
 
 export const restoreWorkspaceRequest = z.object({
   id: z.uuid(), snapshotId: z.string().min(1).max(200), version: z.number().int().nonnegative(),
+  mode: z.enum(["restore", "check"]).optional(),
 });
 export type RestoreWorkspaceRequest = z.infer<typeof restoreWorkspaceRequest>;
 
@@ -13,7 +14,7 @@ export class WorkspaceRestoreError extends Error {
 
 export function workspaceRestoreBlockReason(session: TaskSessionState) {
   if (session.archived) return ARCHIVED_TASK_MESSAGE;
-  if (session.workspace.restore) return session.workspace.restore.status === "unconfirmed" ? "Restore needs confirmation. Retry the same checkpoint before continuing." : "Restoring workspace…";
+  if (session.workspace.restore) return session.workspace.restore.status === "unconfirmed" ? "Restore needs confirmation. The workspace stays paused while its status is checked." : "Restoring workspace…";
   if (isHiveRunActive(session) || session.activeSteer) return "Wait for Hive to finish before restoring a checkpoint.";
   return null;
 }
@@ -35,8 +36,22 @@ export function beginWorkspaceRestore(session: TaskSessionState, request: Restor
   if (!checkpoint?.result.agentSession.resumeFrom || checkpoint.result.agentSession.id !== session.workspace.agentSession?.id || checkpoint.result.sandboxName !== session.workspace.sandboxName) throw new WorkspaceRestoreError(409, "This snapshot has no matching agent checkpoint and cannot be restored safely.");
   return {
     ...session, version: session.version + 1, updatedAt: now,
-    workspace: { ...session.workspace, restore: { id: request.id, snapshotId: request.snapshotId, by: pending?.by ?? member, status: "restoring", startedAt: now, retryAfter: now + 90_000 } },
+    workspace: { ...session.workspace, restore: { id: request.id, snapshotId: request.snapshotId, by: pending?.by ?? member, sourceSessionId: pending?.sourceSessionId, status: "restoring", startedAt: now, retryAfter: now + 90_000 } },
   };
+}
+
+export function assertWorkspaceRestoreAttempt(session: TaskSessionState, operationId: string, startedAt: number) {
+  if (session.workspace.restore?.id !== operationId || session.workspace.restore.startedAt !== startedAt) {
+    throw new WorkspaceRestoreError(409, "The restore attempt changed. Refresh Checkpoints to see its status.");
+  }
+}
+
+export function recordWorkspaceRestoreSource(session: TaskSessionState, operationId: string, startedAt: number, sourceSessionId: string): TaskSessionState {
+  assertWorkspaceRestoreAttempt(session, operationId, startedAt);
+  const operation = session.workspace.restore!;
+  if (operation.sourceSessionId) return session;
+  if (!sourceSessionId) throw new WorkspaceRestoreError(503, "The original workspace could not be identified. Nothing was restored.");
+  return { ...session, version: session.version + 1, workspace: { ...session.workspace, restore: { ...operation, sourceSessionId } } };
 }
 
 export function completeWorkspaceRestore(session: TaskSessionState, operationId: string, now = Date.now()): TaskSessionState {

@@ -11,7 +11,7 @@ import { assertHiveToolRun, hiveThreadReply, type HiveToolContext } from "@/lib/
 import type { HiveToolScope } from "@/lib/hive-tool-token";
 import { requestPeerInput, type PeerRequest } from "./peer-collaboration.ts";
 import { subagentUpdateSchema, type HiveSubagent, type SubagentSession } from "./hive-subagents.ts";
-import { beginWorkspaceRestore, completeWorkspaceRestore, failWorkspaceRestore, WorkspaceRestoreError, type RestoreWorkspaceRequest } from "@/lib/workspace-restore-state";
+import { assertWorkspaceRestoreAttempt, beginWorkspaceRestore, completeWorkspaceRestore, failWorkspaceRestore, recordWorkspaceRestoreSource, WorkspaceRestoreError, type RestoreWorkspaceRequest } from "@/lib/workspace-restore-state";
 import {
   applyHiveRunError,
   ARCHIVED_TASK_MESSAGE,
@@ -517,11 +517,28 @@ export async function startTaskWorkspaceRestore(sessionId: string, request: Rest
   });
 }
 
-export async function finishTaskWorkspaceRestore(sessionId: string, operationId: string, confirmed: boolean) {
+export async function recordTaskWorkspaceRestoreSource(sessionId: string, operationId: string, startedAt: number, sourceSessionId: string) {
+  return db.transaction(async (transaction) => {
+    const [row] = await transaction.select().from(taskSessions).where(eq(taskSessions.id, sessionId)).for("update");
+    if (!row) throw new WorkspaceRestoreError(404, "Task not found.");
+    const session = sessionState(row);
+    const next = recordWorkspaceRestoreSource(session, operationId, startedAt, sourceSessionId);
+    if (next !== session) {
+      await transaction.update(taskSessions).set(sessionValues(next)).where(eq(taskSessions.id, sessionId));
+      await transaction.execute(sessionNotification(sessionId));
+    }
+    return next;
+  });
+}
+
+export async function finishTaskWorkspaceRestore(sessionId: string, operationId: string, confirmed: boolean, startedAt: number) {
   await db.transaction(async (transaction) => {
     const [row] = await transaction.select().from(taskSessions).where(eq(taskSessions.id, sessionId)).for("update");
     if (!row) throw new WorkspaceRestoreError(404, "Task not found.");
     const session = sessionState(row);
+    // A late status check or timed-out worker cannot finish a newer retry.
+    if (session.workspace.lastRestore?.id === operationId && !session.workspace.restore) return;
+    assertWorkspaceRestoreAttempt(session, operationId, startedAt);
     const next = confirmed ? completeWorkspaceRestore(session, operationId) : failWorkspaceRestore(session, operationId);
     if (next === session) return;
     await transaction.update(taskSessions).set(sessionValues(next)).where(eq(taskSessions.id, sessionId));

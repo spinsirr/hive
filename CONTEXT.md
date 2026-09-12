@@ -13,7 +13,7 @@ A GitHub-authenticated person. Creating a task admits its creator; joining someo
 _Avoid_: Persona, actor, user seat
 
 **Task Session**:
-A bounded collaboration around one intended outcome, with one shared conversation and at most one attached repository. In the interface, shorten this to “session” or “task.” Finishing a run or approving a diff does not close the task: members can continue discussing or steering without a manual Complete/Reopen step.
+A bounded collaboration around one intended outcome, with one shared conversation and at most one attached repository. In the interface, shorten this to “session” or “task.” Finishing a run or verifying a review does not close the task: members can continue discussing or steering without a manual Complete/Reopen step.
 _Avoid_: Room, channel, project, long-lived workspace
 
 **Repository Access**:
@@ -48,7 +48,7 @@ _Avoid_: Comment, hidden prompt
 A structured request from Hive, optionally addressed to a task member. The first eligible answer is saved once and queued with its author. An idle task continues immediately; an answer queued during a run continues at the next safe boundary when a connected client observes it ready. If every client closes, it remains saved until reconnect. This is a new turn using saved native history, not a suspended tool callback or a durable background workflow. Interrupted runs and restored queues require manual continuation.
 
 **Review Request**:
-Hive asks for human feedback in a Thread. Verification opens only after actual workspace evidence is collected, and is bound to that completed run's revision. Explicitly steered feedback returns its stream and result to the same Thread. New comments, another run, or a restore prevent stale verification. Resolving a review records a human's verification; it does not approve the workspace or merge a PR.
+Hive asks for human feedback in a Thread. Verification opens only after actual workspace evidence is collected, and is bound to that completed run's revision and its designated reviewer, if any. Explicitly steered feedback returns its stream and result to the same Thread. New comments, another run, or a restore prevent stale verification. Viewing Diff, Files or Runs is navigation only; Back to review returns to the original Thread. Verify & resolve is the sole review confirmation, not a task approval or PR merge. There is no separate global Approve changes action.
 
 **Run**:
 One agent execution turn against the attached repository. A run that has not reported for six minutes can be marked lost by a member; the discussion, partial output and queued steers stay and nothing reruns. Resetting a task is separate and deliberate: it requires confirmation and an idle task, and it erases the shared conversation for everyone.
@@ -60,4 +60,5 @@ _Avoid_: Team space, chat history
 
 **Checkpoint**:
 A saved sandbox filesystem paired with its native agent context and execution evidence. Restoring requires confirmation and an idle task, resets approval, and preserves the team conversation and pending queue without rerunning them. It does not undo GitHub commits or pull requests.
+The restore records the original VM before changing it. If a response times out, metadata-only checks can confirm a new VM running the selected snapshot; matching snapshot IDs on the original VM are insufficient. Until confirmed, writes remain fenced. After the bounded worker lease, the UI checks briefly without replaying the restore, shows its waiting time, and offers an explicit same-checkpoint retry. Closing the dialog does not cancel recovery. Every completion is tied to its attempt, so a late worker cannot finish a newer retry.
 _Avoid_: Conversation rewind, automatic retry

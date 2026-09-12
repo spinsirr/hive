@@ -101,7 +101,7 @@ mock.module("@ai-sdk/harness/agent", { namedExports: {
 const { runHiveCodingTask } = await import("../src/lib/hive-runner.ts");
 const { HiveAgentError } = await import("../src/lib/hive-agent.ts");
 const { repositoryMemoryId } = await import("../src/lib/hive-memory.ts");
-const { applyHiveRunError, applyHiveRunResult, createInitialTaskSessionState, reduceTaskSession, canApproveChanges } = await import("../src/lib/task-session.ts");
+const { applyHiveRunError, applyHiveRunResult, createInitialTaskSessionState, reduceTaskSession } = await import("../src/lib/task-session.ts");
 const connected = reduceTaskSession(createInitialTaskSessionState(10, "failed-run"), {
   type: "connect-repository", actor: "spencer", repositoryUrl: "https://github.com/example/hive",
   repositoryName: "example/hive", repositoryId: 1, repositoryBranch: "main", installationId: 1,
@@ -156,7 +156,7 @@ for (const options of [
     ? applyHiveRunError(initial, failure.message, 40, failure.checkpoint)
     : applyHiveRunResult(initial, result, 40);
   assert.equal(state.workspace.status, options.fail ? "error" : "review");
-  assert.equal(canApproveChanges(state), !options.fail);
+  assert.notEqual(state.stage, "approved");
   assert.deepEqual(state.workspace.agentSession.resumeFrom, options.checkpointFailure ? initial.workspace.agentSession.resumeFrom : checkpoint);
   assert.equal(state.workspace.diff, options.artifactFailure ? previousSnapshot.diff : diff.trimEnd(), "Files / Diff must retain available changes without inserting an error as code");
   assert.deepEqual(state.workspace.files, options.artifactFailure ? previousSnapshot.files : [{ path: "nav.tsx", content }]);
