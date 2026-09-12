@@ -38,7 +38,7 @@ export function buildHiveRunInput(
   if (source?.kind === "peer-response") {
     if (!activeSteer) throw new Error("The answer is no longer available.");
     memoryQuery = session.title;
-    steer = ["Continue the original task using this answer to your question. Inspect current files first; the workspace may have advanced since the question. Your response will appear in the original thread. Do not repeat this already answered question.",
+    steer = ["Continue the original task using this answer to your question. Preserve the original request's scope and restrictions; an answer does not authorize additional work. If the task only asked you to collect a preference, acknowledge it briefly and stop without tools. Only inspect current files if the authorized next step requires repository work, because the workspace may have advanced since the question. Your response will appear in the original thread. Do not repeat this already answered question.",
       `Answer author: ${actorName}`, `Thread ID: ${source.messageId}`, activeSteer.body].join("\n\n");
   } else if (source?.kind === "message-thread") {
     if (!activeSteer) throw new Error("The steered thread is no longer available.");

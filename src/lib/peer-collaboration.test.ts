@@ -5,7 +5,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { handleHiveMcp } from "./hive-mcp.ts";
 import { createHiveMemory } from "./hive-memory.ts";
 import { createInitialTaskSessionState, memberDirectory, reduceTaskSession, applyHiveRunResult, applyHiveRunError, conversationMessages, type TaskSessionState, type HiveRunResult } from "./task-session.ts";
-import { buildHiveRunInput } from "./hive-prompt.ts";
+import { buildHivePrompt, buildHiveRunInput } from "./hive-prompt.ts";
 import { requestPeerInput } from "./peer-collaboration.ts";
 import { describeHiveContext } from "./hive-tool-context.ts";
 
@@ -70,6 +70,24 @@ test("teammate answer is saved once, queued while busy, and continued with autho
 function result(): HiveRunResult {
   return { sandboxName: "sandbox-test", agentSession: { id: "native-one", runtime: "codex" }, summary: "Waiting for the team decision.", diff: "", files: [], commands: [], changedFiles: [] };
 }
+
+test("answer continuation preserves a discussion-only request instead of requiring file inspection", () => {
+  const initial = working();
+  initial.messages.push({ id: "layout-request", memberId: "spencer", name: "Spencer Zhao", initials: "SZ", role: "human", time: "12:00", body: "Ask me whether I prefer compact or spacious. Do not inspect or change files yet." });
+  const requested = requestPeerInput(initial, scope, { key: "layout", prompt: "Compact or spacious?", targetMemberId: "spencer" }, members, 3);
+  const answered = reduceTaskSession(requested.session, { type: "answer-question", actor: "spencer", messageId: requested.messageId, body: "Compact", clientId: "layout-answer" }, 4, members);
+  const idle = applyHiveRunResult(answered, result(), 5);
+  const action = { type: "apply-next-steer", actor: "spencer" } as const;
+  const resumed = reduceTaskSession(idle, action, 6, members);
+  const input = buildHiveRunInput(resumed, action, members);
+  const prompt = buildHivePrompt(resumed, input.actor, input.steer, input.actorName);
+  assert.match(prompt, /Do not inspect or change files yet/);
+  assert.match(input.steer!, /Preserve the original request's scope and restrictions/);
+  assert.match(input.steer!, /Only inspect current files if/);
+  assert.doesNotMatch(input.steer!, /Inspect current files first/);
+  assert.match(input.steer!, /Do not call request_input again/);
+  assert.equal(resumed.activeSteer?.source?.kind, "peer-response");
+});
 
 test("steering discussion on an unanswered question cannot create the same question in a later run", () => {
   const request = { key: "close_tab_after_use", prompt: "After using the tab, should we close it?", targetMemberId: "maya", options: ["YES", "NO"] };
