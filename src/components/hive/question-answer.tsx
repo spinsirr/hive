@@ -25,7 +25,7 @@ export function QuestionAnswer({ message, members, currentMember, sessionId, dis
   if (!eligible) return <p className="text-xs text-muted-foreground">Waiting for {resolveMember(question.targetMemberId!, members).shortName} to answer.</p>;
   const sending = draft?.status === "sending";
   return <div className="space-y-3" role="group" aria-label={`Answer: ${message.body}`}>
-    {question.options.length ? <div className="flex flex-wrap gap-2">{question.options.map((option, index) => <Button aria-pressed={draft?.body === option} key={index} size="sm" variant={draft?.body === option ? "secondary" : "outline"} disabled={disabled || sending} onClick={() => edit(option)}>{option}</Button>)}</div> : null}
+    {question.options.length ? <div className="flex flex-wrap gap-2">{question.options.map((option, index) => <Button aria-pressed={draft?.body === option} className="h-auto min-h-7 max-w-full whitespace-normal py-1 text-left [overflow-wrap:anywhere]" key={index} size="sm" variant={draft?.body === option ? "secondary" : "outline"} disabled={disabled || sending} onClick={() => edit(option)}>{option}</Button>)}</div> : null}
     <div className="rounded-xl border border-border bg-muted/30 p-2 focus-within:border-foreground/30">
       <MentionInput className="min-h-12 w-full px-2 py-1" currentMember={currentMember} disabled={disabled || !draft} label="Answer Hive" maxLength={4000} members={members} onChange={edit} onSubmit={() => { if (!disabled) void submit(); }} placeholder="Choose an option or write your answer…" readOnly={sending} value={draft?.body ?? ""} />
       <div className="flex items-center justify-between gap-2 px-1">
