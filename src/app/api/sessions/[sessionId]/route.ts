@@ -111,6 +111,7 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
   }
 
   if (payload.type === "answer-question" && (!("messageId" in payload) || typeof payload.messageId !== "string" || payload.messageId.length > 200 ||
+    ("replyThreadId" in payload && payload.replyThreadId !== undefined && (typeof payload.replyThreadId !== "string" || !payload.replyThreadId || payload.replyThreadId.length > 200)) ||
     !("body" in payload) || typeof payload.body !== "string" || !payload.body.trim() || payload.body.trim().length > 4000 ||
     !("clientId" in payload) || !isClientSubmissionId(payload.clientId))) {
     return NextResponse.json({ error: "Choose a question and provide an answer with a submission ID." }, { status: 400 });

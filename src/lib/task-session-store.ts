@@ -117,21 +117,22 @@ export async function appendHiveToolReply(scope: HiveToolScope, messageId: strin
     const members = await transaction.select({ memberId: taskSessionMembers.memberId }).from(taskSessionMembers).where(and(eq(taskSessionMembers.sessionId, scope.sessionId), eq(taskSessionMembers.memberId, scope.memberId)));
     const context = { ...row, archived: row.archived ?? undefined, repository: row.repository ?? undefined, activeSteer: row.activeSteer ?? undefined, members: members.map(({ memberId }) => resolveMember(memberId)) };
     assertHiveToolRun(context, scope);
-    const parent = row.messages.find((message) => message.id === messageId && !message.status);
+    const requested = row.messages.find((message) => message.id === messageId && !message.status);
+    const parent = requested?.threadId ? row.messages.find((message) => message.id === requested.threadId && !message.status) : requested;
     if (!parent) throw new Error("Thread not found.");
     const replyId = `hive-${scope.runId}-${requestId}`;
     const existing = parent.annotations?.find((reply) => reply.id === replyId);
     if (existing) {
       if (existing.body !== body.trim()) throw new Error("Reply key already used for different content.");
-      return { messageId, replyId: existing.id };
+      return { messageId: parent.id, replyId: existing.id };
     }
     const reply = hiveThreadReply(body, replyId);
     await transaction.update(taskSessions).set({
-      messages: row.messages.map((message) => message.id === messageId ? { ...message, annotations: [...(message.annotations ?? []), reply] } : message),
+      messages: row.messages.map((message) => message.id === parent.id ? { ...message, annotations: [...(message.annotations ?? []), reply] } : message),
       version: row.version + 1, updatedAt: new Date(),
     }).where(eq(taskSessions.id, scope.sessionId));
     await transaction.execute(sessionNotification(scope.sessionId));
-    return { messageId, replyId };
+    return { messageId: parent.id, replyId };
   });
 }
 

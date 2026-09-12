@@ -21,7 +21,7 @@ export function MessageThreadPreview({ message, members, expanded = false, onOpe
   const preview = characters.slice(0, 180).join("") + (characters.length > 180 ? "…" : "");
 
   return (
-    <Button aria-expanded={expanded} aria-label={latest ? `Open thread with ${replies.length} ${replies.length === 1 ? "reply" : "replies"}` : "Open collaboration thread"} className={cn("h-auto w-full min-w-0 max-w-full flex-col items-stretch gap-1.5 whitespace-normal rounded-none border-0 border-t border-border bg-muted/30 px-4 py-3 text-left text-xs font-normal text-muted-foreground focus-visible:ring-2 focus-visible:ring-inset active:not-aria-[haspopup]:translate-y-0", expanded && "bg-muted/50")} onClick={onOpen} type="button" variant="ghost">
+    <Button data-thread-trigger={message.id} aria-expanded={expanded} aria-label={latest ? `Open thread with ${replies.length} ${replies.length === 1 ? "reply" : "replies"}` : "Open collaboration thread"} className={cn("h-auto w-full min-w-0 max-w-full flex-col items-stretch gap-1.5 whitespace-normal rounded-none border-0 border-t border-border bg-muted/30 px-4 py-3 text-left text-xs font-normal text-muted-foreground focus-visible:ring-2 focus-visible:ring-inset active:not-aria-[haspopup]:translate-y-0", expanded && "bg-muted/50")} onClick={onOpen} type="button" variant="ghost">
       <span className="flex min-w-0 items-center gap-2">
         <MessageSquare aria-hidden="true" className="size-3.5 shrink-0" />
         <span className="font-medium text-foreground/80">{latest ? `${replies.length} ${replies.length === 1 ? "reply" : "replies"}` : "No replies yet"}</span>

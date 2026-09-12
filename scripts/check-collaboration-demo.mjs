@@ -86,8 +86,11 @@ try {
   assert.ok(screen.getByRole("dialog", { name: "Restore this checkpoint?" }));
   fireEvent.click(button("Cancel"));
   fireEvent.click(button("Conversation"));
-  button("Open collaboration thread").focus();
-  fireEvent.click(button("Open collaboration thread"));
+  assert.equal(screen.queryByRole("button", { name: "Open collaboration thread" }), null, "asking does not require a Thread");
+  const questionCard = screen.getByRole("textbox", { name: "Answer Hive" }).closest('[data-slot="question-message"]');
+  const discussionEntry = within(questionCard).getByRole("button", { name: /Reply in thread to/ });
+  discussionEntry.focus();
+  fireEvent.click(discussionEntry);
   await waitFor(() => assert.ok(screen.getByRole("textbox", { name: "Answer Hive" })));
   fireEvent.click(within(screen.getByLabelText("Demo controls")).getByRole("button", { name: "Casey", exact: true }));
   await waitFor(() => assert.equal(screen.getByRole("textbox", { name: "Reply in thread" }).disabled, false));
@@ -135,7 +138,7 @@ try {
   fireEvent.click(button("Restore task"));
   await waitFor(() => assert.equal(screen.queryByText(/Read-only for everyone/), null));
   fireEvent.click(button("Conversation"));
-  fireEvent.click(button("Open thread with 2 replies"));
+  fireEvent.click(within(document.querySelector('[data-message-id="answer"]')).getByRole("button", { name: "Open thread with 2 replies", exact: true }));
   await waitFor(() => assert.equal(screen.getByRole("textbox", { name: "Reply in thread" }).disabled, false));
   assert.match(screen.getByLabelText("Message thread").textContent, /Please keep the focus ring visible/);
   console.log("PASS: shared archive dialog locks discussion and checkpoint writes, preserves Files and replies, and another member restores without starting an agent.");
@@ -242,9 +245,10 @@ try {
   assert.equal(threadActions[0].messageId, firstQuestion.id);
   threadMount.rerender(threadView());
   const addedReply = screen.getByText("New reply to the original discussion").closest("article");
-  fireEvent.click(within(addedReply).getByRole("button", { name: "Steer Hive for Alex's reply", exact: true }));
+  assert.equal(within(addedReply).queryByRole("button", { name: /Steer|Queue/ }), null);
+  fireEvent.click(screen.getByRole("button", { name: /Steer entire thread|Queue entire thread/ }));
   await waitFor(() => assert.equal(threadActions.length, 2));
-  assert.equal(threadActions[1].type, "steer-message-annotation");
+  assert.equal(threadActions[1].type, "steer-thread");
   assert.equal(threadActions[1].messageId, firstQuestion.id);
   assert.equal(threadDemo.getSnapshot().session.messages.find((m) => m.id === repeatedQuestion.id).annotations.length, 0);
   assert.equal(requests, 0);
@@ -277,8 +281,9 @@ try {
   assert.doesNotMatch(screen.getByRole("region", { name: "Workspace reviews" }).textContent, /Review for Casey/);
   fireEvent.click(button("Back to review"));
   fireEvent.click(button("Close thread"));
-  // The conversation retains the initial question, then the old review, then both current reviews.
-  fireEvent.click(screen.getAllByRole("button", { name: "Open collaboration thread", exact: true })[1]);
+  // Questions are inline; locate the old review by its durable revision, not a card ordinal.
+  const oldReview = reviewsDemo.getSnapshot().session.messages.find((message) => message.interaction?.kind === "review" && message.interaction.revision !== secondRunId);
+  fireEvent.click(within(document.querySelector(`[data-message-id="${oldReview.id}"]`)).getByRole("button", { name: "Open collaboration thread", exact: true }));
   assert.ok(button("Verify & resolve").disabled);
   fireEvent.click(button("View changes"));
   assert.match(screen.getByRole("region", { name: "Workspace reviews" }).textContent, /does not match the current diff/);

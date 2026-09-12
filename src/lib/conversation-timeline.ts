@@ -7,7 +7,9 @@ import { peerRequestKey } from "./peer-collaboration.ts";
  */
 export function conversationTimelineMessages(messages: ChatMessage[]): ChatMessage[] {
   const questions = new Set<string>();
+  const messageIds = new Set(messages.map((message) => message.id));
   return messages.filter((message) => {
+    if (message.threadId && messageIds.has(message.threadId)) return false;
     const question = message.interaction;
     const key = peerRequestKey(message);
     if (message.role !== "agent" || question?.kind !== "question" || !key) return true;

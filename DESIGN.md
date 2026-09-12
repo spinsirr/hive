@@ -115,16 +115,36 @@ use the same message-group and preview components.
 The main conversation shows one Thread entry per message, with only the latest
 reply's author and a bounded two-line excerpt. Opening the Thread hides that
 excerpt; full replies, timestamps and steering controls live in `MessageThread`.
-Questions without replies retain one explicit collaboration entry, not a second
-hover Reply action. Archived tasks keep these read-only navigation controls.
+Questions render the shared `QuestionAnswer` widget inline, not a mandatory
+Thread entry. Only the designated teammate can answer; others see who is awaited.
+The answer is displayed in the question card, not counted as a discussion reply.
+Reply can explicitly start discussion. Archived tasks keep existing Threads
+readable and disable answering.
 The timeline suppresses exact repeated empty question cards using their stable
 request key, prompt, addressee and choices. Source records and IDs are unchanged;
 copies with replies, answers or other evidence stay visible and are never merged.
-Single-reply and whole-Thread steers return their stream/result to the original
+Whole-Thread steers return their stream/result to the original
 discussion, including ordinary messages and code annotations, not only question
 and review cards. `hiveReplyThreadId` is shared by run admission and the Demo;
 immediate and queued starts use the same destination rule. Main-message work
 still returns to the main conversation. Navigation never starts a run.
+
+A question raised while working in a Thread belongs to that existing Thread.
+Its durable message keeps the originating `threadId`; the timeline excludes it
+and `MessageThread` renders the same inline widget. Its answer resumes the main
+agent in that Thread, never a nested Thread. Main-conversation answers stay in
+the main conversation unless explicitly answered within an opened Thread.
+Reply destinations are validated against the question record, not arbitrary
+client-supplied IDs. Opening a Thread or adding discussion does not start a run.
+
+Thread has one explicit Steer thread / Queue thread action, never per-reply
+Steer buttons or a separate Thread agent. It sends the parent and the full
+attributed discussion up to the clicked reply boundary to the existing main
+agent. Later replies are not silently included. Previously shared replies remain
+context; a new handoff needs new human feedback, so Hive's own acknowledgement
+cannot repeatedly wake itself. Partial streaming responses cannot be handed off.
+Ordinary replies do not start a run. Historical per-reply steering attribution
+and already queued work remain readable and executable.
 
 ### Review navigation (2026-09-12)
 

@@ -59,7 +59,7 @@ export function resolveMember(
 export type RunStage = "waiting" | "running" | "review" | "approved";
 
 export type SteeringSource =
-  | { kind: "peer-response"; messageId: string; annotationId: string }
+  | { kind: "peer-response"; messageId: string; annotationId: string; replyThreadId?: string }
   | { kind: "workspace-annotation" }
   | { kind: "message"; messageId: string }
   | { kind: "message-thread"; messageId: string; steerId: string; throughReplyId?: string }
@@ -93,6 +93,8 @@ export type MessageAnnotation = {
 };
 
 export type ChatMessage = {
+  /** Tool-created question belongs to this existing Thread, not the main timeline. */
+  threadId?: string;
   interaction?: PeerInteraction;
   id: string;
   clientId?: string;
@@ -258,7 +260,7 @@ export type TaskSessionAction =
   | { type: "restore-task"; actor: MemberId }
   | { type: "resolve-peer-review"; actor: MemberId; messageId: string; revision: string }
   | { type: "continue-peer-response"; actor: MemberId; steerId: string }
-  | { type: "answer-question"; actor: MemberId; messageId: string; body: string; clientId: string }
+  | { type: "answer-question"; actor: MemberId; messageId: string; body: string; clientId: string; replyThreadId?: string }
   | { type: "select-harness"; actor: MemberId; runtime: CodingRuntime; modelId?: string }
   | { type: "set-coding-effort"; actor: MemberId; effort: CodingEffort; modelId?: string }
   | { type: "send-message"; actor: MemberId; body: string; clientId?: string }
@@ -434,7 +436,7 @@ export function didStartHiveRun(previous: TaskSessionState, next: TaskSessionSta
  */
 export function hiveReplyThreadId(state: TaskSessionState, action: TaskSessionAction): string | undefined {
   const source = state.activeSteer?.source;
-  const messageId = source && (source.kind === "message-annotation" || source.kind === "message-thread" || source.kind === "peer-response")
+  const messageId = source?.kind === "peer-response" ? source.replyThreadId : source && (source.kind === "message-annotation" || source.kind === "message-thread")
     ? source.messageId
     : action.type === "steer-message-annotation" ? action.messageId : undefined;
   return messageId && state.messages.some((message) => message.id === messageId) ? messageId : undefined;
@@ -771,11 +773,13 @@ export function reduceTaskSession(
     if (!parent || question?.kind !== "question" || question.answer || !body || body.length > 4000 ||
       !members.some((member) => member.id === actor.id) ||
       (question.targetMemberId && question.targetMemberId !== actor.id)) return state;
+    if (action.replyThreadId && action.replyThreadId !== parent.id && action.replyThreadId !== parent.threadId) return state;
+    const replyThreadId = parent.threadId ?? action.replyThreadId;
     const replyId = `answer-${now}-${state.version + 1}`;
     const item: SteeringQueueItem = {
       id: `steer-${now}-${state.version + 1}`, authorId: actor.id, queuedAt: now,
       body: JSON.stringify({ question: parent.body, answer: body, answeredBy: actor.name }),
-      source: { kind: "peer-response", messageId: parent.id, annotationId: replyId }, sourceLabel: `Answer · ${actor.shortName}`,
+      source: { kind: "peer-response", messageId: parent.id, annotationId: replyId, replyThreadId }, sourceLabel: `Answer · ${actor.shortName}`,
     };
     const queued: TaskSessionState = {
       ...state, version: state.version + 1, updatedAt: now,
@@ -802,14 +806,26 @@ export function reduceTaskSession(
     const replies = parent?.annotations ?? [];
     const throughIndex = replies.findIndex((reply) => reply.id === action.throughReplyId);
     if (!parent || throughIndex < 0 || replies.findIndex((reply) => reply.id === parent.threadSteer?.throughReplyId) >= throughIndex) return state;
+    const previousIndex = replies.findIndex((reply) => reply.id === parent.threadSteer?.throughReplyId);
+    if (replies.slice(0, throughIndex + 1).some((reply) => reply.deliveryStatus === "streaming") ||
+      !replies.slice(previousIndex + 1, throughIndex + 1).some((reply) => reply.role !== "agent")) return state;
     // The selected boundary is explicit: a reply arriving during the click does
     // not silently become part of the team's instruction. Content and authors
     // are always resolved on the server and frozen in the ordinary steer queue.
     const included = replies.slice(0, throughIndex + 1);
+    const boundaryAt = included.at(-1)!.createdAt;
+    const questions = state.messages.filter((message) => message.threadId === parent.id && message.interaction?.kind === "question" && (message.createdAt ?? 0) <= boundaryAt).map((message) => {
+      const question = message.interaction!;
+      const answer = question.kind === "question" && question.answer && question.answer.at <= boundaryAt
+        ? message.annotations?.find((reply) => reply.id === question.answer?.replyId && reply.status !== "queued") : undefined;
+      return { id: message.id, question: message.body, targetMemberId: question.targetMemberId,
+        answer: answer ? { author: resolveMember(answer.authorId, members).name, body: answer.body } : undefined };
+    });
     const body = [
       "Steer using this complete thread. Authorship comes from saved team records.",
+      "Previously shared discussion is context, not a request to repeat finished work. Apply the new human feedback in the context of the whole thread.",
       "Consider the parent and all included replies together. If requirements conflict, ask for clarification; the latest reply is not automatically a team decision. Do not execute unrelated or later discussion.",
-      JSON.stringify({ parent: { author: parent.name, body: parent.body }, replies: included.map((reply) => ({ author: reply.role === "agent" ? "Hive" : resolveMember(reply.authorId, members).name, role: reply.role ?? "human", body: reply.body })) }, null, 2),
+      JSON.stringify({ previouslySharedThrough: parent.threadSteer?.throughReplyId ?? null, parent: { author: parent.name, body: parent.body }, replies: included.map((reply) => ({ id: reply.id, author: reply.role === "agent" ? "Hive" : resolveMember(reply.authorId, members).name, role: reply.role ?? "human", body: reply.body })), questions }, null, 2),
     ].join("\n\n");
     if (body.length > 64_000) return state;
     const item: SteeringQueueItem = {

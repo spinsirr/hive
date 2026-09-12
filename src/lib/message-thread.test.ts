@@ -68,3 +68,32 @@ test("unknown reply boundaries and restoring tasks cannot trigger whole-thread e
   const restoring: TaskSessionState = { ...session, workspace: { ...session.workspace, restore: { id: "restore-one", snapshotId: "snapshot-one", by: resolveMember("spencer"), startedAt: 5, retryAfter: 90_005, status: "restoring" } } };
   assert.equal(reduceTaskSession(restoring, { type: "steer-thread", actor: "maya", messageId, throughReplyId }, 6), restoring);
 });
+
+test("an agent acknowledgement alone cannot re-steer the same discussion", () => {
+  const { session, messageId, throughReplyId } = discussion();
+  const steered = reduceTaskSession(session, { type: "steer-thread", actor: "maya", messageId, throughReplyId }, 6);
+  steered.workspace.liveReply = { id: "thread-run", threadId: messageId, body: "", startedAt: 6, sequence: 0 };
+  const finished = appendHiveReply(steered, "I will keep labels readable.", 7);
+  const agentReply = finished.messages.find((message) => message.id === messageId)!.annotations!.at(-1)!;
+  assert.equal(reduceTaskSession(finished, { type: "steer-thread", actor: "maya", messageId, throughReplyId: agentReply.id }, 8), finished);
+  const feedback = reduceTaskSession(finished, { type: "annotate-message", actor: "maya", messageId, body: "Also keep focus visible" }, 9);
+  const lastReply = feedback.messages.find((message) => message.id === messageId)!.annotations!.at(-1)!;
+  const next = reduceTaskSession(feedback, { type: "steer-thread", actor: "maya", messageId, throughReplyId: lastReply.id }, 10);
+  assert.match(next.activeSteer!.body, /Also keep focus visible/);
+  assert.match(next.activeSteer!.body, /Previously shared discussion is context/);
+});
+
+test("whole-thread handoff rejects partial streaming content and freezes inline question context", () => {
+  const { session, messageId, throughReplyId } = discussion();
+  const partial = structuredClone(session);
+  partial.messages.find((message) => message.id === messageId)!.annotations![0].deliveryStatus = "streaming";
+  assert.equal(reduceTaskSession(partial, { type: "steer-thread", actor: "maya", messageId, throughReplyId }, 6), partial);
+  session.messages.push({ id: "child-question", threadId: messageId, role: "agent", initials: "H", name: "Hive", body: "Which density?", time: "12:00", createdAt: 4,
+    interaction: { kind: "question", runId: "prior-run", options: [], answer: { replyId: "answer", by: "maya", at: 4 } },
+    annotations: [{ id: "answer", authorId: "maya", body: "Compact", createdAt: 4, status: "steered" }] });
+  session.messages.push({ ...session.messages.at(-1)!, id: "later-question", body: "LATER-QUESTION", createdAt: 9 });
+  const steered = reduceTaskSession(session, { type: "steer-thread", actor: "maya", messageId, throughReplyId }, 10);
+  assert.match(steered.activeSteer!.body, /Which density\?/);
+  assert.match(steered.activeSteer!.body, /Compact/);
+  assert.doesNotMatch(steered.activeSteer!.body, /LATER-QUESTION/);
+});
