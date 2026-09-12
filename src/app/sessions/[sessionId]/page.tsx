@@ -63,7 +63,6 @@ export default async function SessionPage({
       inviteToken={createSessionInviteToken(sessionId)}
       key={sessionId}
       sessionId={sessionId}
-      sessionTitle={snapshot.session.title}
     />
   );
 }

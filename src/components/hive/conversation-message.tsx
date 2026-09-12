@@ -13,21 +13,20 @@ import { codeReferenceLabel } from "@/lib/code-reference";
 import type { ChatMessage, TeamMember } from "@/lib/task-session";
 import { cn } from "@/lib/utils";
 
-export function ConversationMessage({ message, currentMember, members, sessionId, disabled, runActive, queueing, selected, onOpenThread, onSteerReply }: {
+export function ConversationMessage({ message, currentMember, members, sessionId, disabled, runActive, selected, onOpenThread }: {
   message: ChatMessage;
   currentMember: string;
   members: TeamMember[];
   sessionId: string;
   disabled: boolean;
   runActive: boolean;
-  queueing: boolean;
   selected: boolean;
   onOpenThread: (messageId: string) => void;
-  onSteerReply: (messageId: string, replyId: string) => void;
 }) {
   const isAgent = message.role === "agent";
   const isOwn = !isAgent && message.memberId === currentMember;
   const hasReplies = Boolean(message.annotations?.length);
+  const canStartThread = !disabled && !hasReplies && !message.interaction;
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
   const copy = async () => {
     try { await navigator.clipboard.writeText(message.body); setCopyState("copied"); }
@@ -53,15 +52,14 @@ export function ConversationMessage({ message, currentMember, members, sessionId
           {isAgent ? <AgentResponse streaming={message.status === "streaming"}>{message.body}</AgentResponse> : message.codeReference ? <div><p className="break-all text-xs text-[#737373]">{codeReferenceLabel(message.codeReference)}</p><pre className="mt-2 max-h-40 overflow-auto whitespace-pre font-mono text-xs leading-5">{message.codeReference.quote}</pre></div> : message.body}
         </MessageContent>
       ) : null}
-      {message.interaction ? <button type="button" onClick={() => onOpenThread(message.id)} className="self-start rounded-lg border border-[#dedede] px-3 py-1.5 text-xs font-medium hover:bg-[#fafafa] focus-visible:outline-2">Open collaboration thread</button> : null}
-      {message.status !== "streaming" ? (
+      {message.status !== "streaming" && ((isAgent && message.body) || canStartThread) ? (
         <div className={cn("-mt-1 flex items-center gap-1 transition-opacity focus-within:opacity-100 group-hover:opacity-100 sm:opacity-0 motion-reduce:transition-none", isOwn && "justify-end")}>
           {isAgent && message.body ? <button aria-label={copyState === "copied" ? "Response copied" : "Copy response"} className={actionClass} onClick={() => { void copy(); }} type="button" title={copyState === "copied" ? "Copied" : "Copy response"}>{copyState === "copied" ? <Check aria-hidden="true" className="size-3.5" /> : <Copy aria-hidden="true" className="size-3.5" />}</button> : null}
-          {!disabled ? <button aria-label={`Reply in thread to ${message.name}'s message`} className={actionClass} onClick={() => onOpenThread(message.id)} type="button"><MessageSquare aria-hidden="true" className="size-3.5" /> Reply</button> : null}
+          {canStartThread ? <button aria-label={`Reply in thread to ${message.name}'s message`} className={actionClass} onClick={() => onOpenThread(message.id)} type="button"><MessageSquare aria-hidden="true" className="size-3.5" /> Reply</button> : null}
           {copyState === "failed" ? <span className="text-xs text-[#888]" role="status">Couldn’t copy. Select the text to copy it.</span> : null}
         </div>
       ) : null}
-      <MessageThreadPreview disabled={disabled} members={members} message={message} onOpen={() => onOpenThread(message.id)} onSteerReply={onSteerReply} queueing={queueing} />
+      <MessageThreadPreview expanded={selected} members={members} message={message} onOpen={() => onOpenThread(message.id)} />
     </Message>
   );
 }

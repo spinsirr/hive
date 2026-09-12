@@ -41,6 +41,35 @@ const { render, renderHook, screen, fireEvent, cleanup, waitFor, within, act } =
 const { DemoWorkspace } = await import("../src/app/demo/demo-workspace.tsx");
 const { demoTasks } = await import("../src/lib/ui-demo.ts");
 try {
+  render(h(DemoWorkspace, { task: { id: "demo-new", title: "", repositoryName: null, updatedAt: 1 } }));
+  assert.ok(screen.getByRole("button", { name: "Rename task: Untitled task" }));
+  assert.ok(!screen.queryByText(/What should we accomplish/), "new tasks do not fabricate a Hive greeting");
+  assert.equal(screen.getByRole("textbox", { name: "Ask Hive or mention a teammate" }).disabled, false);
+  assert.equal(screen.queryByRole("button", { name: "Open collaboration thread" }), null, "an empty task has no invented human request");
+  fireEvent.change(screen.getByRole("textbox", { name: "Ask Hive or mention a teammate" }), { target: { value: "@casey Polish the Settings menu" } });
+  fireEvent.click(screen.getByRole("button", { name: "Send message", exact: true }));
+  await waitFor(() => assert.ok(screen.getByRole("button", { name: "Rename task: @casey Polish the Settings menu" })));
+  fireEvent.click(screen.getByRole("button", { name: /^Rename task:/ }));
+  const titleInput = screen.getByRole("textbox", { name: "Task name" });
+  fireEvent.change(titleInput, { target: { value: "   " } });
+  assert.ok(screen.getByRole("button", { name: "Save", exact: true }).disabled);
+  fireEvent.change(titleInput, { target: { value: "团队导航 · Keyboard review" } });
+  assert.equal(fireEvent.keyDown(titleInput, { key: "Enter", keyCode: 229, isComposing: true }), false, "IME Enter does not submit the name");
+  fireEvent.click(screen.getByRole("button", { name: "Save", exact: true }));
+  await waitFor(() => assert.ok(!screen.queryByRole("dialog"), "rename dialog closes after saving"));
+  await waitFor(() => assert.ok(document.activeElement === screen.getByRole("button", { name: "Rename task: 团队导航 · Keyboard review" }), "focus returns to the renamed title"));
+  fireEvent.change(screen.getByRole("textbox", { name: "Ask Hive or mention a teammate" }), { target: { value: "@casey Keep this name" } });
+  fireEvent.click(screen.getByRole("button", { name: "Send message", exact: true }));
+  await waitFor(() => assert.ok(screen.getByText("@casey Keep this name")));
+  assert.ok(screen.getByRole("button", { name: "Rename task: 团队导航 · Keyboard review" }));
+  fireEvent.click(within(screen.getByLabelText("Demo controls")).getByRole("button", { name: "Casey", exact: true }));
+  assert.ok(screen.getByRole("button", { name: "Rename task: 团队导航 · Keyboard review" }));
+  fireEvent.click(screen.getByRole("button", { name: "Archive task: 团队导航 · Keyboard review" }));
+  fireEvent.click(screen.getByRole("button", { name: "Archive task", exact: true }));
+  await waitFor(() => assert.ok(screen.getByRole("button", { name: "Rename task: 团队导航 · Keyboard review" }).disabled));
+  assert.equal(requests, 0);
+  cleanup();
+  console.log("PASS: first-message naming and shared rename in the real workspace; blank/IME guards, focus return, teammate visibility and archived read-only state.");
   render(h(DemoWorkspace, { task: demoTasks[0] }));
   const button = (name) => screen.getByRole("button", { name, exact: true });
   assert.ok(screen.getByLabelText("Demo controls"));
@@ -57,6 +86,7 @@ try {
   assert.ok(screen.getByRole("dialog", { name: "Restore this checkpoint?" }));
   fireEvent.click(button("Cancel"));
   fireEvent.click(button("Conversation"));
+  button("Open collaboration thread").focus();
   fireEvent.click(button("Open collaboration thread"));
   await waitFor(() => assert.ok(screen.getByRole("textbox", { name: "Answer Hive" })));
   fireEvent.click(within(screen.getByLabelText("Demo controls")).getByRole("button", { name: "Casey", exact: true }));
@@ -69,6 +99,10 @@ try {
   assert.match(screen.getByLabelText("Message thread").textContent, /Question for Alex/);
   assert.match(screen.getByLabelText("Message thread").textContent, /Needs answer/);
   assert.doesNotMatch(screen.getByLabelText("Message thread").textContent, /Answered by Casey|Simulated result/);
+  fireEvent.click(button("Close thread"));
+  await waitFor(() => assert.equal(document.activeElement.getAttribute("aria-label"), "Open thread with 1 reply", "the first reply updates the same entry, so closing the Thread restores keyboard focus"));
+  fireEvent.click(document.activeElement);
+  assert.match(screen.getByLabelText("Message thread").textContent, /Casey discussion, not Alex's answer/);
   fireEvent.click(within(screen.getByLabelText("Demo controls")).getByRole("button", { name: "Alex", exact: true }));
   await waitFor(() => assert.equal(screen.getByRole("textbox", { name: "Answer Hive" }).disabled, false));
   console.log("PASS: Casey can discuss, but cannot answer Alex's question; switching back restores Alex's answer controls.");
@@ -166,6 +200,56 @@ try {
   const { requestPeerInput } = await import("../src/lib/peer-collaboration.ts");
   const { HiveWorkspaceView } = await import("../src/components/hive/hive-workspace.tsx");
   const { HiveClientContext } = await import("../src/components/hive/hive-client.tsx");
+  // Reproduce the reported shape: one long discussion plus a repeated empty
+  // question from another run. Use the production view and original IDs.
+  const threadDemo = createDemoWorkspace(demoTasks[0]);
+  const threadSnapshot = structuredClone(threadDemo.getSnapshot());
+  const longThreadBody = "Here are the tradeoffs. ".repeat(40) + "THREAD_FULL_TEXT";
+  const firstQuestion = { id: "peer-run-original-close_tab", role: "agent", name: "Hive", initials: "H", time: "12:28 AM", body: "Should we close the tab after use?",
+    interaction: { kind: "question", runId: "run-original", targetMemberId: demoMembers[1].id, options: ["Yes", "No"] },
+    annotations: [
+      { id: "first-opinion", authorId: demoMembers[0].id, body: "Let's discuss the tradeoffs first.", createdAt: 1, status: "open" },
+      { id: "first-analysis", authorId: "hive-agent", role: "agent", body: longThreadBody, createdAt: 2, status: "open" },
+    ] };
+  const repeatedQuestion = { ...firstQuestion, id: "peer-run-repeated-close_tab", interaction: { ...firstQuestion.interaction, runId: "run-repeated" }, annotations: [] };
+  threadSnapshot.session.messages = [firstQuestion, repeatedQuestion];
+  threadDemo.receiveSnapshot(threadSnapshot);
+  const originalHistory = structuredClone(threadDemo.getSnapshot().session.messages);
+  const threadActions = [];
+  const threadView = () => h(HiveClientContext, { value: threadDemo.client }, h(HiveWorkspaceView, {
+    currentMember: demoMembers[0], sessionId: threadSnapshot.session.sessionId, inviteToken: "",
+    connection: { snapshot: threadDemo.getSnapshot(), dispatch: (action) => { threadActions.push(action); return threadDemo.dispatch(action); },
+      receiveSnapshot: threadDemo.receiveSnapshot, setTyping: threadDemo.setTyping, syncing: false, syncError: false },
+  }));
+  const threadMount = render(threadView());
+  assert.equal(screen.getAllByText(firstQuestion.body).length, 1, "the repeated empty question must not create a second timeline card");
+  assert.equal(screen.getAllByRole("button", { name: "Open thread with 2 replies", exact: true }).length, 1);
+  assert.equal(screen.queryByText(/THREAD_FULL_TEXT/), null, "full replies belong only to the thread, not the main timeline");
+  fireEvent.click(button("Open thread with 2 replies"));
+  const fullThread = screen.getByLabelText("Message thread");
+  assert.match(fullThread.textContent, /Let's discuss the tradeoffs first/);
+  assert.match(fullThread.textContent, /THREAD_FULL_TEXT/);
+  assert.equal((document.body.textContent.match(/THREAD_FULL_TEXT/g) ?? []).length, 1);
+  assert.equal((document.body.textContent.match(/Here are the tradeoffs/g) ?? []).length, 40, "even the short excerpt disappears while the full thread is open");
+  assert.equal(button("Open thread with 2 replies").getAttribute("aria-expanded"), "true");
+  assert.deepEqual(threadActions, [], "navigation must not wake Hive");
+  assert.deepEqual(threadDemo.getSnapshot().session.messages, originalHistory, "projection must never rewrite or delete stored messages");
+  await waitFor(() => assert.equal(screen.getByRole("textbox", { name: "Reply in thread" }).disabled, false));
+  fireEvent.change(screen.getByRole("textbox", { name: "Reply in thread" }), { target: { value: "New reply to the original discussion" } });
+  fireEvent.click(button("Send reply"));
+  await waitFor(() => assert.equal(threadActions.length, 1));
+  assert.equal(threadActions[0].type, "annotate-message");
+  assert.equal(threadActions[0].messageId, firstQuestion.id);
+  threadMount.rerender(threadView());
+  const addedReply = screen.getByText("New reply to the original discussion").closest("article");
+  fireEvent.click(within(addedReply).getByRole("button", { name: "Steer Hive for Alex's reply", exact: true }));
+  await waitFor(() => assert.equal(threadActions.length, 2));
+  assert.equal(threadActions[1].type, "steer-message-annotation");
+  assert.equal(threadActions[1].messageId, firstQuestion.id);
+  assert.equal(threadDemo.getSnapshot().session.messages.find((m) => m.id === repeatedQuestion.id).annotations.length, 0);
+  assert.equal(requests, 0);
+  console.log("PASS: repeated empty questions collapse without history loss; full text appears once, and reply/steer keep the original Thread identity with no navigation wakeups.");
+  cleanup();
   const reviewsDemo = createDemoWorkspace(demoTasks[0]);
   await reviewsDemo.dispatch({ type: "send-message", body: "Prepare the first revision", clientId: "review-first" });
   reviewsDemo.finishRun(reviewsDemo.getSnapshot().session.workspace.liveReply.id);
@@ -179,7 +263,7 @@ try {
   let navigationWrites = 0;
   const reviewView = () => h(HiveClientContext, { value: reviewsDemo.client }, h(HiveWorkspaceView, {
     currentMember: demoMembers[0], sessionId: reviewsDemo.getSnapshot().session.sessionId,
-    sessionTitle: demoTasks[0].title, inviteToken: "", homeHref: "/demo", connectionLabel: "Demo", accountActionsDisabled: true,
+    inviteToken: "", homeHref: "/demo", connectionLabel: "Demo", accountActionsDisabled: true,
     connection: { snapshot: reviewsDemo.getSnapshot(), dispatch: (action) => { navigationWrites++; return reviewsDemo.dispatch(action); },
       receiveSnapshot: reviewsDemo.receiveSnapshot, setTyping: reviewsDemo.setTyping, syncing: false, syncError: false },
   }));
@@ -257,7 +341,7 @@ try {
     return new Promise((resolve) => { releaseRestore = () => resolve(Response.json({ error: "Restore response timed out." }, { status: 503 })); });
   } };
   const recoveryView = () => h(HiveClientContext, { value: recoveryClient }, h(HiveWorkspaceView, {
-    sessionId: recoverySnapshot.session.sessionId, sessionTitle: "Restore then change tabs", currentMember: recoverySnapshot.members[0], inviteToken: "demo",
+    sessionId: recoverySnapshot.session.sessionId, currentMember: recoverySnapshot.members[0], inviteToken: "demo",
     connection: { snapshot: recoverySnapshot, dispatch: async () => { throw new Error("Recovery must not start an agent"); }, setTyping() {}, syncing: false, syncError: false,
       receiveSnapshot: (snapshot) => { deliveredRecovery = snapshot; recoverySnapshot = snapshot; recoveryMounted.rerender(recoveryView()); } },
   }));
@@ -303,7 +387,7 @@ try {
     return Response.json(confirmedOnDiff);
   } };
   const diffView = () => h(HiveClientContext, { value: diffClient }, h(HiveWorkspaceView, {
-    sessionId: diffSnapshot.session.sessionId, sessionTitle: "Restore on Diff", currentMember: completedOnDiff.members[0], inviteToken: "demo",
+    sessionId: diffSnapshot.session.sessionId, currentMember: completedOnDiff.members[0], inviteToken: "demo",
     connection: { snapshot: diffSnapshot, dispatch: async () => { throw new Error("Recovery must not start an agent"); }, setTyping() {}, syncing: false, syncError: false, receiveSnapshot: receiveOnDiff },
   }));
   diffMounted = render(diffView());

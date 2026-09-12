@@ -51,6 +51,23 @@ function finishInspection(state: TaskSessionState, diff = "") {
   }, 40);
 }
 
+test("a new task stays empty until a member sends the first message", () => {
+  for (const title of ["", "Plan navigation"]) {
+    const initial = createInitialTaskSessionState(1, "empty-task", { title, createdBy: "spencer" });
+    assert.deepEqual(initial.messages, []);
+    assert.equal(isHiveRunActive(initial), false);
+    assert.equal(initial.workspace.agentSession, undefined);
+    const running = reduceTaskSession(initial, { type: "send-message", actor: "spencer", body: "Help us plan navigation" }, 2);
+    assert.equal(running.messages.length, 1);
+    assert.equal(running.messages[0].role, "human");
+    assert.equal(running.messages[0].body, "Help us plan navigation");
+    assert.equal(didStartHiveRun(initial, running), true);
+    const replied = appendHiveReply(running, "Which routes should we cover?", 3);
+    assert.deepEqual(replied.messages.map((message) => message.role), ["human", "agent"]);
+    assert.deepEqual(reduceTaskSession(replied, { type: "reset", actor: "spencer" }, 4).messages, []);
+  }
+});
+
 test("the team can select Claude before coding, then keep that engine through results and reset", () => {
   const selected = reduceTaskSession(connectedSession(), { type: "select-harness", actor: "spencer", runtime: "claude-code" }, 15);
   assert.equal(selected.workspace.agentSession?.runtime, "claude-code");
@@ -687,7 +704,7 @@ test("reset preserves the repository but clears run artifacts", () => {
   assert.equal(reset.stage, "waiting");
   assert.equal(reset.workspace.status, "ready");
   assert.deepEqual(reset.workspace.changedFiles, []);
-  assert.equal(reset.messages.length, 1);
+  assert.deepEqual(reset.messages, [], "reset does not insert another greeting for the connected repository");
   assert.notEqual(
     reset.workspace.agentSession?.id,
     session.workspace.agentSession?.id,
@@ -817,7 +834,6 @@ test("conversation messages carry a machine timestamp alongside the legacy label
   const running = reduceTaskSession(connectedSession(), { type: "send-message", actor: "spencer", body: "Update navigation" }, 20);
   assert.equal(running.messages.at(-1)?.createdAt, 20);
   assert.equal(running.messages.at(-2)?.createdAt, 10, "the repository-connected notice");
-  assert.equal(running.messages[0]?.createdAt, 1, "the initial greeting");
   assert.equal(finishInspection(running, "+ change").messages.at(-1)?.createdAt, 40);
   assert.equal(applyHiveRunError(running, "boom", 45).messages.at(-1)?.createdAt, 45);
   const streamed = { ...running, workspace: { ...running.workspace, liveReply: { id: "reply", body: "Partial", sequence: 1, startedAt: 22 } } };

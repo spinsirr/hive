@@ -6,7 +6,7 @@ import { JSDOM } from "jsdom";
 import { JsxEmit, ModuleKind, transpileModule } from "typescript";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "https://hive.example/demo", pretendToBeVisual: true });
-for (const name of ["window", "document", "navigator", "HTMLElement", "HTMLButtonElement", "Element", "Node", "DocumentFragment", "MutationObserver", "Event", "MouseEvent", "KeyboardEvent", "getComputedStyle"]) {
+for (const name of ["window", "document", "navigator", "HTMLElement", "HTMLButtonElement", "Element", "Node", "DocumentFragment", "MutationObserver", "Event", "MouseEvent", "KeyboardEvent", "getComputedStyle", "FormData"]) {
   Object.defineProperty(globalThis, name, { configurable: true, value: name === "window" ? dom.window : dom.window[name] });
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -18,6 +18,7 @@ registerHooks({
   resolve(specifier, context, next) {
     if (specifier === "next/link") return next("next/link.js", context);
     if (specifier === "next/headers") return next("next/headers.js", context);
+    if (specifier === "next/navigation") return next("next/navigation.js", context);
     if (specifier === "server-only") return next("next/dist/compiled/server-only/empty.js", context);
     if (specifier === "@/db") throw new Error("Public home must not import the database without a session.");
     if (!specifier.startsWith("@/")) return next(specifier, context);
@@ -26,6 +27,7 @@ registerHooks({
     return next(target?.href ?? specifier, context);
   },
   load(url, context, next) {
+    if (url.endsWith("/next/navigation.js")) return { format: "module", shortCircuit: true, source: "export function useRouter() { return { push(url) { globalThis.__demoDestination = url; } }; }" };
     if (url.endsWith("/next/headers.js")) return { format: "module", shortCircuit: true, source: "export async function cookies() { return { get() { return globalThis.__demoTestCookie; } }; }" };
     if (!url.endsWith(".tsx")) return next(url, context);
     return { format: "module", shortCircuit: true, source: transpileModule(readFileSync(new URL(url), "utf8"), { compilerOptions: { jsx: JsxEmit.ReactJSX, module: ModuleKind.ESNext } }).outputText };
@@ -57,6 +59,10 @@ for (const task of demoTasks) {
 assert.equal(document.querySelector('a[href^="/sessions/"]'), null);
 assert.equal(screen.queryByRole("button", { name: /Preview sample task/ }), null);
 assert.equal(screen.queryByRole("dialog"), null);
+fireEvent.click(screen.getByRole("button", { name: "New task", exact: true }));
+await waitFor(() => assert.equal(globalThis.__demoDestination, "/demo/tasks/new"));
+assert.equal(screen.queryByRole("dialog"), null, "New task enters the conversation without a naming dialog");
+assert.equal(screen.queryByRole("textbox", { name: "Task name" }), null);
 fireEvent.click(screen.getByRole("button", { name: "Archive task: Polish the settings menu" }));
 assert.ok(screen.getByRole("dialog", { name: "Archive this task for everyone?" }));
 fireEvent.click(screen.getByRole("button", { name: "Archive task", exact: true }));
@@ -76,6 +82,27 @@ fireEvent.click(screen.getByRole("button", { name: "Reset demo" }));
 assert.equal(screen.getAllByRole("link", { name: /^Open sample task:/ }).length, 4);
 cleanup();
 console.log("PASS: all four sample rows have real, keyboard-accessible demo links; no placeholder dialogs or live task links.");
+
+let creationCount = 0;
+let finishCreation;
+render(h(TaskDashboard, {
+  tasks: [{ id: "unnamed", title: "", repositoryName: null, updatedAt: demoLoadedAt }],
+  memberName: "Alex", memberInitials: "AL", loadedAt: demoLoadedAt,
+  createAction: async (form) => {
+    creationCount++;
+    assert.equal(form.get("title"), null);
+    await new Promise((resolve) => { finishCreation = resolve; });
+  },
+}));
+assert.equal(screen.getByRole("link", { name: /Untitled task/ }).getAttribute("href"), "/sessions/unnamed");
+fireEvent.click(screen.getByRole("button", { name: "New task", exact: true }));
+await waitFor(() => assert.ok(screen.getByRole("button", { name: "Creating task" }).disabled));
+fireEvent.click(screen.getByRole("button", { name: "Creating task" }));
+assert.equal(creationCount, 1, "pending creation prevents repeated clicks");
+finishCreation();
+await waitFor(() => assert.ok(!screen.getByRole("button", { name: "New task", exact: true }).disabled));
+cleanup();
+console.log("PASS: one-click unnamed creation, pending guard and an accessible untitled dashboard label.");
 
 const customTask = newDemoTask("Try team onboarding", "custom");
 render(h(TaskDashboard, {

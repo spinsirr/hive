@@ -8,6 +8,7 @@ import { isCodingEffort, type CodingEffort } from "./coding-effort.ts";
 import { codingModelOptions, CODEX_GATEWAY_MODEL, selectedCodingModel, modelEffort, type CodingModelOption } from "./coding-models.ts";
 import { codeReferenceContext, codeReferenceSchema, type CodeReference } from "./code-reference.ts";
 import { finalizeSubagents } from "./hive-subagents.ts";
+import { normalizeTaskTitle, taskTitleFromMessage } from "./task-title.ts";
 import { canResolvePeerReview, finishPeerReviews, type PeerInteraction } from "./peer-collaboration.ts";
 
 export type MemberId = string;
@@ -252,6 +253,7 @@ export type TaskSessionState = {
 };
 
 export type TaskSessionAction =
+  | { type: "rename-task"; actor: MemberId; title: string }
   | { type: "archive-task"; actor: MemberId }
   | { type: "restore-task"; actor: MemberId }
   | { type: "resolve-peer-review"; actor: MemberId; messageId: string; revision: string }
@@ -314,23 +316,13 @@ export function createInitialTaskSessionState(
 ): TaskSessionState {
   return {
     sessionId,
-    title: options.title?.trim() || "Untitled task",
+    title: options.title?.trim() ?? "",
     createdBy: options.createdBy ?? "hive-system",
     createdAt: now,
     version: 1,
     revision: 1,
     stage: "waiting",
-    messages: [
-      {
-        id: "initial-1",
-        name: "Hive",
-        initials: "AI",
-        body: "What should we accomplish? We can clarify the task first and attach a GitHub repository whenever the team is ready to work on code.",
-        role: "agent",
-        time: timeLabel(now),
-        createdAt: now,
-      },
-    ],
+    messages: [],
     annotation: {
       status: "open",
       text: "",
@@ -436,6 +428,18 @@ export function didStartHiveRun(previous: TaskSessionState, next: TaskSessionSta
   return !isHiveRunActive(previous) && isHiveRunActive(next);
 }
 
+/** Thread-originated work returns to its parent, whether structured or ordinary.
+ * Immediate single-reply steers use the action; queued/whole-thread work keeps
+ * its source in activeSteer. A queued main message is not a thread reply.
+ */
+export function hiveReplyThreadId(state: TaskSessionState, action: TaskSessionAction): string | undefined {
+  const source = state.activeSteer?.source;
+  const messageId = source && (source.kind === "message-annotation" || source.kind === "message-thread" || source.kind === "peer-response")
+    ? source.messageId
+    : action.type === "steer-message-annotation" ? action.messageId : undefined;
+  return messageId && state.messages.some((message) => message.id === messageId) ? messageId : undefined;
+}
+
 /** A native conversation belongs to one harness; never reinterpret its history. */
 export function canSelectHarness(state: TaskSessionState) {
   return !state.archived && !isHiveRunActive(state) && !state.workspace.restore && !state.activeSteer &&
@@ -509,6 +513,11 @@ export function reduceTaskSession(
     return { ...state, archived: undefined, version: state.version + 1, updatedAt: now };
   }
   if (state.workspace.restore) return state;
+  if (action.type === "rename-task") {
+    const title = normalizeTaskTitle(action.title);
+    if (!title || title === state.title || !members.some((member) => member.id === action.actor)) return state;
+    return { ...state, title, version: state.version + 1, updatedAt: now };
+  }
   if (action.type === "set-coding-effort") {
     const model = selectedCodingModel(models, state.workspace.agentSession?.runtime ?? "codex", state.workspace.codingModel);
     if (!model || (action.modelId && action.modelId !== model.modelId) || !model.efforts.includes(action.effort) || !isCodingEffort(action.effort) || !canSetCodingEffort(state) || (state.workspace.codingEffort ?? "low") === action.effort) return state;
@@ -567,17 +576,6 @@ export function reduceTaskSession(
         commands: [],
         changedFiles: [],
       },
-      messages: [
-        {
-          id: `agent-${now}-1`,
-          name: "Hive",
-          initials: "AI",
-          body: `${state.repository.name} is connected. What should we work on?`,
-          role: "agent",
-          time: timeLabel(now),
-          createdAt: now,
-        },
-      ],
     };
   }
 
@@ -646,6 +644,7 @@ export function reduceTaskSession(
     const queuesRun = addressesHive && !startsRun;
     return {
       ...state,
+      title: state.title || taskTitleFromMessage(body),
       version: state.version + 1,
       stage: startsRun ? "running" : state.stage,
       workspace: startsRun

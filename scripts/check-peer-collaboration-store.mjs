@@ -40,6 +40,38 @@ try {
   const { handleHiveMcp } = await import("../src/lib/hive-mcp.ts");
   const members = Object.values(memberDirectory);
   await db.insert(users).values(members.map((member, index) => ({ ...member, githubUserId: 100 + index, githubLogin: member.id, updatedAt: new Date() })));
+  const unnamed = await store.createTaskSession("", members[0]);
+  assert.equal(unnamed.title, "");
+  assert.equal(unnamed.stage, "waiting");
+  assert.equal(unnamed.workspace.liveReply, undefined);
+  assert.equal(unnamed.workspace.agentSession, undefined);
+  await store.joinTaskSession(unnamed.sessionId, members[1].id);
+  const starts = await Promise.all(members.map((member, index) => store.applyTaskSessionAction(unnamed.sessionId, {
+    type: "send-message", actor: member.id, body: ["Polish the Settings menu", "Review keyboard navigation"][index], clientId: randomUUID(),
+  }, member)));
+  assert.equal(starts.filter((start) => start.startedRun).length, 1);
+  const named = (await store.getPublicTaskSessionSnapshot(unnamed.sessionId)).session;
+  assert.ok(["Polish the Settings menu", "Review keyboard navigation"].includes(named.title));
+  assert.equal(named.title, named.messages.find((message) => message.role === "human").body, "the first committed message names the task once");
+  assert.equal(named.sessionId, unnamed.sessionId);
+  const manual = await store.applyTaskSessionAction(unnamed.sessionId, { type: "rename-task", actor: members[1].id, title: "Team navigation review" }, members[1]);
+  assert.equal(manual.startedRun, false, "renaming during a run does not start another run");
+  assert.equal(manual.snapshot.session.title, "Team navigation review");
+  assert.deepEqual(manual.snapshot.session.workspace, named.workspace);
+  assert.deepEqual(manual.snapshot.session.messages, named.messages);
+  assert.deepEqual(manual.snapshot.session.steeringQueue, named.steeringQueue);
+  await store.checkpointAgentReply(unnamed.sessionId, named.workspace.liveReply.id, "Working on navigation", 1);
+  await store.appendHiveReply(unnamed.sessionId, "Navigation inspected", { forReplyId: named.workspace.liveReply.id });
+  assert.equal((await store.getPublicTaskSessionSnapshot(unnamed.sessionId)).session.title, "Team navigation review", "run completion must not overwrite a concurrent rename");
+  assert.equal((await store.listTaskSessions(members[0].id)).find((task) => task.id === unnamed.sessionId).title, "Team navigation review");
+  const renameFirst = await store.createTaskSession("", members[0]);
+  await Promise.all([
+    store.applyTaskSessionAction(renameFirst.sessionId, { type: "rename-task", actor: members[0].id, title: "Untitled task" }, members[0]),
+    store.applyTaskSessionAction(renameFirst.sessionId, { type: "send-message", actor: members[0].id, body: "Do not overwrite my name", clientId: randomUUID() }, members[0]),
+  ]);
+  assert.equal((await store.getPublicTaskSessionSnapshot(renameFirst.sessionId)).session.title, "Untitled task", "a manual name wins regardless of which concurrent write arrived first");
+  await assert.rejects(store.applyTaskSessionAction(renameFirst.sessionId, { type: "rename-task", actor: members[1].id, title: "Foreign" }, members[1]), store.TaskSessionAccessError);
+  console.log("PASS: unnamed creation, concurrent first-message naming, manual rename during a run, stable task ID/list title and cross-task isolation.");
   const task = await store.createTaskSession("Peer collaboration acceptance", members[0]);
   await store.joinTaskSession(task.sessionId, members[1].id);
   const start = await store.applyTaskSessionAction(task.sessionId, { type: "send-message", actor: members[0].id, body: "Ask the team about draft access", clientId: randomUUID() }, members[0]);
@@ -100,6 +132,45 @@ try {
   assert.equal((await store.getPublicTaskSessionSnapshot(foreign.sessionId)).session.version, before);
   console.log("PASS: real MCP → Postgres question → concurrent answers → one continuation → thread stream/result; reconnect read, stale run and cross-task denial.");
   console.log("PASS: real MCP review request → completed evidence → assigned reviewer; stale version and duplicate resolution are no-ops.");
+  // Ordinary discussions must have the same reply destination as structured
+  // questions/reviews, including single replies and queued continuations.
+  for (const mode of ["reply", "thread", "queued-reply", "queued-thread"]) {
+    const discussion = await store.createTaskSession(`Ordinary thread ${mode}`, members[0]);
+    await store.joinTaskSession(discussion.sessionId, members[1].id);
+    const parentRun = await store.applyTaskSessionAction(discussion.sessionId, { type: "send-message", actor: members[0].id, body: "Inspect the settings", clientId: randomUUID() }, members[0]);
+    const parentId = parentRun.snapshot.session.workspace.liveReply.id;
+    await store.appendHiveReply(discussion.sessionId, runResult.summary, { forReplyId: parentId, runResult });
+    const comment = await store.applyTaskSessionAction(discussion.sessionId, { type: "annotate-message", actor: members[1].id, messageId: parentId, body: "Explain the tradeoffs here", clientId: randomUUID() }, members[1]);
+    assert.equal(comment.startedRun, false);
+    const replyId = comment.snapshot.session.messages.find((message) => message.id === parentId).annotations.at(-1).id;
+    let busyRun;
+    if (mode.startsWith("queued")) {
+      busyRun = await store.applyTaskSessionAction(discussion.sessionId, { type: "send-message", actor: members[0].id, body: "Other work first", clientId: randomUUID() }, members[0]);
+      assert.equal(busyRun.snapshot.session.workspace.liveReply.threadId, undefined, "ordinary main messages stay in the main conversation");
+    }
+    const action = mode.endsWith("thread")
+      ? { type: "steer-thread", actor: members[0].id, messageId: parentId, throughReplyId: replyId }
+      : { type: "steer-message-annotation", actor: members[0].id, messageId: parentId, annotationId: replyId };
+    await Promise.all([1, 2].map(() => store.applyTaskSessionAction(discussion.sessionId, action, members[0])));
+    if (busyRun) {
+      await store.appendHiveReply(discussion.sessionId, runResult.summary, { forReplyId: busyRun.snapshot.session.workspace.liveReply.id, runResult });
+      const grants = await Promise.all(members.map((member) => store.applyTaskSessionAction(discussion.sessionId, { type: "apply-next-steer", actor: member.id }, member)));
+      assert.equal(grants.filter((grant) => grant.startedRun).length, 1);
+    }
+    const active = (await store.getPublicTaskSessionSnapshot(discussion.sessionId)).session;
+    assert.equal(active.workspace.liveReply.threadId, parentId, `${mode}: ordinary Thread retains its identity`);
+    const activeId = active.workspace.liveReply.id;
+    await store.checkpointAgentReply(discussion.sessionId, activeId, "Considering the tradeoffs", 1);
+    await store.appendHiveReply(discussion.sessionId, "Thread result", { forReplyId: activeId, runResult: { ...runResult, summary: "Thread result" } });
+    const done = (await store.getPublicTaskSessionSnapshot(discussion.sessionId)).session;
+    assert.deepEqual(done.messages.map((message) => message.id), active.messages.map((message) => message.id));
+    const replies = done.messages.find((message) => message.id === parentId).annotations;
+    assert.equal(replies[0].authorId, members[1].id, "steering does not transfer authorship to the promoter");
+    assert.equal(replies.at(-1).id, activeId);
+    assert.equal(replies.at(-1).body, "Thread result");
+    assert.equal(replies.at(-1).role, "agent");
+  }
+  console.log("PASS: ordinary Thread single/whole and immediate/queued steers stream and finish in their original discussion; main messages remain root messages.");
   // Archive is a shared task state, serialized with run admission and recovery.
   const archive = { type: "archive-task", actor: members[0].id };
   const archived = await store.applyTaskSessionAction(task.sessionId, archive, members[0]);

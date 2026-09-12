@@ -146,7 +146,6 @@ try {
   console.log("PASS: task writes enforce membership at the storage boundary, not just the HTTP route.");
 
   const form = new FormData();
-  form.set("title", "Newcomer's first task");
   form.set("creator", owner.member.id); // The server must ignore caller-supplied identity.
   const cookieJar = { get: (name) => newcomer.response.cookies.get(name) };
   let taskPath;
@@ -158,8 +157,11 @@ try {
   const ownTasks = await store.listTaskSessions(newcomer.member.id);
   assert.equal(ownTasks.length, 1);
   assert.equal(taskPath, `/sessions/${ownTasks[0].id}`);
-  assert.equal(ownTasks[0].title, "Newcomer's first task");
+  assert.equal(ownTasks[0].title, "", "creation needs no manually supplied title");
   assert.equal(ownTasks[0].repository, null);
+  const newSession = (await store.getPublicTaskSessionSnapshot(ownTasks[0].id)).session;
+  assert.deepEqual(newSession.messages, [], "authenticated creation starts an empty conversation, not a fabricated agent reply");
+  assert.equal(newSession.stage, "waiting");
   assert.equal(await store.isTaskSessionMember(ownTasks[0].id, owner.member.id), false);
   await assert.rejects(requestCookies.run({ get: () => undefined }, () => createTaskSession(form)), /Unauthorized/);
   console.log("PASS: a first-time account creates its own task; creator spoofing and anonymous creation are denied.");
@@ -249,6 +251,22 @@ try {
   assert.equal(legacy.rows[0].completed_at.getTime(), 1000);
   console.log("PASS: retired completion fields do not hide or lock a task; repository attach and attributed discussion work without rewriting historical values, while old actions are rejected.");
 
+  for (const title of [null, "", " ", "x".repeat(121)]) {
+    const invalid = await action(new NextRequest(ownUrl, { method: "POST", headers: ownHeaders, body: JSON.stringify({ type: "rename-task", title }) }), ownContext);
+    assert.equal(invalid.status, 400);
+  }
+  const renamedResponse = await action(new NextRequest(ownUrl, { method: "POST", headers: ownHeaders, body: JSON.stringify({ type: "rename-task", title: "  My task name  ", actor: owner.member.id }) }), ownContext);
+  assert.equal(renamedResponse.status, 200);
+  const renamedSession = (await renamedResponse.json()).session;
+  assert.equal(renamedSession.title, "My task name");
+  assert.equal(renamedSession.sessionId, ownTasks[0].id);
+  assert.deepEqual(renamedSession.messages, discussion.messages);
+  assert.deepEqual(renamedSession.workspace, discussion.workspace);
+  assert.equal((await store.listTaskSessions(newcomer.member.id)).find((task) => task.id === ownTasks[0].id).title, "My task name");
+  const forbiddenRename = await action(new NextRequest(ownUrl, { method: "POST", headers: { ...ownHeaders, cookie: browserCookie(owner) }, body: JSON.stringify({ type: "rename-task", title: "Foreign rename" }) }), ownContext);
+  assert.equal(forbiddenRename.status, 401);
+  console.log("PASS: unnamed creation and authenticated rename keep the link, conversation and workspace stable; invalid names and foreign members are denied.");
+
   const foreignContext = { params: Promise.resolve({ sessionId: privateTask.sessionId }) };
   for (const [suffix, handler, method] of [["", snapshot, "GET"], ["", action, "POST"], ["/files?kind=directory", files, "GET"], ["/checkpoints", checkpoints, "GET"], ["/checkpoints", restore, "POST"], ["/live", live, "GET"]]) {
     const denied = await handler(new NextRequest(`https://hive.test/api/sessions/${privateTask.sessionId}${suffix}`, {
@@ -278,6 +296,13 @@ try {
   const sharedAction = (signedIn, payload) => action(new NextRequest(sharedUrl, {
     method: "POST", headers: { cookie: browserCookie(signedIn), origin: "https://hive.test", "Content-Type": "application/json" }, body: JSON.stringify(payload),
   }), foreignContext);
+  const sharedDiscussion = await sharedAction(owner, {
+    type: "send-message", body: "@fixture-newcomer Please review this task with me", clientId: randomUUID(),
+  });
+  assert.equal(sharedDiscussion.status, 200);
+  const beforeArchive = (await sharedDiscussion.json()).session;
+  assert.equal(beforeArchive.stage, "waiting", "a teammate discussion does not run the agent");
+  assert.equal(beforeArchive.messages[0].role, "human", "archive checks use a real discussion, not a seeded greeting");
   const archiveResponse = await sharedAction(owner, { type: "archive-task", actor: newcomer.member.id });
   assert.equal(archiveResponse.status, 200);
   const archiveSnapshot = (await archiveResponse.json()).session;

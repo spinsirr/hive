@@ -34,7 +34,7 @@ test("archives reject every task mutation and checkpoint rollback until restored
   const archived = reduceTaskSession(initial, { type: "archive-task", actor }, 2, members);
   // Exhaustive union: adding a new action must explicitly classify its archive behavior.
   const actions: Record<TaskSessionAction["type"], boolean> = {
-    "archive-task": true, "restore-task": true,
+    "archive-task": true, "restore-task": true, "rename-task": false,
     "select-harness": false, "set-coding-effort": false, "recover-stalled-run": false,
     reset: false, "connect-repository": false, "send-message": false, "annotate-code": false,
     "annotate-message": false, "answer-question": false, "resolve-peer-review": false,

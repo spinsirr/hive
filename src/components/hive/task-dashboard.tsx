@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, FolderGit2, Plus, Users } from "lucide-react";
+import { ArrowRight, FolderGit2, Users } from "lucide-react";
 import Link from "next/link";
 import { useRef, useState } from "react";
 
@@ -8,54 +8,14 @@ import { CreateSessionButton } from "@/components/hive/create-session-button";
 import { TaskArchiveControl } from "@/components/hive/task-archive-control";
 import { useHiveClient } from "@/components/hive/hive-client";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { dashboardTasks, taskUpdatedLabel, type DashboardTask } from "@/lib/task-dashboard";
+import { taskTitleLabel } from "@/lib/task-title";
 
 function NewTask({ createAction }: { createAction: (formData: FormData) => Promise<void> }) {
-  const [title, setTitle] = useState("");
-  const [open, setOpen] = useState(false);
   return (
-    <Dialog onOpenChange={setOpen} open={open}>
-      <DialogTrigger render={<Button className="h-9 gap-2 px-3 text-xs" />}>
-        <Plus className="size-3.5" /> New task
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
-        <form action={async (formData) => {
-          await createAction(formData);
-          setOpen(false);
-          setTitle("");
-        }}>
-          <DialogHeader>
-            <DialogTitle>New task</DialogTitle>
-            <DialogDescription>Start with an outcome. Invite teammates and attach a repository inside the task.</DialogDescription>
-          </DialogHeader>
-          <div className="py-5">
-            <label className="mb-2 block text-xs font-medium" htmlFor="new-task-title">Task name</label>
-            <input
-              autoComplete="off"
-              autoFocus
-              className="h-10 w-full rounded-md border border-[#dedede] bg-white px-3 text-base outline-none sm:text-sm placeholder:text-[#aaa] focus:border-[#737373] focus:ring-2 focus:ring-[#171717]/10"
-              id="new-task-title"
-              maxLength={120}
-              name="title"
-              onChange={(event) => setTitle(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229)) event.preventDefault();
-              }}
-              placeholder="What should we build together?"
-              pattern={".*\\S.*"}
-              required
-              title="Enter a task name."
-              value={title}
-            />
-          </div>
-          <DialogFooter>
-            <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
-            <CreateSessionButton />
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+    <form action={createAction}>
+      <CreateSessionButton />
+    </form>
   );
 }
 
@@ -91,7 +51,7 @@ export function TaskDashboard({ tasks, memberName, memberInitials, loadedAt, cre
       update = { archivedAt: payload.session.archived?.at ?? null, updatedAt: payload.session.updatedAt };
     }
     setUpdates((current) => ({ ...current, [task.id]: update }));
-    setNotice(`${task.title} ${archived ? "archived for everyone" : "restored"}.`);
+    setNotice(`${taskTitleLabel(task.title)} ${archived ? "archived for everyone" : "restored"}.`);
     filterRef.current?.focus();
   }
 
@@ -143,12 +103,13 @@ export function TaskDashboard({ tasks, memberName, memberInitials, loadedAt, cre
           {visible.length > 0 ? (
             <ul className="divide-y divide-[#eeeeee]">
               {visible.map((task) => {
+                const title = taskTitleLabel(task.title);
                 const rowClassName = "group grid min-h-20 min-w-0 flex-1 grid-cols-[minmax(0,1fr)_60px] items-center gap-2 py-4 pl-4 text-left transition-colors hover:bg-[#fafafa] focus-visible:bg-[#fafafa] focus-visible:outline-2 focus-visible:outline-offset-[-2px] sm:grid-cols-[minmax(0,1fr)_minmax(0,0.6fr)_80px_16px] sm:gap-4 sm:pl-5";
                 const content = (
                   <>
                     <div className="min-w-0">
                       <p className="flex items-center gap-2 text-sm font-medium tracking-[-0.015em]">
-                        <span className="truncate" title={task.title}>{task.title}</span>
+                        <span className="truncate" title={title}>{title}</span>
                         {previewTaskHref ? <span className="shrink-0 rounded bg-[#f2f2f2] px-1.5 py-0.5 text-xs font-normal tracking-normal text-[#737373]">Demo</span> : null}
                       </p>
                       <p className="mt-1 truncate text-xs text-[#888] sm:hidden">{task.repositoryName ?? "No repository attached"}</p>
@@ -163,8 +124,8 @@ export function TaskDashboard({ tasks, memberName, memberInitials, loadedAt, cre
                 );
                 return (
                   <li className="flex items-center gap-2 pr-4 sm:gap-4 sm:pr-5" key={task.id}>
-                    <Link aria-label={previewTaskHref ? `Open sample task: ${task.title}` : undefined} className={rowClassName} href={previewTaskHref ? previewTaskHref(task) : `/sessions/${task.id}`} prefetch={previewTaskHref ? false : undefined}>{content}</Link>
-                    <div className="flex w-10 shrink-0 justify-end sm:w-[90px]"><TaskArchiveControl title={task.title} archived={Boolean(task.archivedAt)} onChange={(archived) => changeArchive(task, archived)} /></div>
+                    <Link aria-label={previewTaskHref ? `Open sample task: ${title}` : undefined} className={rowClassName} href={previewTaskHref ? previewTaskHref(task) : `/sessions/${task.id}`} prefetch={previewTaskHref ? false : undefined}>{content}</Link>
+                    <div className="flex w-10 shrink-0 justify-end sm:w-[90px]"><TaskArchiveControl title={title} archived={Boolean(task.archivedAt)} onChange={(archived) => changeArchive(task, archived)} /></div>
                   </li>
                 );
               })}

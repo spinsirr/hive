@@ -72,6 +72,41 @@ out of scope; this change does not mandate an unrelated token migration.
 
 ## Enforcement and verification
 
+### Task naming (2026-09-12)
+
+New task creates the member-owned task and opens its conversation immediately,
+without a naming dialog, seeded greeting or agent run. New and reset conversations
+start empty; the existing composer guides the first message. Historical messages
+are not rewritten. An empty stored title means not yet named;
+the interface displays `Untitled task`. The first accepted main-conversation
+message assigns a whitespace-normalized excerpt (at most 72 graphemes and 120
+UTF-16 code units), atomically with that message. This is not an AI summary.
+Every nonempty stored title is authoritative, including historical names and a
+manual `Untitled task`; later messages, run completion and restore never rename
+it. No schema migration, title polling or additional inference is required.
+
+The shared header reads the current session snapshot, not a separate initial-title
+prop. Its title button opens `TaskTitleControl` for a member to rename the task
+for everyone. Renaming changes neither task ID/URL, messages nor agent execution;
+it follows existing membership, origin, recovery and archive guards. Demo uses
+the same creation entry and workspace controls with local sample state.
+
+### Thread presentation (2026-09-12)
+
+The main conversation shows one Thread entry per message, with only the latest
+reply's author and a bounded two-line excerpt. Opening the Thread hides that
+excerpt; full replies, timestamps and steering controls live in `MessageThread`.
+Questions without replies retain one explicit collaboration entry, not a second
+hover Reply action. Archived tasks keep these read-only navigation controls.
+The timeline suppresses exact repeated empty question cards using their stable
+request key, prompt, addressee and choices. Source records and IDs are unchanged;
+copies with replies, answers or other evidence stay visible and are never merged.
+Single-reply and whole-Thread steers return their stream/result to the original
+discussion, including ordinary messages and code annotations, not only question
+and review cards. `hiveReplyThreadId` is shared by run admission and the Demo;
+immediate and queued starts use the same destination rule. Main-message work
+still returns to the main conversation. Navigation never starts a run.
+
 ### Review navigation (2026-09-12)
 
 Viewing changes from a review Thread keeps its identity and shows Back to review

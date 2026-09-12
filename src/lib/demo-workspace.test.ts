@@ -4,6 +4,33 @@ import { createDemoWorkspace, demoMembers } from "./demo-workspace.ts";
 import { demoTasks } from "./ui-demo.ts";
 import { workspaceCheckpointsResponse, workspaceReadResponse } from "./workspace-files.ts";
 
+for (const mode of ["reply", "thread", "queued-reply", "queued-thread"] as const) {
+  test(`${mode} steering returns the result to the ordinary discussion, not the main conversation`, async () => {
+    const demo = createDemoWorkspace(demoTasks[0]);
+    const queued = mode.startsWith("queued");
+    if (queued) await demo.dispatch({ type: "send-message", clientId: "other-work", body: "Other work first" });
+    await demo.dispatch(mode.endsWith("thread")
+      ? { type: "steer-thread", messageId: "answer", throughReplyId: "reply" }
+      : { type: "steer-message-annotation", messageId: "answer", annotationId: "reply" });
+    if (queued) {
+      demo.finishRun(demo.getSnapshot().session.workspace.liveReply!.id);
+      await demo.dispatch({ type: "apply-next-steer" });
+    }
+    const running = demo.getSnapshot().session;
+    assert.equal(running.workspace.liveReply?.threadId, "answer");
+    const rootIds = running.messages.map((message) => message.id);
+    const runId = running.workspace.liveReply!.id;
+    demo.finishRun(runId);
+    const completed = demo.getSnapshot().session;
+    assert.deepEqual(completed.messages.map((message) => message.id), rootIds, "a thread continuation must not add another root message or review");
+    const replies = completed.messages.find((message) => message.id === "answer")!.annotations!;
+    assert.equal(replies.at(-1)?.id, runId);
+    assert.equal(replies.at(-1)?.role, "agent");
+    assert.match(replies.at(-1)!.body, /Simulated result/);
+    assert.equal(replies[0].authorId, "demo-casey");
+  });
+}
+
 test("sample actions use production identity, queue, review and recovery rules", async () => {
   const demo = createDemoWorkspace(demoTasks[0]);
   const initial = demo.getSnapshot();
