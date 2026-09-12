@@ -136,6 +136,51 @@ try {
     assert.notEqual(Boolean(winner.archived), winner.stage === "running", "never archive a running task");
   }
   console.log("PASS: real database team archive, teammate restore, read-only services, non-member denial, idempotency and simultaneous run/archive admission.");
+
+  // The live failure crossed turns: an explicitly steered opinion caused the
+  // same request_input key to publish a second question under a new run ID.
+  const repeatTask = await store.createTaskSession("Cross-turn question identity", members[0]);
+  await store.joinTaskSession(repeatTask.sessionId, members[1].id);
+  const repeatStart = await store.applyTaskSessionAction(repeatTask.sessionId, { type: "send-message", actor: members[0].id, body: "Ask my teammate whether to close the tab", clientId: randomUUID() }, members[0]);
+  const repeatScope = { sessionId: repeatTask.sessionId, memberId: members[0].id, runId: repeatStart.snapshot.session.workspace.liveReply.id };
+  const repeatRequest = { key: "close_tab_after_use", prompt: "After using the tab, should we close it?", options: ["YES", "NO"], targetMemberId: members[1].id };
+  const original = await store.createHivePeerRequest(repeatScope, repeatRequest);
+  assert.equal(original.created, true);
+  assert.equal(original.status, "awaiting_answer");
+  await store.appendHiveReply(repeatTask.sessionId, "Waiting for the decision", { forReplyId: repeatScope.runId, runResult });
+  const commented = await store.applyTaskSessionAction(repeatTask.sessionId, { type: "annotate-message", actor: members[0].id, messageId: original.messageId, body: "I think we should do it. Any thoughts?", clientId: randomUUID() }, members[0]);
+  assert.equal(commented.startedRun, false);
+  const opinionId = commented.snapshot.session.messages.find((message) => message.id === original.messageId).annotations.at(-1).id;
+  const discuss = { type: "steer-message-annotation", actor: members[0].id, messageId: original.messageId, annotationId: opinionId };
+  const steering = await Promise.all([1, 2].map(() => store.applyTaskSessionAction(repeatTask.sessionId, discuss, members[0])));
+  assert.equal(steering.filter((item) => item.startedRun).length, 1, "two clients steering one opinion still grant only one run");
+  const newRun = (await store.getPublicTaskSessionSnapshot(repeatTask.sessionId)).session.workspace.liveReply;
+  repeatScope.runId = newRun.id;
+  assert.equal(newRun.threadId, original.messageId);
+  const beforeRepeat = (await store.getPublicTaskSessionSnapshot(repeatTask.sessionId)).session.version;
+  const repeated = await Promise.all([1, 2].map(() => store.createHivePeerRequest(repeatScope, repeatRequest)));
+  assert.ok(repeated.every((receipt) => receipt.messageId === original.messageId && !receipt.created && receipt.status === "awaiting_answer"));
+  const afterRepeat = (await store.getPublicTaskSessionSnapshot(repeatTask.sessionId)).session;
+  assert.equal(afterRepeat.version, beforeRepeat, "duplicate question calls do not publish task updates");
+  assert.equal(afterRepeat.messages.filter((message) => message.interaction?.kind === "question").length, 1);
+  assert.equal(afterRepeat.steeringQueue.length, 0);
+  await client.close();
+  client = new Client({ name: "cross-turn-question", version: "1" });
+  await client.connect(new StreamableHTTPClientTransport(new URL("https://hive.test/tools"), {
+    fetch: (input, init) => handleHiveMcp(new Request(input, init), repeatScope, { read: store.readHiveToolContext, reply: store.appendHiveToolReply, request: store.createHivePeerRequest }),
+  }));
+  const reusedTool = await client.callTool({ name: "request_input", arguments: repeatRequest });
+  assert.notEqual(reusedTool.isError, true);
+  assert.deepEqual(JSON.parse(reusedTool.content[0].text), { messageId: original.messageId, created: false, status: "awaiting_answer" });
+  await store.appendHiveReply(repeatTask.sessionId, "Discussed the opinion, no new question", { forReplyId: repeatScope.runId, runResult });
+  const finalAnswers = await Promise.all([1, 2].map(() => store.applyTaskSessionAction(repeatTask.sessionId, { type: "answer-question", actor: members[1].id, messageId: original.messageId, body: "YES", clientId: randomUUID() }, members[1])));
+  assert.equal(finalAnswers.filter((item) => item.startedRun).length, 1, "the original question answer continues exactly once");
+  const afterAnswer = (await store.getPublicTaskSessionSnapshot(repeatTask.sessionId)).session;
+  assert.equal(afterAnswer.workspace.liveReply.threadId, original.messageId);
+  repeatScope.runId = afterAnswer.workspace.liveReply.id;
+  assert.deepEqual(await store.createHivePeerRequest(repeatScope, repeatRequest), { messageId: original.messageId, created: false, status: "answered" });
+  assert.equal((await store.getPublicTaskSessionSnapshot(repeatTask.sessionId)).session.version, afterAnswer.version);
+  console.log("PASS: real store and MCP reuse one task-scoped question across steered discussion turns, concurrent calls and answer continuation; no duplicate card, task update or execution grant.");
 } finally {
   await client?.close();
   await pool.end();

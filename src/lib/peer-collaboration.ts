@@ -30,17 +30,30 @@ export type PeerInteraction = PeerRequestIdentity & ({
   answer?: never;
 });
 
-/** Called under the task/membership lock; the key belongs to this run, not to the transport. */
+/** Keep existing thread IDs; question identity must survive native run changes. */
+export function peerRequestKey(message: ChatMessage) {
+  const prefix = message.interaction ? `peer-${message.interaction.runId}-` : undefined;
+  return prefix && message.id.startsWith(prefix) ? message.id.slice(prefix.length) : undefined;
+}
+
+export type PeerRequestReceipt = {
+  messageId: string;
+  created: boolean;
+  status: "awaiting_answer" | "answered" | "review";
+};
+
+/** Called under the task/membership lock. Questions are task-scoped; reviews remain run-scoped. */
 export function requestPeerInput(state: TaskSessionState, scope: HiveToolScope, input: PeerRequest, members: TeamMember[], now: number) {
   const request = peerRequestSchema.parse(input);
   const kind = request.kind ?? "question";
   if (state.archived || state.sessionId !== scope.sessionId || state.workspace.liveReply?.id !== scope.runId || state.stage !== "running" || state.workspace.restore || !members.some((m) => m.id === scope.memberId)) throw new Error("Run no longer active.");
   if (request.targetMemberId && !members.some((m) => m.id === request.targetMemberId)) throw new Error("Choose a task member.");
   const messageId = `peer-${scope.runId}-${request.key}`;
-  const previous = state.messages.find((message) => message.id === messageId);
+  const previous = state.messages.find((message) => message.id === messageId ||
+    (kind === "question" && message.interaction?.kind === "question" && peerRequestKey(message) === request.key));
   if (previous) {
     if (previous.body !== request.prompt || previous.interaction?.kind !== kind || previous.interaction?.targetMemberId !== request.targetMemberId || JSON.stringify(previous.interaction?.options) !== JSON.stringify(request.options ?? [])) throw new Error("Request key already used. Read the existing thread.");
-    return { session: state, messageId };
+    return { session: state, messageId: previous.id };
   }
   if (state.messages.filter((message) => message.interaction?.runId === scope.runId).length >= 4) throw new Error("At most four requests per turn.");
   const message: ChatMessage = {
