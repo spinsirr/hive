@@ -71,7 +71,7 @@ export function createSubagents({ request, settings, runId, onChange, timeoutMs 
       if (closed) throw new Error("This run has ended.");
       if (input.action === "spawn") {
         if (!["research", "review"].includes(input.kind) || typeof input.task !== "string" || !input.task.trim() || input.task.length > 4000 || typeof input.requestId !== "string" || !input.requestId || input.requestId.length > 200) throw new Error("Invalid delegation.");
-        // Network retries of the same MCP call must not launch another model.
+        // The stable delegation key survives MCP retries and client reconnections.
         const previous = [...tasks.values()].find((task) => task.requestId === input.requestId);
         if (previous) {
           if (previous.task !== input.task || previous.kind !== input.kind) throw new Error("Delegation ID already used.");

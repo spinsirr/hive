@@ -92,7 +92,7 @@ const server = createServer(async (incoming, response) => {
     const calls = turnNumber === 1 ? [
       ["get_context", {}],
       ["remember_memory", { messageId: "human-one" }],
-      ["reply_to_thread", { messageId: "human-one", body: "Should pnpm also be used in CI?" }],
+      ["reply_to_thread", { key: "ci-policy", messageId: "human-one", body: "Should pnpm also be used in CI?" }],
     ] : turnNumber === 2 ? [["search_memory", { query: "package manager convention" }]] : [];
     const call = calls[step];
     if (call) {

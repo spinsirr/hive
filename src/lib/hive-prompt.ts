@@ -6,6 +6,7 @@ import {
   type TaskSessionState,
   type TeamMember,
 } from "./task-session.ts";
+import { peerRequestKey } from "./peer-collaboration.ts";
 
 export function buildHiveRunInput(
   session: TaskSessionState,
@@ -84,6 +85,17 @@ export function buildHiveRunInput(
     ].join("\n\n");
   }
 
+  if (source?.kind === "message-annotation" || source?.kind === "message-thread" || source?.kind === "peer-response") {
+    const parent = session.messages.find((message) => message.id === source.messageId);
+    if (parent?.interaction?.kind === "question") {
+      steer = [steer,
+        "Existing question state (server supplied):",
+        JSON.stringify({ threadId: parent.id, key: peerRequestKey(parent), targetMemberId: parent.interaction.targetMemberId,
+          status: parent.interaction.answer ? "answered" : "awaiting_answer" }),
+        "Respond to the selected contribution in this thread. Do not call request_input again for this existing question, create a replacement under a new key, or treat ordinary discussion as the designated answer. The question card already asks the human; do not repeat its prompt or receipt ID in your reply.",
+      ].join("\n\n");
+    }
+  }
   return { actor, actorName, steer, memoryQuery };
 }
 

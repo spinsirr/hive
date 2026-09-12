@@ -27,8 +27,9 @@ test("agent can publish a question through its task tools, with choices and a na
       request: async (_scope, request) => {
         const { requestPeerInput } = await import("./peer-collaboration.ts");
         const published = requestPeerInput(state, scope, request, members, 3);
+        const created = state !== published.session;
         state = published.session;
-        return { messageId: published.messageId };
+        return { messageId: published.messageId, created, status: "awaiting_answer" };
       },
     }, createHiveMemory(undefined)),
   }));
@@ -69,6 +70,61 @@ test("teammate answer is saved once, queued while busy, and continued with autho
 function result(): HiveRunResult {
   return { sandboxName: "sandbox-test", agentSession: { id: "native-one", runtime: "codex" }, summary: "Waiting for the team decision.", diff: "", files: [], commands: [], changedFiles: [] };
 }
+
+test("steering discussion on an unanswered question cannot create the same question in a later run", () => {
+  const request = { key: "close_tab_after_use", prompt: "After using the tab, should we close it?", targetMemberId: "maya", options: ["YES", "NO"] };
+  const first = requestPeerInput(working(), scope, request, members, 3);
+  const idle = applyHiveRunResult(first.session, result(), 4);
+  const discussion = reduceTaskSession(idle, { type: "annotate-message", actor: "spencer", messageId: first.messageId, body: "I think we should do it. Any thoughts?", clientId: "opinion" }, 5, members);
+  assert.equal(discussion.stage, idle.stage, "an ordinary reply must not wake the agent");
+  assert.equal(discussion.steeringQueue.length, 0);
+  const annotationId = discussion.messages.find((m) => m.id === first.messageId)!.annotations![0].id;
+  const action = { type: "steer-message-annotation", actor: "spencer", messageId: first.messageId, annotationId } as const;
+  const continued = reduceTaskSession(discussion, action, 6, members);
+  const later = { ...continued, workspace: { ...continued.workspace, liveReply: { id: "discussion-run", threadId: first.messageId, body: "", sequence: 0, startedAt: 6 } } };
+  const repeated = requestPeerInput(later, { ...scope, runId: "discussion-run" }, request, members, 7);
+  assert.equal(repeated.messageId, first.messageId, "the stable question key must survive native run boundaries");
+  assert.equal(repeated.session, later, "reusing the pending question must not publish an update or enqueue work");
+  assert.equal(repeated.session.messages.filter((m) => m.interaction?.kind === "question").length, 1);
+  const input = buildHiveRunInput(later, action, members);
+  assert.match(input.steer!, /Existing question state/);
+  assert.match(input.steer!, /"key":"close_tab_after_use"/);
+  assert.match(input.steer!, /"targetMemberId":"maya"/);
+  assert.match(input.steer!, /"status":"awaiting_answer"/);
+  assert.match(input.steer!, /Do not call request_input again/);
+  assert.equal(input.memoryQuery, "I think we should do it. Any thoughts?");
+  // The original card still belongs to its designated human, not the commenter.
+  const wrongAnswer = { type: "answer-question", actor: "spencer", messageId: first.messageId, body: "YES", clientId: "wrong-answer" } as const;
+  assert.equal(reduceTaskSession(repeated.session, wrongAnswer, 8, members), repeated.session);
+  const answered = reduceTaskSession(repeated.session, { ...wrongAnswer, actor: "maya", clientId: "real-answer" }, 8, members);
+  assert.equal(answered.steeringQueue.length, 1);
+  const afterAnswer = requestPeerInput(answered, { ...scope, runId: "discussion-run" }, request, members, 9);
+  assert.equal(afterAnswer.session, answered, "an answered decision cannot be reopened by retrying its key");
+  assert.throws(() => requestPeerInput(later, { ...scope, runId: "discussion-run" }, { ...request, targetMemberId: "spencer" }, members, 9), /key already used/);
+  assert.throws(() => requestPeerInput(later, { ...scope, runId: "discussion-run" }, { ...request, prompt: "A different decision?" }, members, 9), /key already used/);
+  assert.throws(() => requestPeerInput(later, { ...scope, runId: "discussion-run" }, { ...request, options: ["MAYBE"] }, members, 9), /key already used/);
+  assert.equal(requestPeerInput(later, { ...scope, runId: "discussion-run" }, { ...request, key: "new-decision", prompt: "A different decision?" }, members, 9).session.messages.filter((m) => m.interaction?.kind === "question").length, 2);
+});
+
+test("review keys still produce a new revision-bound review in a later run", () => {
+  const request = { kind: "review" as const, key: "access", prompt: "Review access", targetMemberId: "maya" };
+  const first = requestPeerInput(working(), scope, request, members, 3);
+  const ready = applyHiveRunResult(first.session, result(), 4);
+  const next = reduceTaskSession(ready, { type: "send-message", actor: "spencer", body: "Implement the next change" }, 5, members);
+  next.workspace.liveReply = { id: "next-change", body: "", sequence: 0, startedAt: 5 };
+  const second = requestPeerInput(next, { ...scope, runId: "next-change" }, request, members, 6);
+  assert.notEqual(second.messageId, first.messageId);
+  assert.equal(second.session.messages.at(-1)?.interaction?.runId, "next-change");
+});
+
+test("question metadata survives the discussion window without exposing queued answers", () => {
+  const first = requestPeerInput(working(), scope, { key: "decision", prompt: "A decision?", targetMemberId: "maya" }, members, 3);
+  const answered = reduceTaskSession(first.session, { type: "answer-question", actor: "maya", messageId: first.messageId, body: "QUEUED_PRIVATE_ANSWER", clientId: "once" }, 4, members);
+  for (let index = 0; index < 15; index++) answered.messages.push({ id: `later-${index}`, name: "Hive", initials: "H", body: "Later context", role: "agent", time: "12:00" });
+  const context = describeHiveContext({ ...answered, members });
+  assert.deepEqual(context.questions, [{ threadId: first.messageId, key: "decision", targetMemberId: "maya", status: "answered" }]);
+  assert.doesNotMatch(JSON.stringify(context), /QUEUED_PRIVATE_ANSWER/);
+});
 
 test("review is bound to the completed run, not agent-supplied versions, and only a human can resolve current evidence", () => {
   const { session, messageId } = requestPeerInput(working(), scope, { kind: "review", key: "access", prompt: "Review draft access", targetMemberId: "maya" }, members, 3);

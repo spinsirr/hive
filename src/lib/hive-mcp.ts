@@ -5,13 +5,13 @@ import { assertHiveToolRun, describeHiveContext, memoryContribution, type HiveTo
 import { createHiveMemory, HiveMemoryError } from "./hive-memory.ts";
 import type { HiveToolScope } from "./hive-tool-token.ts";
 import type { HiveSubagent, SubagentControl } from "./hive-subagents.ts";
-import { peerRequestSchema, type PeerRequest } from "./peer-collaboration.ts";
+import { peerRequestSchema, type PeerRequest, type PeerRequestReceipt } from "./peer-collaboration.ts";
 
 export type HiveToolSource = {
   read: (scope: HiveToolScope) => Promise<HiveToolContext>;
   reply: (scope: HiveToolScope, messageId: string, body: string, requestId: string) => Promise<{ messageId: string; replyId: string }>;
   control?: (scope: HiveToolScope, input: SubagentControl, signal: AbortSignal) => Promise<HiveSubagent>;
-  request?: (scope: HiveToolScope, input: PeerRequest) => Promise<{ messageId: string }>;
+  request?: (scope: HiveToolScope, input: PeerRequest) => Promise<PeerRequestReceipt>;
 };
 
 export async function handleHiveMcp(
@@ -41,14 +41,14 @@ export async function handleHiveMcp(
     inputSchema: z.object({}).strict(), annotations: { readOnlyHint: true },
   }, () => run((context) => ({ ...describeHiveContext(context), memory: memory.enabled ? "configured; service availability is checked on use" : "not configured" })));
   server.registerTool("reply_to_thread", {
-    description: "Post a concise discussion reply as Hive in an existing task thread. This does not start, approve, steer, or interrupt a run. Use request_input for a decision whose answer should continue the task; ordinary discussion replies require explicit human steering.",
-    inputSchema: z.object({ messageId: z.string().min(1).max(160), body: z.string().trim().min(1).max(4000) }).strict(),
-    annotations: { readOnlyHint: false, destructiveHint: false },
-  }, ({ messageId, body }, extra) => run(() => source.reply(scope, messageId, body, String(extra.requestId))));
+    description: "Post a concise discussion reply as Hive in an existing task thread. Use a stable key for this reply within the current turn and thread; retries must reuse the same key and body. Use a new key only for a distinct reply. This does not start, approve, steer, or interrupt a run. Use request_input for a decision whose answer should continue the task; ordinary discussion replies require explicit human steering.",
+    inputSchema: z.object({ key: peerRequestSchema.shape.key, messageId: z.string().min(1).max(160), body: z.string().trim().min(1).max(4000) }).strict(),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+  }, ({ key, messageId, body }) => run(() => source.reply(scope, messageId, body, key)));
   if (source.request) {
     const requestInput = source.request;
     server.registerTool("request_input", {
-      description: "Ask teammates a decision question in a durable task thread. Use a stable short key for retries, optional choices and a task member ID from get_context. Any free-text answer is supported. Returns a receipt, NOT an answer. Finish independent work and end this turn at a safe boundary; never poll or invent the answer. The first eligible human answer queues a continuation in this task, using its saved workspace and native history. No long-lived waiting callback.",
+      description: "Ask teammates a NEW decision question in a durable task thread. Use one stable key per decision across this task, including later turns; reuse never creates or reopens a question. Read get_context for existing questions first. Discussing a pending question does not require asking it again. For a genuinely different decision use a new key. Optional choices and a task member ID are supported. Returns created/status and a thread receipt, NOT an answer; do not narrate receipt IDs or repeat the question card in chat. Finish independent work and end this turn at a safe boundary; never poll or invent the answer. Only the first eligible human answer queues a continuation using saved workspace and native history.",
       inputSchema: peerRequestSchema.omit({ kind: true }),
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     }, (input) => run(() => requestInput(scope, input)));
@@ -79,10 +79,10 @@ export async function handleHiveMcp(
   if (source.control && supportsSubagents) {
     const control = source.control;
     server.registerTool("spawn_subagent", {
-      description: "Delegate a concrete independent research or code review task to a separate Codex thread in this repository. At most two children TOTAL per Hive turn, inheriting this task's model, tools, skills and permissions. Children inspect and report; keep code changes and further delegation with the parent. Include the relevant context and teammate attribution. Returns immediately; use read_subagent to get the actual result before summarizing. Children are stopped when your turn ends. Do not delegate trivial work or manufacture consensus.",
-      inputSchema: z.object({ kind: z.enum(["research", "review"]), task: z.string().trim().min(1).max(4000) }).strict(),
-      annotations: { readOnlyHint: false, destructiveHint: false },
-    }, ({ kind, task }, extra) => run(() => control(scope, { action: "spawn", kind, task, requestId: String(extra.requestId) }, extra.signal)));
+      description: "Delegate a concrete independent research or code review task to a separate Codex thread in this repository. Use a stable key for this delegation within the current Hive turn; repeat calls with that key return the existing child, including its terminal result, rather than launching another. Use a new key only for distinct work. At most two children TOTAL per Hive turn, inheriting this task's model, tools, skills and permissions. Children inspect and report; keep code changes and further delegation with the parent. Include the relevant context and teammate attribution. Returns immediately; use read_subagent to get the actual result before summarizing. Children are stopped when your turn ends. Do not delegate trivial work or manufacture consensus.",
+      inputSchema: z.object({ key: peerRequestSchema.shape.key, kind: z.enum(["research", "review"]), task: z.string().trim().min(1).max(4000) }).strict(),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    }, ({ key, kind, task }, extra) => run(() => control(scope, { action: "spawn", kind, task, requestId: key }, extra.signal)));
     server.registerTool("read_subagent", {
       description: "Read a delegated task's real status and final result. Waits up to 10 seconds for a state change (no shell polling). If still running, do useful independent work or call again to wait. A stopping/unconfirmed task is not completed; never claim a result you have not received.",
       inputSchema: z.object({ id: z.string().uuid() }).strict(), annotations: { readOnlyHint: true },

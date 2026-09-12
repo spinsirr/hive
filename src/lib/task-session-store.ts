@@ -9,7 +9,7 @@ import { type CodingModelOption } from "./coding-models.ts";
 import { platformCodingModels } from "./platform-models.ts";
 import { assertHiveToolRun, hiveThreadReply, type HiveToolContext } from "@/lib/hive-tool-context";
 import type { HiveToolScope } from "@/lib/hive-tool-token";
-import { requestPeerInput, type PeerRequest } from "./peer-collaboration.ts";
+import { requestPeerInput, type PeerRequest, type PeerRequestReceipt } from "./peer-collaboration.ts";
 import { subagentUpdateSchema, type HiveSubagent, type SubagentSession } from "./hive-subagents.ts";
 import { assertWorkspaceRestoreAttempt, beginWorkspaceRestore, completeWorkspaceRestore, failWorkspaceRestore, recordWorkspaceRestoreSource, WorkspaceRestoreError, type RestoreWorkspaceRequest } from "@/lib/workspace-restore-state";
 import {
@@ -119,7 +119,10 @@ export async function appendHiveToolReply(scope: HiveToolScope, messageId: strin
     if (!parent) throw new Error("Thread not found.");
     const replyId = `hive-${scope.runId}-${requestId}`;
     const existing = parent.annotations?.find((reply) => reply.id === replyId);
-    if (existing) return { messageId, replyId: existing.id };
+    if (existing) {
+      if (existing.body !== body.trim()) throw new Error("Reply key already used for different content.");
+      return { messageId, replyId: existing.id };
+    }
     const reply = hiveThreadReply(body, replyId);
     await transaction.update(taskSessions).set({
       messages: row.messages.map((message) => message.id === messageId ? { ...message, annotations: [...(message.annotations ?? []), reply] } : message),
@@ -194,7 +197,7 @@ export async function createTaskSession(
   return initialSession;
 }
 
-export async function createHivePeerRequest(scope: HiveToolScope, request: PeerRequest) {
+export async function createHivePeerRequest(scope: HiveToolScope, request: PeerRequest): Promise<PeerRequestReceipt> {
   return db.transaction(async (transaction) => {
     const [row] = await transaction.select(getTableColumns(taskSessions)).from(taskSessions)
       .innerJoin(taskSessionMembers, and(eq(taskSessionMembers.sessionId, taskSessions.id), eq(taskSessionMembers.memberId, scope.memberId)))
@@ -208,7 +211,9 @@ export async function createHivePeerRequest(scope: HiveToolScope, request: PeerR
       await transaction.update(taskSessions).set(sessionValues(published.session)).where(eq(taskSessions.id, scope.sessionId));
       await transaction.execute(sessionNotification(scope.sessionId));
     }
-    return { messageId: published.messageId };
+    const interaction = published.session.messages.find((message) => message.id === published.messageId)!.interaction!;
+    return { messageId: published.messageId, created: published.session !== state,
+      status: interaction.kind === "review" ? "review" : interaction.answer ? "answered" : "awaiting_answer" };
   });
 }
 
