@@ -119,7 +119,10 @@ export async function appendHiveToolReply(scope: HiveToolScope, messageId: strin
     if (!parent) throw new Error("Thread not found.");
     const replyId = `hive-${scope.runId}-${requestId}`;
     const existing = parent.annotations?.find((reply) => reply.id === replyId);
-    if (existing) return { messageId, replyId: existing.id };
+    if (existing) {
+      if (existing.body !== body.trim()) throw new Error("Reply key already used for different content.");
+      return { messageId, replyId: existing.id };
+    }
     const reply = hiveThreadReply(body, replyId);
     await transaction.update(taskSessions).set({
       messages: row.messages.map((message) => message.id === messageId ? { ...message, annotations: [...(message.annotations ?? []), reply] } : message),
