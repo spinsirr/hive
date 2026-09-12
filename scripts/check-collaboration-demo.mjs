@@ -4,6 +4,7 @@ import "./check-design-system.mjs";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { registerHooks } from "node:module";
+import { mock } from "node:test";
 import { JSDOM } from "jsdom";
 import { JsxEmit, ModuleKind, transpileModule } from "typescript";
 
@@ -36,7 +37,7 @@ registerHooks({
   },
 });
 const { createElement: h } = await import("react");
-const { render, screen, fireEvent, cleanup, waitFor, within, act } = await import("@testing-library/react");
+const { render, renderHook, screen, fireEvent, cleanup, waitFor, within, act } = await import("@testing-library/react");
 const { DemoWorkspace } = await import("../src/app/demo/demo-workspace.tsx");
 const { demoTasks } = await import("../src/lib/ui-demo.ts");
 try {
@@ -217,7 +218,7 @@ try {
   cleanup();
   const { WorkspaceCheckpoints } = await import("../src/components/hive/workspace-checkpoints.tsx");
   const remote = createDemoWorkspace(demoTasks[0]);
-  const checkpoints = () => h(HiveClientContext, { value: remote.client }, h(WorkspaceCheckpoints, { sessionId: remote.getSnapshot().session.sessionId, revision: remote.getSnapshot().session.version, onRestored: remote.receiveSnapshot }));
+  const checkpoints = () => h(HiveClientContext, { value: remote.client }, h(WorkspaceCheckpoints, { sessionId: remote.getSnapshot().session.sessionId, revision: remote.getSnapshot().session.version, onRestored: remote.receiveSnapshot, recoveryStatus: { checking: false, notice: "", check() {} } }));
   const mounted = render(checkpoints());
   await waitFor(() => assert.ok(screen.getByRole("button", { name: /^Restore checkpoint from/ })));
   fireEvent.click(screen.getByRole("button", { name: /^Restore checkpoint from/ }));
@@ -233,20 +234,35 @@ try {
   // status checks reconcile the existing operation instead of replaying it.
   const recoveryDemo = createDemoWorkspace(demoTasks[0]);
   const baseCheckpointData = await (await recoveryDemo.client.request(`/api/sessions/${recoveryDemo.getSnapshot().session.sessionId}/checkpoints`)).json();
-  let recoveryData = baseCheckpointData, releaseRestore, restoreCalls = 0, checkCalls = 0, deliveredRecovery;
+  let recoveryData = baseCheckpointData, recoverySnapshot = recoveryDemo.getSnapshot(), recoveryMounted;
+  let releaseRestore, restoreCalls = 0, checkCalls = 0, deliveredRecovery;
   const recoveryClient = { ...recoveryDemo.client, request: async (_path, init) => {
     if (init?.method !== "POST") return Response.json(recoveryData);
     const request = JSON.parse(init.body);
     if (request.mode === "check") {
       checkCalls++;
-      recoveryData = baseCheckpointData;
-      return Response.json(recoveryDemo.getSnapshot());
+      const confirmed = structuredClone(recoverySnapshot);
+      confirmed.session.version++;
+      confirmed.session.workspace.lastRestore = { id: request.id, snapshotId: request.snapshotId, by: confirmed.members[0].id, at: Date.now() };
+      delete confirmed.session.workspace.restore;
+      recoveryData = { ...baseCheckpointData, version: confirmed.session.version };
+      return Response.json(confirmed);
     }
     restoreCalls++;
     recoveryData = { ...baseCheckpointData, blockedReason: "Restore needs confirmation. Retry the same checkpoint before continuing.", restore: { id: request.id, snapshotId: request.snapshotId, status: "unconfirmed", retryAfter: Date.now() + 400 } };
+    recoverySnapshot = structuredClone(recoverySnapshot);
+    recoverySnapshot.session.version++;
+    recoverySnapshot.session.workspace.restore = { ...recoveryData.restore, startedAt: Date.now(), sourceSessionId: "original-vm", by: recoverySnapshot.members[0] };
+    recoveryMounted.rerender(recoveryView());
     return new Promise((resolve) => { releaseRestore = () => resolve(Response.json({ error: "Restore response timed out." }, { status: 503 })); });
   } };
-  render(h(HiveClientContext, { value: recoveryClient }, h(WorkspaceCheckpoints, { sessionId: recoveryDemo.getSnapshot().session.sessionId, revision: 1, onRestored: (snapshot) => { deliveredRecovery = snapshot; } })));
+  const recoveryView = () => h(HiveClientContext, { value: recoveryClient }, h(HiveWorkspaceView, {
+    sessionId: recoverySnapshot.session.sessionId, sessionTitle: "Restore then change tabs", currentMember: recoverySnapshot.members[0], inviteToken: "demo",
+    connection: { snapshot: recoverySnapshot, dispatch: async () => { throw new Error("Recovery must not start an agent"); }, setTyping() {}, syncing: false, syncError: false,
+      receiveSnapshot: (snapshot) => { deliveredRecovery = snapshot; recoverySnapshot = snapshot; recoveryMounted.rerender(recoveryView()); } },
+  }));
+  recoveryMounted = render(recoveryView());
+  fireEvent.click(button("Checkpoints"));
   await waitFor(() => assert.ok(screen.getByRole("button", { name: /^Restore checkpoint from/ })));
   fireEvent.click(screen.getByRole("button", { name: /^Restore checkpoint from/ }));
   fireEvent.click(button("Restore checkpoint"));
@@ -259,9 +275,90 @@ try {
   await act(async () => releaseRestore());
   await waitFor(() => assert.match(document.body.textContent, /Checking safely in \d+s/));
   assert.ok(button("Retry restore").disabled, "the lease countdown is explicit and prevents a concurrent retry");
+  fireEvent.click(button("Diff"));
+  assert.equal(screen.queryByRole("button", { name: "Refresh checkpoints" }), null);
   await waitFor(() => assert.ok(deliveredRecovery), { timeout: 1500 });
+  assert.equal(screen.getByRole("textbox", { name: "Ask Hive or mention a teammate" }).disabled, false);
   assert.equal(checkCalls, 1);
   assert.equal(restoreCalls, 1, "automatic status confirmation never submits another destructive restore");
   assert.equal(requests, 0);
-  console.log("PASS: the restoring dialog can close, the recovery countdown explains the wait, and metadata-only confirmation updates the workspace without another restore.");
-} finally { cleanup(); dom.window.close(); }
+  console.log("PASS: the restoring dialog can close, switching to Diff does not stop recovery, and metadata-only confirmation unlocks the composer without another restore.");
+  cleanup();
+  // A viewer on Diff never mounts Checkpoints. Recovery still belongs to the task.
+  const diffDemo = createDemoWorkspace(demoTasks[0]);
+  const completedOnDiff = diffDemo.getSnapshot();
+  const pendingOnDiff = structuredClone(completedOnDiff);
+  pendingOnDiff.session.version += 1;
+  pendingOnDiff.session.workspace.restore = { id: "88b52ee4-8f47-48a6-a057-c023eaa4454c", snapshotId: "target-checkpoint", sourceSessionId: "original-vm", by: completedOnDiff.members[0], status: "unconfirmed", startedAt: Date.now() - 100_000, retryAfter: Date.now() - 1 };
+  const confirmedOnDiff = structuredClone(completedOnDiff);
+  confirmedOnDiff.session.version = pendingOnDiff.session.version + 1;
+  confirmedOnDiff.session.workspace.lastRestore = { id: pendingOnDiff.session.workspace.restore.id, snapshotId: "target-checkpoint", by: completedOnDiff.members[0].id, at: Date.now() };
+  confirmedOnDiff.session.messages.push({ id: "restore-while-on-diff", memberId: completedOnDiff.members[0].id, name: "Alex", initials: "AL", role: "human", body: "Restored while viewing Diff; nothing was rerun.", time: "12:00 PM" });
+  let diffSnapshot = pendingOnDiff, diffChecks = 0, diffMounted;
+  const receiveOnDiff = (next) => { diffSnapshot = next; diffMounted.rerender(diffView()); };
+  const diffClient = { ...diffDemo.client, request: async (_path, init) => {
+    assert.equal(init?.method, "POST", "a viewer on Diff must not fetch the checkpoint list");
+    assert.equal(JSON.parse(init.body).mode, "check", "recovery must never replay the restore");
+    diffChecks++;
+    return Response.json(confirmedOnDiff);
+  } };
+  const diffView = () => h(HiveClientContext, { value: diffClient }, h(HiveWorkspaceView, {
+    sessionId: diffSnapshot.session.sessionId, sessionTitle: "Restore on Diff", currentMember: completedOnDiff.members[0], inviteToken: "demo",
+    connection: { snapshot: diffSnapshot, dispatch: async () => { throw new Error("Recovery must not start an agent"); }, setTyping() {}, syncing: false, syncError: false, receiveSnapshot: receiveOnDiff },
+  }));
+  diffMounted = render(diffView());
+  assert.ok(screen.getByRole("textbox", { name: "Ask Hive or mention a teammate" }).disabled);
+  assert.equal(screen.queryByRole("button", { name: "Refresh checkpoints" }), null);
+  await waitFor(() => assert.equal(screen.getByRole("textbox", { name: "Ask Hive or mention a teammate" }).disabled, false), { timeout: 1500 });
+  assert.equal(diffChecks, 1);
+  assert.equal(screen.queryByText("Restore needs confirmation. The workspace is paused."), null);
+  assert.ok(screen.getByText("Restored while viewing Diff; nothing was rerun."));
+  assert.equal(requests, 0);
+  console.log("PASS: a viewer staying on Diff confirms recovery and unlocks the composer without opening Checkpoints, replaying the restore or running an agent.");
+  cleanup();
+  const { useWorkspaceRecovery } = await import("../src/hooks/use-workspace-recovery.ts");
+  mock.timers.enable({ apis: ["setTimeout"] });
+  const pendingChecks = [], receivedChecks = [];
+  const pendingClient = { ...diffDemo.client, request: (_path, init) => new Promise((resolve) => pendingChecks.push({ init, resolve })) };
+  const wrapper = ({ children }) => h(HiveClientContext, { value: pendingClient }, children);
+  const operation = pendingOnDiff.session.workspace.restore;
+  const hook = renderHook(({ version, restore }) => useWorkspaceRecovery("demo-task", version, restore, (snapshot) => receivedChecks.push(snapshot)), { wrapper, initialProps: { version: 1, restore: operation } });
+  await act(async () => mock.timers.tick(0));
+  assert.equal(pendingChecks.length, 1);
+  hook.rerender({ version: 2, restore: { ...operation } });
+  await act(async () => mock.timers.tick(0));
+  assert.equal(pendingChecks.length, 1, "ordinary snapshots and callback identities do not restart checks");
+  assert.equal(pendingChecks[0].init.signal.aborted, false);
+  hook.rerender({ version: 3, restore: { ...operation, startedAt: operation.startedAt + 1 } });
+  assert.ok(pendingChecks[0].init.signal.aborted, "a new attempt cancels the previous check even when its operation id is reused");
+  await act(async () => mock.timers.tick(0));
+  assert.equal(pendingChecks.length, 2);
+  await act(async () => pendingChecks[0].resolve(Response.json({ stale: true })));
+  assert.deepEqual(receivedChecks, [], "an aborted late response cannot update the task");
+  await act(async () => pendingChecks[1].resolve(Response.json(confirmedOnDiff)));
+  assert.deepEqual(receivedChecks, [JSON.parse(JSON.stringify(confirmedOnDiff))]);
+  hook.rerender({ version: 4, restore: undefined });
+  await act(async () => mock.timers.tick(60_000));
+  assert.equal(pendingChecks.length, 2, "confirmation leaves no idle polling");
+  hook.unmount();
+  const boundedRequests = [];
+  const boundedClient = { ...diffDemo.client, request: async (_path, init) => { boundedRequests.push(JSON.parse(init.body)); return Response.json({ pending: true }, { status: 202 }); } };
+  const bounded = renderHook(({ version }) => useWorkspaceRecovery("demo-task", version, { ...operation }, () => { throw new Error("202 must not unlock the task"); }), { wrapper: ({ children }) => h(HiveClientContext, { value: boundedClient }, children), initialProps: { version: 1 } });
+  for (let attempt = 1; attempt <= 12; attempt++) {
+    bounded.rerender({ version: attempt });
+    await act(async () => mock.timers.tick(attempt === 1 ? 0 : 10_000));
+    assert.equal(boundedRequests.length, attempt);
+    assert.equal(boundedRequests.at(-1).version, attempt, "checks use the current revision without resetting their budget");
+    assert.equal(boundedRequests.at(-1).mode, "check");
+  }
+  bounded.rerender({ version: 13 });
+  await act(async () => mock.timers.tick(60_000));
+  assert.equal(boundedRequests.length, 12, "task updates cannot turn bounded checks into a permanent heartbeat");
+  assert.match(bounded.result.current.notice, /Not confirmed yet/);
+  act(() => bounded.result.current.check());
+  await act(async () => mock.timers.tick(0));
+  assert.equal(boundedRequests.length, 13, "explicit Check status can retry the same metadata check");
+  bounded.unmount();
+  mock.timers.reset();
+  console.log("PASS: recovery ignores stale attempts, survives task revisions, stops after 12 pending checks, and leaves no idle heartbeat.");
+} finally { cleanup(); mock.timers.reset(); dom.window.close(); }
