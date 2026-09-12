@@ -184,6 +184,13 @@ try {
     const request = await store.createHivePeerRequest(scope, { key: "thread-density", prompt: "Compact or spacious?", targetMemberId: members[1].id, options: ["Compact", "Spacious"] });
     const question = (await store.getPublicTaskSessionSnapshot(task.sessionId)).session.messages.find((message) => message.id === request.messageId);
     assert.equal(question.threadId, rootId);
+    const posted = await store.appendHiveToolReply(scope, question.id, "One contribution to this existing discussion.", "nested-reply");
+    assert.equal(posted.messageId, rootId, "even a tool targeting a child question posts to the existing Thread");
+    const retried = await store.appendHiveToolReply(scope, rootId, "One contribution to this existing discussion.", "nested-reply");
+    assert.deepEqual(retried, posted, "aliasing the question and Thread IDs cannot duplicate the reply");
+    const postedState = (await store.getPublicTaskSessionSnapshot(task.sessionId)).session;
+    assert.ok(!postedState.messages.find((message) => message.id === question.id).annotations?.length);
+    assert.equal(postedState.messages.find((message) => message.id === rootId).annotations.filter((reply) => reply.id === posted.replyId).length, 1);
     if (!answerWhileBusy) await store.appendHiveReply(task.sessionId, "Question ready.", { forReplyId: scope.runId, runResult });
     const answers = await Promise.all([1, 2].map(() => store.applyTaskSessionAction(task.sessionId, { type: "answer-question", actor: members[1].id, messageId: question.id, body: "Compact", clientId: randomUUID() }, members[1])));
     assert.equal(answers.filter((answer) => answer.startedRun).length, answerWhileBusy ? 0 : 1);

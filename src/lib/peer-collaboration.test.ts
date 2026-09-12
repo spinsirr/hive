@@ -169,7 +169,7 @@ test("question metadata survives the discussion window without exposing queued a
   const answered = reduceTaskSession(first.session, { type: "answer-question", actor: "maya", messageId: first.messageId, body: "QUEUED_PRIVATE_ANSWER", clientId: "once" }, 4, members);
   for (let index = 0; index < 15; index++) answered.messages.push({ id: `later-${index}`, name: "Hive", initials: "H", body: "Later context", role: "agent", time: "12:00" });
   const context = describeHiveContext({ ...answered, members });
-  assert.deepEqual(context.questions, [{ threadId: first.messageId, key: "decision", targetMemberId: "maya", status: "answered" }]);
+  assert.deepEqual(context.questions, [{ messageId: first.messageId, threadId: null, key: "decision", targetMemberId: "maya", status: "answered" }]);
   assert.doesNotMatch(JSON.stringify(context), /QUEUED_PRIVATE_ANSWER/);
 });
 
