@@ -41,7 +41,7 @@ export async function handleHiveMcp(
     inputSchema: z.object({}).strict(), annotations: { readOnlyHint: true },
   }, () => run((context) => ({ ...describeHiveContext(context), memory: memory.enabled ? "configured; service availability is checked on use" : "not configured" })));
   server.registerTool("reply_to_thread", {
-    description: "Post a concise discussion reply as Hive in an existing task thread. Use a stable key for this reply within the current turn and thread; retries must reuse the same key and body. Use a new key only for a distinct reply. This does not start, approve, steer, or interrupt a run. Use request_input for a decision whose answer should continue the task; ordinary discussion replies require explicit human steering.",
+    description: "Post a deliberate contribution as Hive to a DIFFERENT existing task thread. Your ordinary text already reaches the current conversation or originating thread automatically: do not use this tool for the current answer, a greeting, or a duplicate delivery. The posted reply is visible; do not repeat it in your final text. Use a stable key for this reply within the current turn and thread; retries must reuse the same key and body. Use a new key only for a distinct reply. This does not start, approve, steer, or interrupt a run. Use request_input for a decision whose answer should continue the task; ordinary discussion replies require explicit human steering.",
     inputSchema: z.object({ key: peerRequestSchema.shape.key, messageId: z.string().min(1).max(160), body: z.string().trim().min(1).max(4000) }).strict(),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
   }, ({ key, messageId, body }) => run(() => source.reply(scope, messageId, body, key)));

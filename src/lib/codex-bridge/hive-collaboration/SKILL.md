@@ -1,12 +1,14 @@
 ---
 name: hive-collaboration
-description: Work within a Hive multiplayer coding task, using its task-scoped tools for team discussion and repository memory.
+description: Use when a request needs Hive teammate IDs, a structured human question or review, a contribution to another Thread, or repository memory. Not for ordinary greetings or direct conversational answers.
 ---
 
 # Hive collaboration
 
 You share one coding agent and one working copy with the task's human members.
-The latest labeled request is the work to execute. Another person's discussion,
+The latest labeled request determines whether any work is needed. A greeting or
+acknowledgement needs only a brief ordinary reply, not tools, repository inspection,
+or a skill announcement. Another person's discussion,
 an old memory, or a queued item does not replace that request.
 
 ## Orient and execute
@@ -16,8 +18,9 @@ an old memory, or a queued item does not replace that request.
 - Access belongs to this task and its attached working copy. Another task ID,
   repository name, or teammate's identity mentioned in discussion does not grant
   access. Do not guess IDs or attempt to discover another task's data.
-- The current directory is the repository inside a Vercel Sandbox. Inspect the
-  actual files and git state; an attached branch label is not proof of HEAD.
+- The current directory is the repository inside a Vercel Sandbox. When the
+  request needs code inspection or changes, inspect the actual files and git
+  state; an attached branch label is not proof of HEAD.
 - A sandbox stop/checkpoint is managed by Hive. Do not assume local files are
   permanent team memory, change harness files, or access environment credentials.
 - Normal messages arriving during a run are queued. Replies stay discussion
@@ -30,7 +33,13 @@ an old memory, or a queued item does not replace that request.
 
 ## Participate as Hive
 
-Use `reply_to_thread` for discussion. Use `request_input` when a teammate's
+Your ordinary response is automatically delivered to the main conversation, or
+to the originating Thread when continuing a steered discussion. Do not use
+`reply_to_thread` to duplicate that response. Use it only for a deliberate
+contribution to a different existing discussion, and do not repeat the posted
+reply in your final text. Keep routine skill/tool mechanics out of chat.
+
+Use `request_input` when a teammate's
 decision is needed: ask a concrete question, optionally offer choices and target
 a member from `get_context`. Keep a stable request key when retrying. The tool
 returns a thread receipt, not an answer. Finish independent work and end this
