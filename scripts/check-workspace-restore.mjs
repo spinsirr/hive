@@ -12,7 +12,7 @@ const { assertWorkspaceRestoreAttempt, beginWorkspaceRestore, completeWorkspaceR
 const { applyHiveRunResult, createInitialTaskSessionState } = await import("../src/lib/task-session.ts");
 let member = { id: "github-101", name: "QA Member", shortName: "QA", initials: "QA" };
 let admitted = true, session, status, currentSnapshotId, sourceSnapshotId, pointerFailure = false, retentionFailure = false, foreign = false;
-let providerSessionId, lostResumeResponse = false;
+let providerSessionId, providerSnapshots, lostResumeResponse = false;
 const calls = [];
 const snapshot = () => ({ session, members: [member], activeMembers: [], typingMembers: [] });
 mock.module(new URL("../src/lib/auth-session.ts", import.meta.url).href, { namedExports: { HIVE_SESSION_COOKIE: "hive_session", getSessionMember: async () => member } });
@@ -33,7 +33,7 @@ const sandbox = {
   name: "hive-session-test-agent", get status() { return status; }, get tags() { return { session: foreign ? "other-task" : "restore-qa" }; },
   get currentSnapshotId() { return currentSnapshotId; }, keepLastSnapshots: { count: 3 },
   currentSession: () => ({ sessionId: providerSessionId, sourceSnapshotId }),
-  listSnapshots: async () => ({ snapshots: [{ id: "snap-old", status: "created", createdAt: 1 }, { id: "snap-new", status: "created", createdAt: 2 }] }),
+  listSnapshots: async () => ({ snapshots: providerSnapshots }),
   stop: async () => { calls.push("stop"); status = "stopped"; currentSnapshotId = "snap-safety"; return { snapshot: { id: "snap-safety", status: "created", createdAt: 3 } }; },
   update: async (update) => {
     calls.push(update);
@@ -63,6 +63,7 @@ function fresh() {
   status = "running"; currentSnapshotId = "snap-new"; sourceSnapshotId = "snap-old";
   calls.length = 0; pointerFailure = false; retentionFailure = false; foreign = false;
   providerSessionId = "original-session"; lostResumeResponse = false;
+  providerSnapshots = [{ id: "snap-old", status: "created", createdAt: 1 }, { id: "snap-new", status: "created", createdAt: 2 }];
 }
 try {
   const { NextRequest } = await import("next/server.js");
@@ -151,6 +152,40 @@ try {
   assert.equal((await post(checkRequest)).status, 200, "completed checks are idempotent");
   assert.doesNotMatch(await confirmed.text(), /NATIVE SECRET|resumeFrom/);
   console.log("PASS: late completion is reconciled after worker expiry, without writes or trusting an old/foreign/wrong-snapshot VM");
+
+  fresh(); pointerFailure = true;
+  assert.equal((await post({ ...input, version: session.version })).status, 503);
+  session.workspace.restore.retryAfter = 0;
+  status = "stopped"; currentSnapshotId = "snap-after-sleep"; sourceSnapshotId = "snap-old";
+  const sleepSnapshot = { id: currentSnapshotId, sourceSessionId: "late-resumed-session", parentId: "snap-old", status: "created", createdAt: Date.now() };
+  providerSnapshots.push(sleepSnapshot);
+  assert.equal((await post(checkRequest)).status, 202, "the original VM cannot prove restoration even after stopping");
+  providerSessionId = "late-resumed-session";
+  sleepSnapshot.sourceSessionId = "foreign-vm";
+  assert.equal((await post(checkRequest)).status, 202, "the saved snapshot must come from the restored VM");
+  sleepSnapshot.sourceSessionId = providerSessionId;
+  sleepSnapshot.parentId = "snap-new";
+  assert.equal((await post(checkRequest)).status, 202, "the saved snapshot must descend directly from the restore target");
+  sleepSnapshot.parentId = "snap-old";
+  sleepSnapshot.status = "failed";
+  assert.equal((await post(checkRequest)).status, 202);
+  sleepSnapshot.status = "created";
+  sleepSnapshot.expiresAt = Date.now() - 1;
+  assert.equal((await post(checkRequest)).status, 202);
+  delete sleepSnapshot.expiresAt;
+  currentSnapshotId = "unknown-snapshot";
+  assert.equal((await post(checkRequest)).status, 202);
+  currentSnapshotId = sleepSnapshot.id;
+  status = "snapshotting";
+  assert.equal((await post(checkRequest)).status, 202, "incomplete snapshotting cannot unlock the workspace");
+  status = "stopped";
+  const writesBeforeSleepConfirm = calls.filter((call) => call !== "metadata").length;
+  assert.equal((await post(checkRequest)).status, 200, "a successfully restored VM can sleep before a viewer reconnects");
+  assert.equal(session.workspace.restore, undefined);
+  assert.equal(session.workspace.files[0].content, "old");
+  assert.equal(calls.filter((call) => call !== "metadata").length, writesBeforeSleepConfirm, "sleep confirmation must not resume or rewind the sandbox");
+  assert.equal((await post(checkRequest)).status, 200);
+  console.log("PASS: a restored sandbox that has slept is confirmed only through the new VM and its valid target-derived snapshot, without waking or restoring it again");
 
   fresh(); pointerFailure = true;
   assert.equal((await post({ ...input, version: session.version })).status, 503);
