@@ -20,6 +20,14 @@ _Avoid_: Room, channel, project, long-lived workspace
 The intersection of the current person's GitHub access and the GitHub App's installed repository access. Joining a task does not inherit the inviter's repository pool.
 _Avoid_: Connector, repository binding
 
+**Archived Task**:
+A task member can archive an idle task for the whole team. This is reversible,
+not agent completion or deletion. Archived tasks move to the Archived list and
+remain readable, including discussion and workspace evidence. All task writes,
+steering, repository attachment and checkpoint restore are blocked until a member
+restores the task. A running agent, queued instructions or workspace recovery must
+finish first. Archive/restore never runs the agent or changes repository access.
+
 **Attached Repository**:
 The single repository selected from Repository Access for a task session. It may be attached after the conversation begins and cannot be replaced within that session.
 _Avoid_: Project, default repository

@@ -71,6 +71,13 @@
       "when": 1789112174584,
       "tag": "0009_platform_subscription_provenance",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789176282842,
+      "tag": "0010_team_task_archive",
+      "breakpoints": true
     }
   ]
 }

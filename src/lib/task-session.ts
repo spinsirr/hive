@@ -231,6 +231,7 @@ export type Annotation = {
 };
 
 export type TaskSessionState = {
+  archived?: { at: number; by: MemberId };
   sessionId: string;
   title: string;
   createdBy: MemberId;
@@ -248,6 +249,8 @@ export type TaskSessionState = {
 };
 
 export type TaskSessionAction =
+  | { type: "archive-task"; actor: MemberId }
+  | { type: "restore-task"; actor: MemberId }
   | { type: "resolve-peer-review"; actor: MemberId; messageId: string; revision: string }
   | { type: "continue-peer-response"; actor: MemberId; steerId: string }
   | { type: "answer-question"; actor: MemberId; messageId: string; body: string; clientId: string }
@@ -421,14 +424,14 @@ export function conversationMessages(state: TaskSessionState): ChatMessage[] {
 }
 
 export function canApplyNextSteer(state: TaskSessionState): boolean {
-  return !state.workspace.restore &&
+  return !state.archived && !state.workspace.restore &&
     state.steeringQueue.length > 0 &&
     !state.activeSteer &&
     !isHiveRunActive(state);
 }
 
 export function canApproveChanges(state: TaskSessionState): boolean {
-  return !state.workspace.restore &&
+  return !state.archived && !state.workspace.restore &&
     Boolean(state.repository) &&
     state.stage === "review" &&
     state.workspace.status === "review" &&
@@ -443,14 +446,26 @@ export function didStartHiveRun(previous: TaskSessionState, next: TaskSessionSta
 
 /** A native conversation belongs to one harness; never reinterpret its history. */
 export function canSelectHarness(state: TaskSessionState) {
-  return !isHiveRunActive(state) && !state.workspace.restore && !state.activeSteer &&
+  return !state.archived && !isHiveRunActive(state) && !state.workspace.restore && !state.activeSteer &&
     state.steeringQueue.length === 0 && !state.workspace.sandboxName &&
     !state.workspace.agentSession?.resumeFrom && !state.workspace.checkpoints?.length &&
     !(state.repository && state.workspace.startedAt !== undefined);
 }
 
 export function canSetCodingEffort(state: TaskSessionState) {
-  return !isHiveRunActive(state) && !state.workspace.restore && !state.activeSteer && state.steeringQueue.length === 0;
+  return !state.archived && !isHiveRunActive(state) && !state.workspace.restore && !state.activeSteer && state.steeringQueue.length === 0;
+}
+
+export function canArchiveTask(state: TaskSessionState) {
+  return !state.archived && !isHiveRunActive(state) && !state.workspace.restore && !state.activeSteer && state.steeringQueue.length === 0;
+}
+
+export const ARCHIVED_TASK_MESSAGE = "This task is archived for the team. Restore it before making changes.";
+
+export function taskActionBlockReason(state: TaskSessionState, action: TaskSessionAction) {
+  if (state.archived && action.type !== "restore-task" && action.type !== "archive-task") return ARCHIVED_TASK_MESSAGE;
+  if (action.type === "archive-task" && !state.archived && !canArchiveTask(state)) return "Finish the current run, queued instructions and workspace recovery before archiving.";
+  return null;
 }
 
 export function appendHiveReply(
@@ -492,6 +507,15 @@ export function reduceTaskSession(
   models: CodingModelOption[] = codingModelOptions(CODEX_GATEWAY_MODEL),
 ): TaskSessionState {
   const actor = resolveMember(action.actor, members);
+  if (taskActionBlockReason(state, action)) return state;
+  if (action.type === "archive-task") {
+    if (state.archived || !members.some((member) => member.id === action.actor)) return state;
+    return { ...state, archived: { by: action.actor, at: now }, version: state.version + 1, updatedAt: now };
+  }
+  if (action.type === "restore-task") {
+    if (!state.archived || !members.some((member) => member.id === action.actor)) return state;
+    return { ...state, archived: undefined, version: state.version + 1, updatedAt: now };
+  }
   if (state.workspace.restore) return state;
   if (action.type === "set-coding-effort") {
     const model = selectedCodingModel(models, state.workspace.agentSession?.runtime ?? "codex", state.workspace.codingModel);

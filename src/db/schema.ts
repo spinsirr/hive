@@ -44,6 +44,7 @@ export const authSessions = pgTable("auth_sessions", {
 export const taskSessions = pgTable("task_sessions", {
   id: text("id").primaryKey(),
   title: text("title").notNull().default("Untitled task"),
+  archived: jsonb("archived").$type<{ at: number; by: MemberId }>(),
   // Retired manual completion fields (2026-09-09). Preserve stored values;
   // runtime state, authorization and writes no longer use these columns.
   lifecycle: text("lifecycle")

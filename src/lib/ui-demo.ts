@@ -18,9 +18,10 @@ export function newDemoTask(title: string, id: string): DashboardTask | null {
 }
 
 export function demoTaskHref(task: DashboardTask): string {
-  return demoTasks.some((sample) => sample.id === task.id)
+  const href = demoTasks.some((sample) => sample.id === task.id)
     ? `/demo/tasks/${task.id}`
     : `/demo/tasks/new?title=${encodeURIComponent(task.title)}`;
+  return task.archivedAt ? `${href}${href.includes("?") ? "&" : "?"}archived=1` : href;
 }
 
 export function findDemoTask(taskId: string, title?: string): DashboardTask | null {

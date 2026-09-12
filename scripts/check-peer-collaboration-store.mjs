@@ -100,6 +100,42 @@ try {
   assert.equal((await store.getPublicTaskSessionSnapshot(foreign.sessionId)).session.version, before);
   console.log("PASS: real MCP → Postgres question → concurrent answers → one continuation → thread stream/result; reconnect read, stale run and cross-task denial.");
   console.log("PASS: real MCP review request → completed evidence → assigned reviewer; stale version and duplicate resolution are no-ops.");
+  // Archive is a shared task state, serialized with run admission and recovery.
+  const archive = { type: "archive-task", actor: members[0].id };
+  const archived = await store.applyTaskSessionAction(task.sessionId, archive, members[0]);
+  assert.equal(archived.startedRun, false);
+  assert.equal(archived.snapshot.session.archived.by, members[0].id);
+  assert.ok((await store.listTaskSessions(members[1].id)).find((row) => row.id === task.sessionId).archived);
+  await Promise.all(members.map((member) => store.applyTaskSessionAction(task.sessionId, { ...archive, actor: member.id }, member)));
+  assert.equal((await store.getPublicTaskSessionSnapshot(task.sessionId)).session.version, archived.snapshot.session.version);
+  for (const member of members) {
+    await assert.rejects(store.applyTaskSessionAction(task.sessionId, { type: "send-message", actor: member.id, body: "Late message" }, member), /archived/);
+    await assert.rejects(store.applyTaskSessionAction(task.sessionId, { type: "annotate-message", actor: member.id, messageId, body: "Late reply" }, member), /archived/);
+    await assert.rejects(store.startTaskWorkspaceRestore(task.sessionId, { id: randomUUID(), snapshotId: "old", version: archived.snapshot.session.version }, member), /archived/);
+  }
+  await assert.rejects(store.withTaskSubagentControl(task.sessionId, async () => { throw new Error("Must not reach sandbox"); }), /archived/);
+  assert.ok(await store.withTaskWorkspaceRead(task.sessionId, async (session) => session.archived), "archived files remain readable");
+  await store.appendHiveReply(task.sessionId, "Late unscoped writer");
+  assert.deepEqual((await store.getTaskSessionSnapshot(task.sessionId)).session, archived.snapshot.session);
+  await assert.rejects(store.applyTaskSessionAction(foreign.sessionId, { ...archive, actor: members[1].id }, members[1]), store.TaskSessionAccessError);
+  const reopened = await store.applyTaskSessionAction(task.sessionId, { type: "restore-task", actor: members[1].id }, members[1]);
+  assert.equal(reopened.startedRun, false);
+  assert.equal(reopened.snapshot.session.archived, undefined);
+  assert.deepEqual(reopened.snapshot.session.workspace, archived.snapshot.session.workspace);
+  assert.deepEqual(reopened.snapshot.session.messages, archived.snapshot.session.messages);
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const race = await store.createTaskSession(`Archive race ${attempt}`, members[0]);
+    const calls = [
+      () => store.applyTaskSessionAction(race.sessionId, archive, members[0]),
+      () => store.applyTaskSessionAction(race.sessionId, { type: "send-message", actor: members[0].id, body: "Start now" }, members[0]),
+    ];
+    if (attempt % 2) calls.reverse();
+    const outcomes = await Promise.allSettled(calls.map((call) => call()));
+    assert.equal(outcomes.filter((result) => result.status === "fulfilled").length, 1);
+    const winner = (await store.getPublicTaskSessionSnapshot(race.sessionId)).session;
+    assert.notEqual(Boolean(winner.archived), winner.stage === "running", "never archive a running task");
+  }
+  console.log("PASS: real database team archive, teammate restore, read-only services, non-member denial, idempotency and simultaneous run/archive admission.");
 } finally {
   await client?.close();
   await pool.end();
