@@ -25,6 +25,7 @@ registerHooks({
 const { createElement } = await import("react");
 const { render, screen, fireEvent, cleanup, waitFor } = await import("@testing-library/react");
 const { MessageThread } = await import("../src/components/hive/message-thread.tsx");
+const { ConversationMessage } = await import("../src/components/hive/conversation-message.tsx");
 const { createInitialTaskSessionState, memberDirectory, reduceTaskSession } = await import("../src/lib/task-session.ts");
 const { requestPeerInput } = await import("../src/lib/peer-collaboration.ts");
 const members = Object.values(memberDirectory);
@@ -65,4 +66,20 @@ try {
   await waitFor(() => assert.equal(verified, "run-one"));
   console.log("PASS: choices, free text, answer-once acknowledgement and return to discussion in the real Thread.");
   console.log("PASS: review readiness gates verification and submits the displayed revision.");
+  cleanup();
+  let copiedText;
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { async writeText(text) { copiedText = text; } } });
+  render(createElement(ConversationMessage, { message: props.message, currentMember: "maya", members, sessionId: scope.sessionId, disabled: false, runActive: false, selected: false, onOpenThread() {} }));
+  fireEvent.click(screen.getByRole("button", { name: "Copy response", exact: true }));
+  await waitFor(() => assert.ok(screen.getByRole("button", { name: "Response copied", exact: true })));
+  assert.equal(copiedText, props.message.body, "copy uses only this message body, not its Thread");
+  const copiedButton = screen.getByRole("button", { name: "Response copied", exact: true });
+  assert.equal(copiedButton.textContent, "Copied");
+  assert.ok(copiedButton.querySelector(".lucide-copy"));
+  assert.equal(copiedButton.querySelector(".lucide-check"), null, "copy success must not resemble approval");
+  await waitFor(() => assert.ok(screen.getByRole("button", { name: "Copy response", exact: true })), { timeout: 3000 });
+  navigator.clipboard.writeText = async () => { throw new Error("Clipboard unavailable"); };
+  fireEvent.click(screen.getByRole("button", { name: "Copy response", exact: true }));
+  await waitFor(() => assert.match(screen.getByRole("status").textContent, /Couldn’t copy/));
+  console.log("PASS: Copy keeps its icon, copies the exact message, briefly labels success and reports failure without an approval checkmark.");
 } finally { cleanup(); dom.window.close(); }

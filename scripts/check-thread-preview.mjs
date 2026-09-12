@@ -92,13 +92,27 @@ const grouped = renderToStaticMarkup(createElement(ConversationTurn, {
 const groupedDoc = new JSDOM(grouped).window.document;
 assert.equal(groupedDoc.querySelectorAll('[role="img"][aria-label="Hive logo"]').length, 1, "a turn and its tool-created card share an author header");
 assert.equal(groupedDoc.querySelectorAll('[data-message-id]').length, 2, "grouping preserves both addressable source messages");
-const attachedCard = groupedDoc.querySelector('[data-slot="collaboration-message"]');
+const attachedCard = groupedDoc.querySelector('[data-slot="threaded-message"]');
 assert.ok(attachedCard);
 assert.equal(attachedCard.lastElementChild.getAttribute("aria-label"), "Open thread with 2 replies", "the Thread entry is the attached card footer");
 assert.equal(attachedCard.querySelectorAll('button[aria-expanded]').length, 1, "one card has one Thread entry");
 assert.equal(attachedCard.querySelectorAll('button[aria-label="Copy response"]').length, 1, "the question retains its own copy action");
 assert.equal(groupedDoc.querySelectorAll('button[aria-label="Copy response"]').length, 2, "grouping must not discard the original response action");
 assert.equal(attachedCard.lastElementChild.getAttribute("aria-expanded"), "true");
-assert.match(single, /border-l-2/, "ordinary replies remain visually connected to their parent");
+const ordinary = new JSDOM(renderToStaticMarkup(createElement(ConversationMessage, { ...cardProps, message: { ...question, interaction: undefined } }))).window.document.querySelector('[data-slot="threaded-message"]');
+assert.ok(ordinary, "ordinary replies use the same body-and-footer surface");
+const collapsedQuestion = new JSDOM(card).window.document.querySelector('button[aria-expanded]');
+assert.equal(ordinary.lastElementChild.className, collapsedQuestion.className, "tool-created and ordinary Thread entries have identical styles");
+assert.match(ordinary.lastElementChild.textContent, /Open thread/);
+for (const message of [
+  { ...question, role: "human", memberId: "demo-alex", interaction: undefined },
+  { ...question, interaction: { kind: "review", runId: "qa-run", status: "open", revision: "qa-run" } },
+  { ...question, annotations: [] },
+]) {
+  const surface = new JSDOM(renderToStaticMarkup(createElement(ConversationMessage, { ...cardProps, message }))).window.document.querySelector('[data-slot="threaded-message"]');
+  assert.equal(surface.className, ordinary.className, "all Thread-bearing messages share one surface");
+  assert.equal(surface.lastElementChild.className, collapsedQuestion.className, "human, review and empty question Thread entries cannot fork their appearance");
+  assert.equal(surface.querySelectorAll('button[aria-expanded]').length, 1);
+}
 assert.equal(actions, 0);
 console.log("PASS: one author group retains individual messages and a single attached Thread footer without mutations.");
