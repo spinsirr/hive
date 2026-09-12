@@ -135,7 +135,7 @@ approval continuation.
 
 - It proved the differentiating product idea first: multiple humans share one
   task session, annotate intent, and steer work at explicit boundaries.
-- Four visible tools make a six-hour take-home easy to explain and audit.
+- Four visible tools keep the execution boundary small and auditable.
 - It can use an inexpensive arbitrary AI Gateway model.
 - Hive keeps complete control over artifact collection and the exact repository
   working directory.
@@ -203,13 +203,8 @@ GitHub-App clone flow, wrap that native Vercel Sandbox with
 `agent.createSession()`. Either approach avoids the current path assumption
 leaking into adapter code.
 
-## Presentation framing
+## Architectural boundary
 
-> We first built the thinnest execution loop needed to validate multiplayer
-> intent and safe steering. Once that interaction model worked, we identified
-> the custom coding loop as commodity infrastructure. The next scoped step is
-> moving that execution boundary to Vercel Harness while keeping the shared-session
-> state machine as our product differentiation.
+The existing harness supplies execution; Hive supplies shared task state, attributed intent, steering and review. Keeping these responsibilities separate avoids rebuilding commodity runtime infrastructure while preserving the multiplayer behavior that the product owns.
 
-That tells a stronger judgment story than either “we built everything
-ourselves” or “we delegated the whole product to an existing harness.”
+This note includes historical decisions. Use the compatibility record above for the current adapter boundary rather than treating an earlier migration proposal as unfinished implementation.

@@ -13,6 +13,18 @@ export const demoTasks: DashboardTask[] = [
 
 export function newDemoTask(title: string, id: string): DashboardTask | null {
   const name = title.trim();
-  if (!name || name.length > 120) return null;
+  if (name.length > 120) return null;
   return { id: `demo-${id}`, title: name, repositoryName: null, updatedAt: demoLoadedAt };
+}
+
+export function demoTaskHref(task: DashboardTask): string {
+  const href = demoTasks.some((sample) => sample.id === task.id)
+    ? `/demo/tasks/${task.id}`
+    : task.title ? `/demo/tasks/new?title=${encodeURIComponent(task.title)}` : "/demo/tasks/new";
+  return task.archivedAt ? `${href}${href.includes("?") ? "&" : "?"}archived=1` : href;
+}
+
+export function findDemoTask(taskId: string, title?: string): DashboardTask | null {
+  if (taskId === "new") return newDemoTask(title ?? "", "new");
+  return demoTasks.find((task) => task.id === taskId) ?? null;
 }

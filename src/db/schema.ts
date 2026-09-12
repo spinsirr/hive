@@ -44,6 +44,7 @@ export const authSessions = pgTable("auth_sessions", {
 export const taskSessions = pgTable("task_sessions", {
   id: text("id").primaryKey(),
   title: text("title").notNull().default("Untitled task"),
+  archived: jsonb("archived").$type<{ at: number; by: MemberId }>(),
   // Retired manual completion fields (2026-09-09). Preserve stored values;
   // runtime state, authorization and writes no longer use these columns.
   lifecycle: text("lifecycle")
@@ -104,11 +105,13 @@ export const taskSessionMembers = pgTable(
 );
 
 // Private credential vault. Never include this table in task snapshots or backups
-// exposed by the workspace UI. One account is bound to one authorized task.
+// exposed by the workspace UI. Hive uses one operator account across tasks.
+// The original enrollment fields are immutable envelope provenance, NOT grants.
+// No foreign keys: deleting the enrolling task/user must not erase credentials.
 export const codexSubscriptions = pgTable("codex_subscriptions", {
   accountHash: text("account_hash").primaryKey(),
-  sessionId: text("session_id").notNull().unique().references(() => taskSessions.id, { onDelete: "cascade" }),
-  ownerId: text("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  sessionId: text("session_id").notNull().unique(),
+  ownerId: text("owner_id").notNull(),
   repositoryId: bigint("repository_id", { mode: "number" }).notNull(),
   encryptedAuth: text("encrypted_auth").notNull(),
   // A failed/abandoned refresh stays fenced until explicit reseeding. Never

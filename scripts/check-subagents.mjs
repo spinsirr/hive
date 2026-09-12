@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createSubagents, subagentSettings } from "../src/lib/codex-bridge/subagents.mjs";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { handleHiveMcp } from "../src/lib/hive-mcp.ts";
+import { createInitialTaskSessionState, memberDirectory } from "../src/lib/task-session.ts";
+import { createHiveMemory } from "../src/lib/hive-memory.ts";
 
 const settings = {
   model: "openai/gpt-5.1-codex-mini", cwd: "/fixture/repo", sandbox: "danger-full-access", approvalPolicy: "never",
@@ -60,6 +65,36 @@ test("two independent native threads, bounded to two starts total; same-call ret
   await assert.rejects(f.spawn("research", "third"), /At most two/);
   await f.controller.close();
   await assert.rejects(f.spawn(), /ended/);
+});
+
+test("MCP retries of one delegation reuse its child despite different transport request IDs", async () => {
+  const f = fixture();
+  const scope = { sessionId: "delegation-replay", memberId: "spencer", runId: "run-one" };
+  const initial = createInitialTaskSessionState(1, scope.sessionId);
+  const context = { ...initial, stage: "running", members: [memberDirectory.spencer], workspace: { ...initial.workspace, liveReply: { id: scope.runId } } };
+  const client = new Client({ name: "replayed-delegation", version: "1" });
+  await client.connect(new StreamableHTTPClientTransport(new URL("https://hive.test/tools"), {
+    fetch: (input, init) => handleHiveMcp(new Request(input, init), scope, {
+      read: async () => context, reply: async () => { throw new Error("Not a reply"); },
+      control: async (_scope, input) => f.controller.control(input),
+    }, createHiveMemory(undefined)),
+  }));
+  try {
+    const call = () => client.callTool({ name: "spawn_subagent", arguments: { key: "inspect-queue", kind: "research", task: "Inspect queue.ts" } });
+    const [first, retry] = await Promise.all([call(), call()]);
+    assert.notEqual(first.isError, true); assert.notEqual(retry.isError, true);
+    assert.equal(JSON.parse(retry.content[0].text).id, JSON.parse(first.content[0].text).id);
+    assert.equal(f.calls.filter((call) => call.method === "thread/start").length, 1);
+    const task = f.controller.snapshot()[0];
+    f.complete(task);
+    assert.equal(JSON.parse((await call()).content[0].text).status, "completed", "a retry cannot relaunch completed work");
+    assert.equal((await client.callTool({ name: "spawn_subagent", arguments: { key: "inspect-queue", kind: "review", task: "Different work" } })).isError, true);
+    assert.equal((await client.callTool({ name: "spawn_subagent", arguments: { key: "review-queue", kind: "review", task: "Review queue.ts" } })).isError, undefined);
+    assert.equal(f.calls.filter((call) => call.method === "thread/start").length, 2, "distinct work still starts its own child");
+  } finally {
+    for (const task of f.controller.snapshot()) f.complete(task);
+    await client.close(); await f.controller.close();
+  }
 });
 
 test("review's internal turn never steals the outer turn or its exitedReviewMode result", async () => {

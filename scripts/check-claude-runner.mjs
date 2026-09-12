@@ -23,7 +23,10 @@ const sandbox = {
   },
 };
 const persistent = { keepLastSnapshots: { count: 3 }, async stop() { stopped++; return { snapshot: { id: "saved-native-and-files", createdAt: 100, status: "created" } }; } };
-mock.module("@vercel/sandbox", { namedExports: { Sandbox: { async getOrCreate() { starts++; return persistent; }, async get() { starts++; return persistent; } } } });
+mock.module("@vercel/sandbox", { namedExports: { Sandbox: { async getOrCreate(options) {
+  assert.equal(options.resources.vcpus, 2, "New Claude workspaces must have enough memory for native bootstrap");
+  starts++; return persistent;
+}, async get() { starts++; return persistent; } } } });
 mock.module("@ai-sdk/sandbox-vercel", { namedExports: { createVercelSandbox() { return {}; } } });
 mock.module(new URL("../src/lib/github-app.ts", import.meta.url).href, { namedExports: { async getRepositoryCloneCredentials() { return {}; } } });
 mock.module("@ai-sdk/harness/agent", { namedExports: { HarnessAgent: class {
@@ -105,7 +108,9 @@ try {
         delete process.env.HIVE_CLAUDE_OAUTH_TOKEN;
         delete process.env.HIVE_CLAUDE_SUBSCRIPTION_SCOPE;
         const before = starts;
-        await assert.rejects(runHiveCodingTask(task, "owner"), /change its authentication/);
+        process.env.HIVE_CODEX_AUTH_SECRET = "fixture-platform-secret";
+        await assert.rejects(runHiveCodingTask(task, "owner"), /Reconnect the Claude subscription/);
+        delete process.env.HIVE_CODEX_AUTH_SECRET;
         assert.equal(starts, before, "An auth change must never replay the task using a different account");
       }
     }

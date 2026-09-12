@@ -5,7 +5,7 @@ import { test } from "node:test";
 import { runCodexAppServerTurn } from "../src/lib/codex-bridge/app-server.mjs";
 import { codexProcessEnvironment, subscriptionLimited, portableNativeHistory, isEncryptedHistoryRejection } from "../src/lib/codex-bridge/auth.mjs";
 
-test("subscription process excludes Gateway/API credentials without changing the fallback's environment", () => {
+test("subscription process excludes Gateway/API credentials; API-only installations remain explicit", () => {
   const env = { PATH: "/bin", CODEX_HOME: "/fixture", CODEX_API_KEY: "secret", AI_GATEWAY_BASE_URL: "https://fixture.invalid" };
   assert.deepEqual(codexProcessEnvironment(true, env), { PATH: "/bin", CODEX_HOME: "/fixture" });
   assert.equal(codexProcessEnvironment(false, env), env);
@@ -28,7 +28,7 @@ test("portable history rejects unknown, partial, oversized or opaque native hist
   assert.equal(isEncryptedHistoryRejection({ message: JSON.stringify({ error: { code: "other" } }) }), false);
 });
 
-for (const scenario of ["success", "auth-down", "malformed", "quota", "rate-check-failed", "login-rejected", "empty-rejected", "dirty-tail", "bad-close", "after-command", "after-text", "ambiguous", "revoked", "encrypted-history", "encrypted-gateway", "encrypted-quota", "encrypted-after-command", "encrypted-after-text", "encrypted-dirty-tail", "encrypted-bad-close"]) {
+for (const scenario of ["success", "background-refresh", "inference-refresh", "auth-down", "malformed", "quota", "rate-check-failed", "login-rejected", "empty-rejected", "dirty-tail", "bad-close", "after-command", "after-text", "ambiguous", "revoked", "encrypted-history", "encrypted-gateway", "encrypted-quota", "encrypted-after-command", "encrypted-after-text", "encrypted-dirty-tail", "encrypted-bad-close"]) {
   test(`native auth boundary: ${scenario}`, async () => {
     const encrypted = scenario.startsWith("encrypted-");
     const previousFetch = globalThis.fetch;
@@ -38,11 +38,7 @@ for (const scenario of ["success", "auth-down", "malformed", "quota", "rate-chec
     process.env.CODEX_API_KEY = "GATEWAY_FIXTURE";
     const launches = [], calls = [], events = [], diagnostics = [];
     let fixtureError;
-    globalThis.fetch = async (url) => {
-      assert.equal(new URL(url).pathname, "/api/sessions/fixture/codex-auth");
-      if (scenario === "malformed") return new Response("unavailable", { status: 200 });
-      return Response.json(scenario === "auth-down" ? { reason: "subscription_unavailable" } : { accessToken: "ACCESS_FIXTURE", chatgptAccountId: "ACCOUNT_FIXTURE" }, { status: scenario === "auth-down" ? 503 : scenario === "revoked" ? 403 : 200 });
-    };
+    globalThis.fetch = async () => { throw new Error("Native subscription must never fetch credentials or use Gateway."); };
     function launch(_cwd, subscription) {
       launches.push(subscription);
       const child = new EventEmitter(); child.stdout = new PassThrough(); child.stderr = new PassThrough();
@@ -69,8 +65,12 @@ for (const scenario of ["success", "auth-down", "malformed", "quota", "rate-chec
             respond({ id: r.id, result: { thread: { id: threadId } } });
           }
           if (r.method === "turn/start") {
-            assert.equal(r.params.effort, subscription ? "max" : "high", "Gateway fallback must adapt effort without reducing the subscription setting");
+            assert.equal(r.params.effort, subscription ? "max" : "high");
             respond({ id: r.id, result: { turn: { id: "attempt-turn" } } });
+            if (["background-refresh", "inference-refresh"].includes(scenario)) {
+              respond({ id: "native-refresh", method: "account/chatgptAuthTokens/refresh", params: { reason: "unauthorized", previousAccountId: "ACCOUNT_FIXTURE" } });
+              callback(); return;
+            }
             if (encrypted && threadId === "existing-thread") {
               if (scenario === "encrypted-after-command") event("item/started", { item: { id: "cmd", type: "commandExecution", command: "change-code" } });
               if (scenario === "encrypted-after-text") event("item/agentMessage/delta", { itemId: "text", delta: "Started" });
@@ -90,6 +90,13 @@ for (const scenario of ["success", "auth-down", "malformed", "quota", "rate-chec
             if (!failed) event("item/completed", { item: { id: "text", type: "agentMessage", text: "Done." } });
             event("turn/completed", { turn: { id: "attempt-turn", status: failed ? "failed" : "completed", error: failed ? { message: "fixture rejection", codexErrorInfo: scenario === "ambiguous" ? "other" : "usageLimitExceeded" } : null } });
           }
+          if (r.id === "native-refresh") {
+            assert.equal(r.error?.code, -32000, "Refuse refresh explicitly without returning credentials");
+            assert.equal(r.result, undefined);
+            if (scenario === "background-refresh") event("item/completed", { item: { id: "text", type: "agentMessage", text: "Done." } });
+            event("turn/completed", { turn: { id: "attempt-turn", status: scenario === "background-refresh" ? "completed" : "failed",
+              error: scenario === "inference-refresh" ? { message: "fixture rejection", codexErrorInfo: "unauthorized" } : null } });
+          }
           if (r.method === "thread/read") respond({ id: r.id, result: { thread: { id:threadId, turns: [
             ...(encrypted ? [{id:"previous-turn",status:"completed",items:[{type:"agentMessage",text:"Already inspected package.json"},{type:"commandExecution",command:"pnpm test",aggregatedOutput:"all checks passed",exitCode:0},{type:"reasoning",summary:["PRIVATE_REASONING"],encrypted_content:"FOREIGN_CIPHERTEXT"}]}] : []),
             { id: "attempt-turn", status: "failed", items: [{ type: ["dirty-tail", "encrypted-dirty-tail"].includes(scenario) ? "commandExecution" : "userMessage" }] }
@@ -106,24 +113,34 @@ for (const scenario of ["success", "auth-down", "malformed", "quota", "rate-chec
     try {
       let error;
       try {
-        await runCodexAppServerTurn({ start: { model: scenario === "encrypted-gateway" ? "openai/gpt-5.1-codex-mini" : "gpt-5.6-luna", reasoningEffort: scenario === "encrypted-gateway" ? "high" : "max", prompt: "One request", mcpServers: { hive: { url: "https://hive.fixture/api/sessions/fixture/agent-tools", http_headers: { Authorization: "Bearer CAPABILITY_FIXTURE", "X-Hive-Auth": scenario === "encrypted-gateway" ? "gateway" : "prefer-chatgpt", "X-Hive-Gateway-Model": "openai/gpt-5.1-codex-mini" } } } },
+        await runCodexAppServerTurn({ start: { model: scenario === "encrypted-gateway" ? "openai/gpt-5.1-codex-mini" : "gpt-5.6-luna", reasoningEffort: scenario === "encrypted-gateway" ? "high" : "max", prompt: "One request",
+          codexConfig: scenario === "encrypted-gateway" ? {} : { hive_subscription_tokens: ["auth-down", "malformed", "revoked"].includes(scenario) ? null : { accessToken: "ACCESS_FIXTURE", chatgptAccountId: "ACCOUNT_FIXTURE" } },
+          mcpServers: { hive: { url: "https://hive.fixture/api/sessions/fixture/agent-tools", http_headers: { Authorization: "Bearer CAPABILITY_FIXTURE" } } } },
           workdir: "/fixture", threadId: "existing-thread", onThread() {}, launch,
           turn: { abortSignal: AbortSignal.timeout(5000), emit: (e) => events.push(e), bridgeLog: (e) => diagnostics.push(e) },
         });
       } catch (e) { error = e; }
       if (fixtureError) throw fixtureError;
-      const shouldFail = ["dirty-tail", "bad-close", "after-command", "after-text", "ambiguous", "revoked", "encrypted-after-command", "encrypted-after-text", "encrypted-dirty-tail", "encrypted-bad-close"].includes(scenario);
+      const shouldFail = !["success", "background-refresh", "rate-check-failed", "encrypted-history", "encrypted-gateway"].includes(scenario);
       assert.equal(Boolean(error), shouldFail, error?.stack);
-      assert.deepEqual(launches, scenario === "revoked" ? [] : ["auth-down", "malformed"].includes(scenario) ? [false] : scenario === "encrypted-gateway" ? [false, false] : scenario === "encrypted-quota" ? [true, true, false] : scenario === "encrypted-history" ? [true,true] : shouldFail || ["success", "rate-check-failed"].includes(scenario) ? [true] : [true, false]);
+      assert.deepEqual(launches, ["auth-down", "malformed", "revoked"].includes(scenario) ? [] : scenario === "encrypted-gateway" ? [false, false] : ["encrypted-history", "encrypted-quota"].includes(scenario) ? [true, true] : [true]);
+      if (scenario !== "encrypted-gateway") assert.ok(launches.every(Boolean), "Never switch a subscription turn to paid Gateway");
       if (encrypted && !shouldFail) {
         assert.equal(calls.filter(c=>c.method==='thread/start').length,1);
         assert.equal(calls.some(c=>c.method==='thread/delete'||c.method==='thread/archive'),false);
       }
       assert.equal(events.filter((e) => e.type === "stream-start").length, 1);
       assert.equal(calls.some((c) => c.method === "thread/rollback"), false);
-      assert.equal(calls.filter((c) => c.method === "thread/fork").length, ["empty-rejected", "bad-close", "encrypted-quota"].includes(scenario) ? 1 : 0);
+      assert.equal(calls.filter((c) => c.method === "thread/fork").length, 0, "No automatic fork/replay on quota errors");
       if (scenario === "rate-check-failed") assert.ok(calls.some(c => c.method === "skills/extraRoots/set"));
-      if (scenario === "empty-rejected") assert.equal(calls.find((c) => c.method === "thread/resume" && !c.subscription).params.threadId, "safe-continuation");
+      if (["background-refresh", "inference-refresh"].includes(scenario)) {
+        assert.equal(calls.filter(call => call.id === "native-refresh").length, 1);
+        assert.equal(calls.filter(call => call.method === "turn/start").length, 1, "Never replay the requested turn");
+        assert.equal(events.filter(event => event.type === "finish").length, shouldFail ? 0 : 1);
+        if (shouldFail) assert.match(error.message, /Reconnect the Codex subscription/);
+        else assert.equal(events.filter(event => event.type === "text-delta").map(event => event.delta).join(""), "Done.");
+      }
+      for (const call of calls.filter(c => c.method === "thread/start" || c.method === "thread/resume")) assert.equal(call.params.config.hive_subscription_tokens, undefined);
       assert.doesNotMatch(JSON.stringify([events, diagnostics]), /ACCESS_FIXTURE|ACCOUNT_FIXTURE|CAPABILITY_FIXTURE/);
     } finally {
       globalThis.fetch = previousFetch;

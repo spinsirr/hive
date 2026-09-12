@@ -9,12 +9,6 @@ import { refreshCodexSubscription } from "./codex-subscription-refresh.ts";
 
 export class SubscriptionAccessDenied extends Error {}
 
-export async function prefersCodexSubscription(sessionId: string) {
-  if (!process.env.HIVE_CODEX_AUTH_SECRET?.trim()) return false;
-  const rows = await db.select({ id: codexSubscriptions.accountHash }).from(codexSubscriptions).where(eq(codexSubscriptions.sessionId, sessionId));
-  return rows.length > 0;
-}
-
 async function authorizedTask(scope: HiveToolScope) {
   const [task] = await db.select({ ownerId: taskSessions.createdBy, repository: taskSessions.repository }).from(taskSessions)
     .innerJoin(taskSessionMembers, and(eq(taskSessionMembers.sessionId, taskSessions.id), eq(taskSessionMembers.memberId, scope.memberId)))
@@ -27,11 +21,10 @@ async function authorizedTask(scope: HiveToolScope) {
 
 export async function readCodexSubscription(scope: HiveToolScope, forceRefresh = false) {
   const task = await authorizedTask(scope);
-  const [binding] = await db.select().from(codexSubscriptions).where(eq(codexSubscriptions.sessionId, scope.sessionId));
-  if (!binding) return null;
-  if (binding.ownerId !== task.ownerId || binding.repositoryId !== task.repository?.id || task.repository.visibility !== "private") {
-    throw new SubscriptionAccessDenied("This subscription is not authorized for the repository.");
-  }
+  const bindings = await db.select().from(codexSubscriptions).limit(2);
+  // Do not silently choose between operator accounts or share refresh ownership.
+  if (bindings.length !== 1) throw new Error("Reconnect the platform Codex subscription.");
+  const [binding] = bindings;
   if (binding.refreshLock) throw new Error("Subscription reconnect or refresh is required.");
   const secret = process.env.HIVE_CODEX_AUTH_SECRET?.trim() ?? "";
   let auth = await openCodexAuth(binding.encryptedAuth, binding, secret);
@@ -54,6 +47,6 @@ export async function readCodexSubscription(scope: HiveToolScope, forceRefresh =
   // Membership/run may have changed during refresh. Never release a credential
   // to a stale runtime, even if the native refresh itself succeeded.
   const current = await authorizedTask(scope);
-  if (current.ownerId !== binding.ownerId || current.repository?.id !== binding.repositoryId || current.repository.visibility !== "private") throw new SubscriptionAccessDenied("Repository access changed.");
+  if (current.ownerId !== task.ownerId || JSON.stringify(current.repository) !== JSON.stringify(task.repository)) throw new SubscriptionAccessDenied("Repository access changed.");
   return { model: CODEX_SUBSCRIPTION_MODEL, ...externalCodexTokens(auth) };
 }

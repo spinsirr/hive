@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { ConversationDemo } from "./conversation-demo";
+import { DemoWorkspace } from "../demo-workspace";
+import { demoTasks } from "@/lib/ui-demo";
 
 export const metadata: Metadata = {
   title: "Hive — Conversation UI preview",
@@ -7,4 +8,4 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default function ConversationPreview() { return <ConversationDemo />; }
+export default function ConversationPreview() { return <DemoWorkspace task={demoTasks[1]} />; }

@@ -4,10 +4,13 @@ import { getSessionMember, HIVE_SESSION_COOKIE } from "@/lib/auth-session";
 import { GitHubUserAuthorizationError, listGitHubUserRepositories } from "@/lib/github-oauth";
 import { GITHUB_USER_COOKIE, readGitHubUserToken } from "@/lib/github-user-session";
 import { isTaskSessionId } from "@/lib/task-session-id";
+import { ARCHIVED_TASK_MESSAGE } from "@/lib/task-session";
+import { WorkspaceRestoreError } from "@/lib/workspace-restore-state";
 import {
   applyTaskSessionAction,
   getPublicTaskSessionSnapshot,
   isTaskSessionMember,
+  TaskSessionAccessError,
 } from "@/lib/task-session-store";
 
 export const dynamic = "force-dynamic";
@@ -113,6 +116,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const snapshot = await getPublicTaskSessionSnapshot(auth.sessionId);
+    if (snapshot.session.archived) return NextResponse.json({ error: ARCHIVED_TASK_MESSAGE }, { status: 409 });
     if (snapshot.session.repository) {
       return NextResponse.json(
         { error: "This task already has a repository." },
@@ -154,6 +158,8 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     if (error instanceof GitHubUserAuthorizationError) return reconnectResponse();
+    if (error instanceof TaskSessionAccessError) return NextResponse.json({ error: error.message }, { status: 403, headers: { "Cache-Control": "private, no-store" } });
+    if (error instanceof WorkspaceRestoreError) return NextResponse.json({ error: error.message }, { status: error.status });
     console.error("GitHub repository attachment failed", error);
     return NextResponse.json(
       { error: "Hive could not attach that repository." },

@@ -207,7 +207,7 @@ try {
   assert.equal((await call({}, foreign)).status, 401);
   assert.equal((await call(" ".repeat(16_385))).status, 413);
   assert.equal(queries.length, 0, "invalid capabilities and oversized bodies must fail before querying Postgres");
-  const rpc = { jsonrpc: "2.0", id: 7, method: "tools/call", params: { name: "reply_to_thread", arguments: { messageId: toolMessage.id, body: "Should pnpm also apply to CI?" } } };
+  const rpc = { jsonrpc: "2.0", id: 7, method: "tools/call", params: { name: "reply_to_thread", arguments: { key: "ci-policy", messageId: toolMessage.id, body: "Should pnpm also apply to CI?" } } };
   for (let retry = 0; retry < 2; retry++) {
     const response = await call(rpc);
     assert.equal(response.status, 200);
@@ -222,11 +222,22 @@ try {
   assert.deepEqual(afterReply.workspace, toolWorkspace, "replying must not overwrite the active stream, checkpoints, or code artifacts");
   assert.equal(afterReply.version, toolContext.version + 1);
   console.log("PASS: real signed route stores one attributed Hive reply on retry, with no queue/run/history mutation.");
+  for (const replay of await Promise.all([70, 71].map((id) => call({ ...rpc, id })))) assert.equal((await replay.json()).result.isError, undefined);
+  assert.equal((await store.getTaskSessionSnapshot(session.sessionId)).session.messages[0].annotations.length, 1, "a tool retry with a new transport ID must not duplicate the logical reply");
+  assert.equal((await store.getTaskSessionSnapshot(session.sessionId)).session.version, afterReply.version);
+  const conflict = await call({ ...rpc, id: 72, params: { ...rpc.params, arguments: { ...rpc.params.arguments, body: "Different content must not silently disappear" } } });
+  assert.equal((await conflict.json()).result.isError, true);
+  const distinct = await call({ ...rpc, params: { ...rpc.params, arguments: { ...rpc.params.arguments, key: "test-policy", body: "Which checks should run in CI?" } } });
+  assert.equal((await distinct.json()).result.isError, undefined, "reconnecting clients may reuse a transport ID for a distinct logical reply");
+  const distinctReplies = (await store.getTaskSessionSnapshot(session.sessionId)).session.messages[0].annotations;
+  assert.equal(distinctReplies.length, 2);
+  assert.equal(distinctReplies[1].body, "Which checks should run in CI?");
+  console.log("PASS: reply keys survive changed/reused transport IDs and concurrent retries; conflicting content is rejected and distinct replies remain independent.");
   const stale = createHiveToolToken({ ...toolScope, runId: "previous-run" }, process.env.HIVE_INVITE_SECRET);
   assert.equal((await (await call({ ...rpc, id: 8 }, stale)).json()).result.isError, true);
   await db.delete(taskSessionMembers).where(eq(taskSessionMembers.memberId, members[0].id));
   assert.equal((await (await call({ ...rpc, id: 9 })).json()).result.isError, true);
-  assert.equal((await store.getTaskSessionSnapshot(session.sessionId)).session.messages[0].annotations.length, 1);
+  assert.equal((await store.getTaskSessionSnapshot(session.sessionId)).session.messages[0].annotations.length, 2);
   console.log("PASS: ended-run and revoked-member capabilities cannot add another reply even before token expiry.");
 } finally {
   for (const client of clients) client.terminate();

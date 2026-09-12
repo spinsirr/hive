@@ -1,36 +1,34 @@
 "use client";
 
-import { MessageSquare } from "lucide-react";
-import { ThreadReply } from "@/components/hive/thread-reply";
-import type { ChatMessage, TeamMember } from "@/lib/task-session";
+import { ChevronRight, MessageSquare } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { resolveMember, type ChatMessage, type TeamMember } from "@/lib/task-session";
+import { cn } from "@/lib/utils";
 
-export function MessageThreadPreview({ message, members, disabled, queueing, onOpen, onSteerReply }: {
+export function MessageThreadPreview({ message, members, expanded = false, onOpen }: {
   message: ChatMessage;
   members: TeamMember[];
-  disabled: boolean;
-  queueing: boolean;
+  expanded?: boolean;
   onOpen: () => void;
-  onSteerReply: (messageId: string, replyId: string) => void;
 }) {
   const replies = message.annotations ?? [];
-  if (replies.length === 0) return null;
-  const earlier = replies.slice(0, -3);
-  const renderReply = (reply: (typeof replies)[number]) => <ThreadReply disabled={disabled} key={reply.id} members={members} onSteer={() => onSteerReply(message.id, reply.id)} queueing={queueing} reply={reply} />;
+  const latest = replies.at(-1);
+  if (!latest && !message.interaction) return null;
+  const author = latest ? latest.role === "agent" ? "Hive" : resolveMember(latest.authorId, members).shortName : "";
+  // A preview is not another transcript. Keep the full markdown and actions in
+  // MessageThread; bound the text here as well as its visual height.
+  const characters = Array.from((latest?.body ?? "").replace(/\s+/g, " ").trim());
+  const preview = characters.slice(0, 180).join("") + (characters.length > 180 ? "…" : "");
 
   return (
-    <section aria-label={`Replies to ${message.name}'s message`} className="ml-3 mt-1 min-w-0 border-l-2 border-[#e8e8e8] py-1 pl-3 text-left">
-      {earlier.length > 0 ? (
-        <details className="mb-3 text-xs text-[#737373]">
-          <summary className="w-fit cursor-pointer rounded py-1 focus-visible:outline-2">{earlier.length} earlier {earlier.length === 1 ? "reply" : "replies"}</summary>
-          <div className="mt-3 space-y-3">{earlier.map(renderReply)}</div>
-        </details>
-      ) : null}
-      <div className="space-y-3">{replies.slice(-3).map(renderReply)}</div>
-      <button aria-label={`Open thread with ${replies.length} ${replies.length === 1 ? "reply" : "replies"}`} className="mt-3 flex items-center gap-2 rounded px-1 py-1 text-xs text-[#737373] hover:bg-[#f5f5f5] hover:text-[#171717] focus-visible:outline-2" onClick={onOpen} type="button">
-        <MessageSquare aria-hidden="true" className="size-3.5" />
-        <span>{replies.length} {replies.length === 1 ? "reply" : "replies"}</span>
-        <span className="font-medium text-[#525252]">Open thread</span>
-      </button>
-    </section>
+    <Button data-thread-trigger={message.id} aria-expanded={expanded} aria-label={latest ? `Open thread with ${replies.length} ${replies.length === 1 ? "reply" : "replies"}` : "Open collaboration thread"} className={cn("h-auto w-full min-w-0 max-w-full flex-col items-stretch gap-1.5 whitespace-normal rounded-none border-0 border-t border-border bg-muted/30 px-4 py-3 text-left text-xs font-normal text-muted-foreground focus-visible:ring-2 focus-visible:ring-inset active:not-aria-[haspopup]:translate-y-0", expanded && "bg-muted/50")} onClick={onOpen} type="button" variant="ghost">
+      <span className="flex min-w-0 items-center gap-2">
+        <MessageSquare aria-hidden="true" className="size-3.5 shrink-0" />
+        <span className="font-medium text-foreground/80">{latest ? `${replies.length} ${replies.length === 1 ? "reply" : "replies"}` : "No replies yet"}</span>
+        <span className="ml-auto">{expanded ? "Thread open" : "Open thread"}</span>
+        <ChevronRight aria-hidden="true" className="size-3.5 shrink-0" />
+      </span>
+      {!expanded && latest ? <span className="line-clamp-2 break-words text-sm leading-6 [overflow-wrap:anywhere]"><span className="font-medium text-foreground/80">{author}: </span>{preview || (latest.deliveryStatus === "streaming" ? "Replying…" : "Reply")}</span> : null}
+    </Button>
   );
 }

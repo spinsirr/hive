@@ -8,6 +8,8 @@ import { isCodingEffort, type CodingEffort } from "./coding-effort.ts";
 import { codingModelOptions, CODEX_GATEWAY_MODEL, selectedCodingModel, modelEffort, type CodingModelOption } from "./coding-models.ts";
 import { codeReferenceContext, codeReferenceSchema, type CodeReference } from "./code-reference.ts";
 import { finalizeSubagents } from "./hive-subagents.ts";
+import { normalizeTaskTitle, taskTitleFromMessage } from "./task-title.ts";
+import { canResolvePeerReview, finishPeerReviews, type PeerInteraction } from "./peer-collaboration.ts";
 
 export type MemberId = string;
 export type CodingRuntime = "codex" | "claude-code";
@@ -53,12 +55,14 @@ export function resolveMember(
     }
   );
 }
+// Historical approved snapshots remain readable; new reviews resolve only in their Thread.
 export type RunStage = "waiting" | "running" | "review" | "approved";
 
 export type SteeringSource =
+  | { kind: "peer-response"; messageId: string; annotationId: string; replyThreadId?: string }
   | { kind: "workspace-annotation" }
   | { kind: "message"; messageId: string }
-  | { kind: "message-thread"; messageId: string; steerId: string }
+  | { kind: "message-thread"; messageId: string; steerId: string; throughReplyId?: string }
   | { kind: "message-annotation"; messageId: string; annotationId: string };
 
 export type SteeringQueueItem = {
@@ -73,6 +77,8 @@ export type SteeringQueueItem = {
 export type ActiveSteer = SteeringQueueItem & { appliedAt: number };
 
 export type MessageAnnotation = {
+  deliveryStatus?: "streaming" | "error";
+  subagents?: import("./hive-subagents.ts").HiveSubagent[];
   id: string;
   clientId?: string;
   body: string;
@@ -87,6 +93,9 @@ export type MessageAnnotation = {
 };
 
 export type ChatMessage = {
+  /** Tool-created question belongs to this existing Thread, not the main timeline. */
+  threadId?: string;
+  interaction?: PeerInteraction;
   id: string;
   clientId?: string;
   name: string;
@@ -139,6 +148,7 @@ export type WorkspaceCommand = {
 };
 
 export type WorkspaceState = {
+  reviewRevision?: string;
   status: "disconnected" | "ready" | "running" | "review" | "error";
   /** Shared coding preference, independent of the saved native conversation. */
   codingEffort?: CodingEffort;
@@ -187,10 +197,13 @@ export type WorkspaceRestore = {
   by: TeamMember;
   startedAt: number;
   retryAfter: number;
+  /** Durable identity of the VM before any destructive restore step. */
+  sourceSessionId?: string;
   status: "restoring" | "unconfirmed";
 };
 
 export type AgentReply = {
+  threadId?: string;
   id: string;
   body: string;
   sequence: number;
@@ -224,6 +237,7 @@ export type Annotation = {
 };
 
 export type TaskSessionState = {
+  archived?: { at: number; by: MemberId };
   sessionId: string;
   title: string;
   createdBy: MemberId;
@@ -241,6 +255,12 @@ export type TaskSessionState = {
 };
 
 export type TaskSessionAction =
+  | { type: "rename-task"; actor: MemberId; title: string }
+  | { type: "archive-task"; actor: MemberId }
+  | { type: "restore-task"; actor: MemberId }
+  | { type: "resolve-peer-review"; actor: MemberId; messageId: string; revision: string }
+  | { type: "continue-peer-response"; actor: MemberId; steerId: string }
+  | { type: "answer-question"; actor: MemberId; messageId: string; body: string; clientId: string; replyThreadId?: string }
   | { type: "select-harness"; actor: MemberId; runtime: CodingRuntime; modelId?: string }
   | { type: "set-coding-effort"; actor: MemberId; effort: CodingEffort; modelId?: string }
   | { type: "send-message"; actor: MemberId; body: string; clientId?: string }
@@ -280,7 +300,6 @@ export type TaskSessionAction =
       direction: "up" | "down";
     }
   | { type: "steer-agent"; actor: MemberId }
-  | { type: "advance-run"; actor: MemberId }
   | { type: "recover-stalled-run"; actor: MemberId }
   | { type: "reset"; actor: MemberId };
 
@@ -299,23 +318,13 @@ export function createInitialTaskSessionState(
 ): TaskSessionState {
   return {
     sessionId,
-    title: options.title?.trim() || "Untitled task",
+    title: options.title?.trim() ?? "",
     createdBy: options.createdBy ?? "hive-system",
     createdAt: now,
     version: 1,
     revision: 1,
     stage: "waiting",
-    messages: [
-      {
-        id: "initial-1",
-        name: "Hive",
-        initials: "AI",
-        body: "What should we accomplish? We can clarify the task first and attach a GitHub repository whenever the team is ready to work on code.",
-        role: "agent",
-        time: timeLabel(now),
-        createdAt: now,
-      },
-    ],
+    messages: [],
     annotation: {
       status: "open",
       text: "",
@@ -362,6 +371,13 @@ export function isHiveRunActive(state: TaskSessionState): boolean {
     state.workspace.completedAt === undefined;
 }
 
+/** Pending requests are visible in the UI, but are not context for this run. */
+export function pendingMessageIds(state: Pick<TaskSessionState, "steeringQueue">) {
+  return new Set(state.steeringQueue.flatMap(({ source }) =>
+    source.kind === "message" || source.kind === "message-thread" ? [source.messageId] : [],
+  ));
+}
+
 /** True once an active run has outlived the request that could still report for it. */
 export function isHiveRunStalled(state: TaskSessionState, now = Date.now()): boolean {
   return isHiveRunActive(state) &&
@@ -371,6 +387,15 @@ export function isHiveRunStalled(state: TaskSessionState, now = Date.now()): boo
 function finishAgentReply(state: TaskSessionState, body: string, now: number, final = true): ChatMessage[] {
   const liveReply = state.workspace.liveReply;
   if (!liveReply) return appendAgentMessage(state, body, now);
+  if (liveReply.threadId && state.messages.some((message) => message.id === liveReply.threadId)) {
+    return state.messages.map((message) => message.id === liveReply.threadId ? {
+      ...message, annotations: [...(message.annotations ?? []), {
+        id: liveReply.id, authorId: "hive-agent", role: "agent", body: body || liveReply.body,
+        status: "open", createdAt: liveReply.startedAt, deliveryStatus: final ? undefined : "streaming",
+        subagents: final ? finalizeSubagents(liveReply.subagents) : liveReply.subagents,
+      }],
+    } : message);
+  }
   return [...state.messages, {
     id: liveReply.id,
     name: "Hive",
@@ -388,42 +413,57 @@ function finishAgentReply(state: TaskSessionState, body: string, now: number, fi
 export function conversationMessages(state: TaskSessionState): ChatMessage[] {
   if (!state.workspace.liveReply?.body && !state.workspace.liveReply?.subagents?.length) return state.messages;
   const messages = finishAgentReply(state, "", state.updatedAt, false);
+  if (state.workspace.liveReply?.threadId) return messages;
   return messages.map((message, index) => index === messages.length - 1
     ? { ...message, status: "streaming" }
     : message);
 }
 
 export function canApplyNextSteer(state: TaskSessionState): boolean {
-  return !state.workspace.restore &&
+  return !state.archived && !state.workspace.restore &&
     state.steeringQueue.length > 0 &&
     !state.activeSteer &&
     !isHiveRunActive(state);
-}
-
-export function canApproveChanges(state: TaskSessionState): boolean {
-  return !state.workspace.restore &&
-    Boolean(state.repository) &&
-    state.stage === "review" &&
-    state.workspace.status === "review" &&
-    state.workspace.diff.trim().length > 0 &&
-    state.steeringQueue.length === 0 &&
-    !state.activeSteer;
 }
 
 export function didStartHiveRun(previous: TaskSessionState, next: TaskSessionState): boolean {
   return !isHiveRunActive(previous) && isHiveRunActive(next);
 }
 
+/** Thread-originated work returns to its parent, whether structured or ordinary.
+ * Immediate single-reply steers use the action; queued/whole-thread work keeps
+ * its source in activeSteer. A queued main message is not a thread reply.
+ */
+export function hiveReplyThreadId(state: TaskSessionState, action: TaskSessionAction): string | undefined {
+  const source = state.activeSteer?.source;
+  const messageId = source?.kind === "peer-response" ? source.replyThreadId : source && (source.kind === "message-annotation" || source.kind === "message-thread")
+    ? source.messageId
+    : action.type === "steer-message-annotation" ? action.messageId : undefined;
+  return messageId && state.messages.some((message) => message.id === messageId) ? messageId : undefined;
+}
+
 /** A native conversation belongs to one harness; never reinterpret its history. */
 export function canSelectHarness(state: TaskSessionState) {
-  return !isHiveRunActive(state) && !state.workspace.restore && !state.activeSteer &&
+  return !state.archived && !isHiveRunActive(state) && !state.workspace.restore && !state.activeSteer &&
     state.steeringQueue.length === 0 && !state.workspace.sandboxName &&
     !state.workspace.agentSession?.resumeFrom && !state.workspace.checkpoints?.length &&
     !(state.repository && state.workspace.startedAt !== undefined);
 }
 
 export function canSetCodingEffort(state: TaskSessionState) {
-  return !isHiveRunActive(state) && !state.workspace.restore && !state.activeSteer && state.steeringQueue.length === 0;
+  return !state.archived && !isHiveRunActive(state) && !state.workspace.restore && !state.activeSteer && state.steeringQueue.length === 0;
+}
+
+export function canArchiveTask(state: TaskSessionState) {
+  return !state.archived && !isHiveRunActive(state) && !state.workspace.restore && !state.activeSteer && state.steeringQueue.length === 0;
+}
+
+export const ARCHIVED_TASK_MESSAGE = "This task is archived for the team. Restore it before making changes.";
+
+export function taskActionBlockReason(state: TaskSessionState, action: TaskSessionAction) {
+  if (state.archived && action.type !== "restore-task" && action.type !== "archive-task") return ARCHIVED_TASK_MESSAGE;
+  if (action.type === "archive-task" && !state.archived && !canArchiveTask(state)) return "Finish the current run, queued instructions and workspace recovery before archiving.";
+  return null;
 }
 
 export function appendHiveReply(
@@ -465,7 +505,21 @@ export function reduceTaskSession(
   models: CodingModelOption[] = codingModelOptions(CODEX_GATEWAY_MODEL),
 ): TaskSessionState {
   const actor = resolveMember(action.actor, members);
+  if (taskActionBlockReason(state, action)) return state;
+  if (action.type === "archive-task") {
+    if (state.archived || !members.some((member) => member.id === action.actor)) return state;
+    return { ...state, archived: { by: action.actor, at: now }, version: state.version + 1, updatedAt: now };
+  }
+  if (action.type === "restore-task") {
+    if (!state.archived || !members.some((member) => member.id === action.actor)) return state;
+    return { ...state, archived: undefined, version: state.version + 1, updatedAt: now };
+  }
   if (state.workspace.restore) return state;
+  if (action.type === "rename-task") {
+    const title = normalizeTaskTitle(action.title);
+    if (!title || title === state.title || !members.some((member) => member.id === action.actor)) return state;
+    return { ...state, title, version: state.version + 1, updatedAt: now };
+  }
   if (action.type === "set-coding-effort") {
     const model = selectedCodingModel(models, state.workspace.agentSession?.runtime ?? "codex", state.workspace.codingModel);
     if (!model || (action.modelId && action.modelId !== model.modelId) || !model.efforts.includes(action.effort) || !isCodingEffort(action.effort) || !canSetCodingEffort(state) || (state.workspace.codingEffort ?? "low") === action.effort) return state;
@@ -524,17 +578,6 @@ export function reduceTaskSession(
         commands: [],
         changedFiles: [],
       },
-      messages: [
-        {
-          id: `agent-${now}-1`,
-          name: "Hive",
-          initials: "AI",
-          body: `${state.repository.name} is connected. What should we work on?`,
-          role: "agent",
-          time: timeLabel(now),
-          createdAt: now,
-        },
-      ],
     };
   }
 
@@ -603,6 +646,7 @@ export function reduceTaskSession(
     const queuesRun = addressesHive && !startsRun;
     return {
       ...state,
+      title: state.title || taskTitleFromMessage(body),
       version: state.version + 1,
       stage: startsRun ? "running" : state.stage,
       workspace: startsRun
@@ -703,6 +747,7 @@ export function reduceTaskSession(
         message.id === action.messageId
           ? {
               ...message,
+              interaction: message.interaction?.kind === "review" ? { ...message.interaction, resolved: undefined } : message.interaction,
               annotations: [
                 ...(message.annotations ?? []),
                 {
@@ -721,24 +766,71 @@ export function reduceTaskSession(
     };
   }
 
+  if (action.type === "answer-question") {
+    const parent = state.messages.find((message) => message.id === action.messageId);
+    const question = parent?.interaction;
+    const body = action.body.trim();
+    if (!parent || question?.kind !== "question" || question.answer || !body || body.length > 4000 ||
+      !members.some((member) => member.id === actor.id) ||
+      (question.targetMemberId && question.targetMemberId !== actor.id)) return state;
+    if (action.replyThreadId && action.replyThreadId !== parent.id && action.replyThreadId !== parent.threadId) return state;
+    const replyThreadId = parent.threadId ?? action.replyThreadId;
+    const replyId = `answer-${now}-${state.version + 1}`;
+    const item: SteeringQueueItem = {
+      id: `steer-${now}-${state.version + 1}`, authorId: actor.id, queuedAt: now,
+      body: JSON.stringify({ question: parent.body, answer: body, answeredBy: actor.name }),
+      source: { kind: "peer-response", messageId: parent.id, annotationId: replyId, replyThreadId }, sourceLabel: `Answer · ${actor.shortName}`,
+    };
+    const queued: TaskSessionState = {
+      ...state, version: state.version + 1, updatedAt: now,
+      messages: state.messages.map((message) => message.id === parent.id ? { ...message,
+        interaction: { ...question, answer: { replyId, by: actor.id, at: now } },
+        annotations: [...(message.annotations ?? []), { id: replyId, clientId: action.clientId, body, authorId: actor.id, createdAt: now, status: "queued", queuedBy: actor.id, queuedAt: now }],
+      } : message), steeringQueue: [...state.steeringQueue, item],
+    };
+    return !isHiveRunActive(state) && state.steeringQueue.length === 0
+      ? reduceTaskSession(queued, { type: "apply-next-steer", actor: actor.id }, now, members)
+      : queued;
+  }
+
+  if (action.type === "resolve-peer-review") {
+    const message = state.messages.find((message) => message.id === action.messageId);
+    if (!message || !members.some((member) => member.id === actor.id) || !canResolvePeerReview(state, message, actor.id, action.revision)) return state;
+    return { ...state, version: state.version + 1, updatedAt: now, messages: state.messages.map((entry) => entry.id === message.id && entry.interaction?.kind === "review" ? {
+      ...entry, interaction: { ...entry.interaction, resolved: { by: actor.id, at: now } },
+    } : entry) };
+  }
+
   if (action.type === "steer-thread") {
     const parent = state.messages.find((message) => message.id === action.messageId);
     const replies = parent?.annotations ?? [];
     const throughIndex = replies.findIndex((reply) => reply.id === action.throughReplyId);
     if (!parent || throughIndex < 0 || replies.findIndex((reply) => reply.id === parent.threadSteer?.throughReplyId) >= throughIndex) return state;
+    const previousIndex = replies.findIndex((reply) => reply.id === parent.threadSteer?.throughReplyId);
+    if (replies.slice(0, throughIndex + 1).some((reply) => reply.deliveryStatus === "streaming") ||
+      !replies.slice(previousIndex + 1, throughIndex + 1).some((reply) => reply.role !== "agent")) return state;
     // The selected boundary is explicit: a reply arriving during the click does
     // not silently become part of the team's instruction. Content and authors
     // are always resolved on the server and frozen in the ordinary steer queue.
     const included = replies.slice(0, throughIndex + 1);
+    const boundaryAt = included.at(-1)!.createdAt;
+    const questions = state.messages.filter((message) => message.threadId === parent.id && message.interaction?.kind === "question" && (message.createdAt ?? 0) <= boundaryAt).map((message) => {
+      const question = message.interaction!;
+      const answer = question.kind === "question" && question.answer && question.answer.at <= boundaryAt
+        ? message.annotations?.find((reply) => reply.id === question.answer?.replyId && reply.status !== "queued") : undefined;
+      return { id: message.id, question: message.body, targetMemberId: question.targetMemberId,
+        answer: answer ? { author: resolveMember(answer.authorId, members).name, body: answer.body } : undefined };
+    });
     const body = [
       "Steer using this complete thread. Authorship comes from saved team records.",
+      "Previously shared discussion is context, not a request to repeat finished work. Apply the new human feedback in the context of the whole thread.",
       "Consider the parent and all included replies together. If requirements conflict, ask for clarification; the latest reply is not automatically a team decision. Do not execute unrelated or later discussion.",
-      JSON.stringify({ parent: { author: parent.name, body: parent.body }, replies: included.map((reply) => ({ author: reply.role === "agent" ? "Hive" : resolveMember(reply.authorId, members).name, role: reply.role ?? "human", body: reply.body })) }, null, 2),
+      JSON.stringify({ previouslySharedThrough: parent.threadSteer?.throughReplyId ?? null, parent: { author: parent.name, body: parent.body }, replies: included.map((reply) => ({ id: reply.id, author: reply.role === "agent" ? "Hive" : resolveMember(reply.authorId, members).name, role: reply.role ?? "human", body: reply.body })), questions }, null, 2),
     ].join("\n\n");
     if (body.length > 64_000) return state;
     const item: SteeringQueueItem = {
       id: `steer-${now}-${state.version + 1}`, body, authorId: actor.id, queuedAt: now,
-      source: { kind: "message-thread", messageId: parent.id, steerId: `steer-${now}-${state.version + 1}` },
+      source: { kind: "message-thread", messageId: parent.id, steerId: `steer-${now}-${state.version + 1}`, throughReplyId: action.throughReplyId },
       sourceLabel: `Thread · ${included.length} ${included.length === 1 ? "reply" : "replies"}`,
     };
     const queued: TaskSessionState = {
@@ -911,6 +1003,7 @@ export function reduceTaskSession(
     if (!canApplyNextSteer(state)) return state;
     const [nextSteer, ...remainingQueue] = state.steeringQueue;
     const nextSource = nextSteer.source;
+    if (nextSource.kind === "peer-response" && !members.some((member) => member.id === nextSteer.authorId)) return state;
 
     return {
       ...state,
@@ -935,7 +1028,7 @@ export function reduceTaskSession(
             }
           : state.annotation,
       messages: state.messages.map((message) =>
-        nextSource.kind === "message-annotation" &&
+        (nextSource.kind === "message-annotation" || nextSource.kind === "peer-response") &&
         message.id === nextSource.messageId
           ? {
               ...message,
@@ -958,6 +1051,13 @@ export function reduceTaskSession(
       activeSteer: { ...nextSteer, appliedAt: now },
       updatedAt: now,
     };
+  }
+
+  if (action.type === "continue-peer-response") {
+    const next = state.steeringQueue[0];
+    if (!next || next.id !== action.steerId || next.source.kind !== "peer-response" || state.workspace.status === "error" ||
+      (state.workspace.lastRestore && next.queuedAt <= state.workspace.lastRestore.at)) return state;
+    return reduceTaskSession(state, { type: "apply-next-steer", actor: action.actor }, now, members);
   }
 
   if (action.type === "remove-queued-steer") {
@@ -986,7 +1086,7 @@ export function reduceTaskSession(
             }
           : state.annotation,
       messages: state.messages.map((message) =>
-        queuedSource.kind === "message-annotation" &&
+        (queuedSource.kind === "message-annotation" || queuedSource.kind === "peer-response") &&
         message.id === queuedSource.messageId
           ? {
               ...message,
@@ -1035,23 +1135,6 @@ export function reduceTaskSession(
     };
   }
 
-  if (action.type === "advance-run") {
-    if (canApproveChanges(state)) {
-      const member = actor;
-      return {
-        ...state,
-        version: state.version + 1,
-        stage: "approved",
-        messages: appendAgentMessage(
-          state,
-          `${member.shortName} approved the current diff.`,
-          now,
-        ),
-        updatedAt: now,
-      };
-    }
-  }
-
   return state;
 }
 
@@ -1071,6 +1154,7 @@ export function applyHiveRunResult(
     activeSteer: undefined,
     workspace: {
       status: hasQueuedSteer ? "running" : hasChanges ? "review" : "ready",
+      reviewRevision: state.workspace.liveReply?.id,
       codingEffort: state.workspace.codingEffort,
       codingModel: state.workspace.codingModel,
       sandboxName: result.sandboxName,
@@ -1085,7 +1169,7 @@ export function applyHiveRunResult(
       checkpoints: savedWorkspaceCheckpoints(state.workspace.checkpoints, result),
       lastRestore: state.workspace.lastRestore,
     },
-    messages: finishAgentReply(state, result.summary, now),
+    messages: finishPeerReviews(state, finishAgentReply(state, result.summary, now), true),
     updatedAt: now,
   };
 }
@@ -1097,6 +1181,14 @@ export function applyHiveRunError(
   checkpoint?: HiveSessionCheckpoint,
 ): TaskSessionState {
   if (state.workspace.restore) return state;
+  const partial = state.workspace.liveReply?.body || state.workspace.liveReply?.subagents?.length ? finishAgentReply(state, "", now) : state.messages;
+  const errorId = `agent-error-${now}-${state.version + 1}`;
+  const threadId = state.workspace.liveReply?.threadId;
+  const messages: ChatMessage[] = threadId && partial.some((entry) => entry.id === threadId)
+    ? partial.map((entry) => entry.id === threadId ? { ...entry, annotations: [...(entry.annotations ?? []), {
+      id: errorId, role: "agent", authorId: "hive-agent", body: message, status: "open", deliveryStatus: "error", createdAt: now,
+    }] } : entry)
+    : [...partial, { id: errorId, name: "Hive", initials: "AI", body: message, role: "agent", status: "error", time: timeLabel(now), createdAt: now }];
   return {
     ...state,
     version: state.version + 1,
@@ -1104,6 +1196,7 @@ export function applyHiveRunError(
     activeSteer: undefined,
     workspace: {
       ...state.workspace,
+      reviewRevision: undefined,
       sandboxName: checkpoint?.sandboxName ?? state.workspace.sandboxName,
       agentSession: checkpoint?.agentSession ?? state.workspace.agentSession,
       diff: checkpoint?.diff ?? state.workspace.diff,
@@ -1118,19 +1211,7 @@ export function applyHiveRunError(
         ? savedWorkspaceCheckpoints(state.workspace.checkpoints, { ...checkpoint, summary: message } as HiveRunResult, message)
         : state.workspace.checkpoints,
     },
-    messages: [
-      ...(state.workspace.liveReply?.body || state.workspace.liveReply?.subagents?.length ? finishAgentReply(state, "", now) : state.messages),
-      {
-        id: `agent-${now}-${state.version + 1}`,
-        name: "Hive",
-        initials: "AI",
-        body: message,
-        role: "agent",
-        status: "error",
-        time: timeLabel(now),
-        createdAt: now,
-      },
-    ],
+    messages: finishPeerReviews(state, messages, false),
     updatedAt: now,
   };
 }

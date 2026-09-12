@@ -2,6 +2,7 @@
 
 import {
   ArrowDown,
+  ArrowLeft,
   ArrowUp,
   Check,
   Code2,
@@ -19,7 +20,11 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useHiveClient } from "@/components/hive/hive-client";
+import { TaskArchiveControl } from "@/components/hive/task-archive-control";
+import { TaskTitleControl } from "@/components/hive/task-title-control";
+import { taskTitleLabel } from "@/lib/task-title";
 
 import {
   Conversation,
@@ -27,10 +32,11 @@ import {
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
 import { ConversationComposer } from "@/components/hive/conversation-composer";
-import { ConversationMessage } from "@/components/hive/conversation-message";
+import { ConversationTurn } from "@/components/hive/conversation-message";
 import { DiffPane } from "@/components/hive/diff-pane";
 import { MessageThread } from "@/components/hive/message-thread";
 import { MessageTime } from "@/components/hive/message-time";
+import { PeerRequestSummary } from "@/components/hive/peer-request-summary";
 import { WorkspaceSplit } from "@/components/hive/workspace-split";
 import { WorkspaceFiles } from "@/components/hive/workspace-files";
 import { WorkspaceCheckpoints } from "@/components/hive/workspace-checkpoints";
@@ -40,6 +46,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useSharedSession } from "@/hooks/use-shared-session";
+import { useWorkspaceRecovery, type WorkspaceRecoveryStatus } from "@/hooks/use-workspace-recovery";
 import { HiveMark } from "@/components/hive/hive-mark";
 import { useMessageDraft } from "@/hooks/use-message-draft";
 import { useStalledRun } from "@/hooks/use-stalled-run";
@@ -48,11 +55,13 @@ import type { CodingEffort } from "@/lib/coding-effort";
 import type { CodingModelOption } from "@/lib/coding-models";
 import { displayHiveErrorMessage } from "@/lib/hive-error-copy";
 import { workspaceReadRevision } from "@/lib/workspace-files";
+import { canResolvePeerReview } from "@/lib/peer-collaboration";
+import { conversationTimelineTurns } from "@/lib/conversation-timeline";
 import {
   type ActiveSteer,
   type ChatMessage,
   canApplyNextSteer,
-  canApproveChanges,
+  canArchiveTask,
   canSelectHarness,
   canSetCodingEffort,
   type CodingRuntime,
@@ -133,6 +142,14 @@ function ProductHeader({
   onCopyInvite,
   onSignOut,
   onReset,
+  homeHref,
+  connectionLabel,
+  accountActionsDisabled,
+  archived,
+  archiveDisabled,
+  onArchiveChange,
+  renameDisabled,
+  onRename,
 }: {
   activeMembers: MemberId[];
   copied: boolean;
@@ -146,23 +163,32 @@ function ProductHeader({
   onCopyInvite: () => void;
   onSignOut: () => void;
   onReset: () => void;
+  homeHref: string;
+  connectionLabel: string;
+  accountActionsDisabled: boolean;
+  archived: boolean;
+  archiveDisabled: boolean;
+  onArchiveChange: (archived: boolean) => Promise<void>;
+  renameDisabled: boolean;
+  onRename: (title: string) => Promise<void>;
 }) {
   return (
     <header className="flex h-13 shrink-0 items-center justify-between gap-3 border-b border-[#e8e8e8] bg-white px-3 sm:px-4">
       <div className="flex min-w-0 flex-1 items-center gap-2.5">
-        <Link className="flex shrink-0 items-center gap-2.5" href="/">
+        <Link className="flex shrink-0 items-center gap-2.5" href={homeHref}>
           <HiveMark className="size-7" />
           <span className="hidden text-sm font-semibold tracking-[-0.025em] sm:inline">Hive</span>
         </Link>
         <span className="text-[#d4d4d4]">/</span>
         <div className="min-w-0">
-          <p className="truncate text-xs font-medium text-[#3d3d3d]">{sessionTitle}</p>
+          <TaskTitleControl title={sessionTitle} disabled={renameDisabled} onRename={onRename} />
           <p className="hidden truncate text-xs text-[#929292] md:block">
             {repository?.name ?? "Repository not attached"}
           </p>
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+        <TaskArchiveControl title={taskTitleLabel(sessionTitle)} archived={archived} disabled={archiveDisabled} onChange={onArchiveChange} />
         <div className="hidden items-center gap-1.5 text-xs text-[#777] sm:flex">
           {syncError ? (
             <WifiOff className="size-3" />
@@ -174,10 +200,11 @@ function ProductHeader({
               )}
             />
           )}
-          {syncError ? "Offline" : syncing ? "Syncing" : "Live"}
+          {syncError ? "Offline" : syncing ? "Syncing" : connectionLabel}
         </div>
         <Button
           aria-label={copied ? "Invite link copied" : "Invite teammate"}
+          disabled={accountActionsDisabled}
           className="h-8 rounded-md bg-white px-2 text-xs text-[#333] sm:px-2.5"
           onClick={onCopyInvite}
           size="sm"
@@ -190,6 +217,7 @@ function ProductHeader({
         <Button
           className="h-8 rounded-md bg-white px-2 text-xs text-[#333]"
           onClick={onSignOut}
+          disabled={accountActionsDisabled}
           size="sm"
           title={`Sign out @${currentMember.githubLogin ?? currentMember.shortName}`}
           variant="outline"
@@ -303,7 +331,7 @@ function SteeringQueue({ activeSteer, canApply, items, members, onApply, onMove,
   );
 }
 
-function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, runActive, runStalled, onRecoverRun, queued, queuedBy, queuePosition, steered, steeredBy, steeringQueue, currentMember, disabled, members, messages, onAdvance, onOpenThread, onSteerReply, selectedThreadId, onMoveSteer, onRemoveSteer, onSteer, onSend, onTyping, stage, typingMembers, workspaceAnnotation, codingRuntime, codingModel, codingModels, harnessLocked, harnessDisabled, onSelectHarness, effort, effortLocked, onEffortChange, compact = false }: {
+function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, runActive, runStalled, onRecoverRun, queued, queuedBy, queuePosition, steered, steeredBy, steeringQueue, currentMember, disabled, members, messages, onApplySteer, onOpenThread, onAnswerQuestion, selectedThreadId, onMoveSteer, onRemoveSteer, onSteer, onSend, onTyping, stage, typingMembers, workspaceAnnotation, codingRuntime, codingModel, codingModels, harnessLocked, harnessDisabled, onSelectHarness, effort, effortLocked, onEffortChange, compact = false }: {
   sessionId: string;
   activeMembers: MemberId[];
   activeSteer?: ActiveSteer;
@@ -321,9 +349,9 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
   disabled: boolean;
   members: TeamMember[];
   messages: ChatMessage[];
-  onAdvance: () => void;
+  onApplySteer: () => void;
   onOpenThread: (messageId: string) => void;
-  onSteerReply: (messageId: string, replyId: string) => void;
+  onAnswerQuestion: (messageId: string, submission: MessageSubmission, replyThreadId?: string) => Promise<boolean>;
   selectedThreadId: string | null;
   onMoveSteer: (steerId: string, direction: "up" | "down") => void;
   onRemoveSteer: (steerId: string) => void;
@@ -344,6 +372,7 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
   onEffortChange: (effort: CodingEffort, modelId?: string) => void;
   compact?: boolean;
 }) {
+  const timeline = useMemo(() => conversationTimelineTurns(messages), [messages]);
   const deliveredIds = useMemo(() => new Set(
     messages.filter((message) => message.memberId === currentMember && message.clientId).map((message) => message.clientId!),
   ), [currentMember, messages]);
@@ -367,10 +396,11 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
           <span className="text-xs text-[#8a8a8a]">{activeMembers.length} online</span>
         </div>
       </div>
-      <SteeringQueue activeSteer={activeSteer} canApply={canApplySteer} items={steeringQueue} members={members} onApply={onAdvance} onMove={onMoveSteer} onRemove={onRemoveSteer} />
+      <SteeringQueue activeSteer={activeSteer} canApply={canApplySteer} items={steeringQueue} members={members} onApply={onApplySteer} onMove={onMoveSteer} onRemove={onRemoveSteer} />
       <Conversation className="min-h-0 flex-1">
         <ConversationContent className={cn("gap-7 px-4 py-5 sm:px-6 sm:py-7", compact && "gap-5")}>
-          {messages.map((message) => {
+          {timeline.map((turn) => {
+            const { message } = turn;
             if (message.status === "error") {
               return (
                 <div
@@ -385,7 +415,7 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
               );
             }
             return (
-              <ConversationMessage key={message.id} message={message} currentMember={currentMember} members={members} sessionId={sessionId} disabled={disabled} runActive={runActive} queueing={runActive || steeringQueue.length > 0} selected={selectedThreadId === message.id} onOpenThread={onOpenThread} onSteerReply={onSteerReply} />
+              <ConversationTurn key={message.id} turn={turn} currentMember={currentMember} members={members} sessionId={sessionId} disabled={disabled} runActive={runActive} selectedThreadId={selectedThreadId} onOpenThread={onOpenThread} onAnswerQuestion={onAnswerQuestion} />
             );
           })}
           {runActive && runStalled ? (
@@ -424,7 +454,8 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
   );
 }
 
-function RepositorySetup({ sessionId }: { sessionId: string }) {
+function RepositorySetup({ sessionId, disabled }: { sessionId: string; disabled: boolean }) {
+  const client = useHiveClient();
   const [repositories, setRepositories] = useState<RepositoryOption[] | null>(null);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
@@ -441,15 +472,16 @@ function RepositorySetup({ sessionId }: { sessionId: string }) {
   }, [query, repositories]);
 
   const loadRepositories = useCallback(async () => {
+    if (disabled) return;
     setLoading(true);
     setError("");
     try {
-      const response = await fetch(
+      const response = await client.request(
         `/api/github/repositories?session_id=${encodeURIComponent(sessionId)}`,
         { cache: "no-store" },
       );
       if (response.status === 401) {
-        window.location.reload();
+        client.reload();
         return;
       }
       const payload = (await response.json()) as {
@@ -477,13 +509,14 @@ function RepositorySetup({ sessionId }: { sessionId: string }) {
     } finally {
       setLoading(false);
     }
-  }, [sessionId]);
+  }, [sessionId, client, disabled]);
 
   const connectRepository = useCallback(async (repositoryId: number) => {
+    if (disabled) return;
     setConnectingId(repositoryId);
     setError("");
     try {
-      const response = await fetch(
+      const response = await client.request(
         `/api/github/repositories?session_id=${encodeURIComponent(sessionId)}`,
         {
           method: "POST",
@@ -492,7 +525,7 @@ function RepositorySetup({ sessionId }: { sessionId: string }) {
         },
       );
       if (response.status === 401) {
-        window.location.reload();
+        client.reload();
         return;
       }
       const payload = (await response.json()) as { error?: string; needsAuthorization?: boolean };
@@ -513,16 +546,16 @@ function RepositorySetup({ sessionId }: { sessionId: string }) {
           : "Repository connection failed.",
       );
     }
-  }, [sessionId]);
+  }, [sessionId, client, disabled]);
 
   return (
-    <div className="hairline-grid flex h-full min-h-[420px] items-center justify-center bg-[#fafafa] p-8">
+    <fieldset disabled={disabled} className="hairline-grid flex h-full min-h-[420px] items-center justify-center bg-[#fafafa] p-8">
       <div className="w-full max-w-lg rounded-xl border border-[#dcdcdc] bg-white p-6 shadow-[0_10px_40px_rgba(0,0,0,0.05)]">
         <FolderGit2 className="size-7" />
         <h3 className="mt-5 text-lg font-semibold tracking-[-0.03em]">Attach a repository</h3>
-        <p className="mt-2 text-sm leading-6 text-[#737373]">Choose a repository you can access on GitHub. Everyone invited to this task can work on its shared copy.</p>
+        <p className="mt-2 text-sm leading-6 text-[#737373]">{disabled ? "Restore this archived task before attaching a repository." : "Choose a repository you can access on GitHub. Everyone invited to this task can work on its shared copy."}</p>
 
-        {needsAuthorization ? (
+        {disabled ? null : needsAuthorization ? (
           <a className="mt-5 inline-flex h-10 items-center gap-2 rounded-md bg-[#171717] px-4 text-sm font-medium text-white transition hover:bg-black" href={`/api/github/login?return_to=${encodeURIComponent(`/sessions/${sessionId}`)}`}>
             <FolderGit2 className="size-4" /> Reconnect GitHub
           </a>
@@ -580,19 +613,19 @@ function RepositorySetup({ sessionId }: { sessionId: string }) {
         {error ? <p className="mt-3 text-xs leading-5 text-[#777]">{error}</p> : null}
         <p className="mt-3 text-xs leading-5 text-[#888]">Other tasks and repositories stay private.</p>
       </div>
-    </div>
+    </fieldset>
   );
 }
 
-function Workspace({ repository, sessionId, tab, workspace, onTabChange, fileCollaboration, checkpointRevision, onRestored, active }: {
+function Workspace({ repository, sessionId, tab, workspace, onTabChange, fileCollaboration, checkpointRevision, onRestored, recoveryStatus, active }: {
   repository?: RepositoryState; sessionId: string; tab: WorkspaceTab; workspace: WorkspaceState; onTabChange: (tab: WorkspaceTab) => void;
   fileCollaboration: { memberId: string; deliveredIds: ReadonlySet<string>; disabled: boolean; onAnnotate: AnnotateCode };
-  checkpointRevision: number; onRestored: (snapshot: TaskSessionSnapshot) => void; active: boolean;
+  checkpointRevision: number; onRestored: (snapshot: TaskSessionSnapshot) => void; recoveryStatus: WorkspaceRecoveryStatus; active: boolean;
 }) {
   if (!repository) {
     return (
       <section className="h-full min-h-0 bg-white">
-        <RepositorySetup sessionId={sessionId} />
+        <RepositorySetup sessionId={sessionId} disabled={fileCollaboration.disabled} />
       </section>
     );
   }
@@ -624,23 +657,9 @@ function Workspace({ repository, sessionId, tab, workspace, onTabChange, fileCol
         {tab === "diff" ? <DiffPane diff={workspace.diff} /> : null}
         <WorkspaceFiles key={JSON.stringify([sessionId, fileCollaboration.memberId])} sessionId={sessionId} initialPath={workspace.files[0]?.path} revision={workspaceReadRevision(workspace)} active={active && tab === "files"} locked={Boolean(workspace.restore)} {...fileCollaboration} />
         {tab === "runs" ? <RunsPane commands={workspace.commands} /> : null}
-        {active && tab === "checkpoints" ? <WorkspaceCheckpoints sessionId={sessionId} revision={checkpointRevision} onRestored={onRestored} /> : null}
+        {active && tab === "checkpoints" ? <WorkspaceCheckpoints key={`${sessionId}:${workspace.lastRestore?.id ?? ""}`} sessionId={sessionId} revision={checkpointRevision} onRestored={onRestored} recoveryStatus={recoveryStatus} /> : null}
       </div>
     </section>
-  );
-}
-
-function ApprovalBar({ onApprove }: { onApprove: () => void }) {
-  return (
-    <div className="flex h-12 shrink-0 items-center justify-end border-t border-[#ebebeb] bg-[#fafafa] px-3 sm:px-4">
-      <Button
-        className="h-8 shrink-0 rounded-md bg-[#171717] px-3 text-xs text-white"
-        onClick={onApprove}
-        size="sm"
-      >
-        <Check className="size-3.5" /> Approve changes
-      </Button>
-    </div>
   );
 }
 
@@ -649,54 +668,107 @@ type SharedProps = Parameters<typeof SharedSession>[0] & {
   onTabChange: (tab: WorkspaceTab) => void;
 };
 
-export function HiveWorkspace({
-  currentMember,
-  initialSnapshot,
-  inviteToken,
-  sessionId,
-  sessionTitle,
-}: {
+type HiveWorkspaceProps = {
   currentMember: TeamMember;
   initialSnapshot: TaskSessionSnapshot;
   inviteToken: string;
   sessionId: string;
-  sessionTitle: string;
+};
+
+export function HiveWorkspace(props: HiveWorkspaceProps) {
+  const connection = useSharedSession(props.sessionId, props.initialSnapshot);
+  return <HiveWorkspaceView {...props} connection={connection} />;
+}
+
+export function HiveWorkspaceView({
+  currentMember,
+  inviteToken,
+  sessionId,
+  connection,
+  homeHref = "/",
+  connectionLabel = "Live",
+  accountActionsDisabled = false,
+  notice,
+}: Omit<HiveWorkspaceProps, "initialSnapshot"> & {
+  connection: ReturnType<typeof useSharedSession>;
+  homeHref?: string;
+  connectionLabel?: string;
+  accountActionsDisabled?: boolean;
+  notice?: ReactNode;
 }) {
+  const client = useHiveClient();
   const [pane, setPane] = useState<"chat" | "workspace">("chat");
   const [tab, setTab] = useState<WorkspaceTab>("diff");
   const [copied, setCopied] = useState(false);
   const [threadId, setThreadId] = useState<string | null>(null);
+  const [viewingReviewChanges, setViewingReviewChanges] = useState(false);
+  const backToReviewRef = useRef<HTMLButtonElement>(null);
   const [threadTrigger, setThreadTrigger] = useState<HTMLElement | null>(null);
   const [resetOpen, setResetOpen] = useState(false);
   const [harnessSaving, setHarnessSaving] = useState(false);
-  const { dispatch, setTyping, snapshot, syncing, syncError, receiveSnapshot } = useSharedSession(sessionId, initialSnapshot);
+  const { dispatch, setTyping, snapshot, syncing, syncError, receiveSnapshot } = connection;
   const { session, activeMembers, members, typingMembers } = snapshot;
   const teamMembers = useMemo(
     () => [currentMember, ...members.filter((member) => member.id !== currentMember.id)],
     [currentMember, members],
   );
   const { activeSteer, annotation, repository, stage, steeringQueue, workspace } = session;
+  const recoveryStatus = useWorkspaceRecovery(sessionId, session.version, workspace.restore, receiveSnapshot);
   const messages = useMemo(() => conversationMessages(session), [session]);
   const codeAnnotationIds = useMemo(() => new Set(messages.filter((message) => message.codeReference && message.memberId === currentMember.id && message.clientId).map((message) => message.clientId!)), [currentMember.id, messages]);
-  const threadMessage = messages.find((message) => message.id === threadId);
+  const selectedThread = messages.find((message) => message.id === threadId);
+  const reviewContext = viewingReviewChanges && selectedThread?.interaction?.kind === "review" ? selectedThread : undefined;
+  const workspaceReviews = useMemo(() => reviewContext ? [reviewContext] : tab === "diff" && workspace.reviewRevision
+    ? messages.filter((message) => message.interaction?.kind === "review" && message.interaction.revision === workspace.reviewRevision)
+    : [], [messages, reviewContext, tab, workspace.reviewRevision]);
+  const threadMessage = reviewContext ? undefined : selectedThread;
+  const selectedThreadId = threadMessage?.id ?? null;
+  useEffect(() => {
+    if (viewingReviewChanges) backToReviewRef.current?.focus();
+  }, [viewingReviewChanges]);
   const openThread = useCallback((messageId: string) => {
     setThreadTrigger(document.activeElement instanceof HTMLElement ? document.activeElement : null);
     setThreadId(messageId);
+    setViewingReviewChanges(false);
     setPane("workspace");
   }, []);
   const closeThread = useCallback(() => {
     setThreadId(null);
+    setViewingReviewChanges(false);
     setPane("chat");
-    requestAnimationFrame(() => threadTrigger?.focus());
-  }, [threadTrigger]);
+    requestAnimationFrame(() => {
+      // The first reply replaces the header action with a Thread footer.
+      const trigger = threadTrigger?.isConnected ? threadTrigger : Array.from(document.querySelectorAll<HTMLElement>("[data-thread-trigger]")).find((element) => element.dataset.threadTrigger === threadId);
+      trigger?.focus();
+    });
+  }, [threadTrigger, threadId]);
   const runActive = isHiveRunActive(session);
   const runStalled = useStalledRun(session);
-  const workspaceLocked = Boolean(workspace.restore);
+  const archived = Boolean(session.archived);
+  const workspaceLocked = Boolean(workspace.restore) || archived;
+  const changeArchive = useCallback(async (archive: boolean) => {
+    const next = await dispatch({ type: archive ? "archive-task" : "restore-task" });
+    if (!next || Boolean(next.session.archived) !== archive) throw new Error("Could not update the task. Check the connection and finish any pending work before retrying.");
+  }, [dispatch]);
+  const renameTask = useCallback(async (title: string) => {
+    const next = await dispatch({ type: "rename-task", title });
+    if (!next || next.session.title !== title) throw new Error("Could not rename this task. Check your connection and try again.");
+  }, [dispatch]);
   const harnessLocked = !canSelectHarness(session);
   const effortLocked = !canSetCodingEffort(session);
   // Reset is irreversible for every member; require an idle task and a confirmation.
   const resetDisabled = workspaceLocked || runActive || Boolean(activeSteer) || steeringQueue.length > 0;
   const canApplySteer = canApplyNextSteer(session);
+  const attemptedAnswer = useRef<string | null>(null);
+  const nextAnswer = canApplySteer && workspace.status !== "error" && steeringQueue[0]?.source.kind === "peer-response" &&
+    (!workspace.lastRestore || steeringQueue[0].queuedAt > workspace.lastRestore.at) ? steeringQueue[0].id : null;
+  useEffect(() => {
+    if (!nextAnswer || syncing || syncError || attemptedAnswer.current === nextAnswer) return;
+    attemptedAnswer.current = nextAnswer;
+    // Every connected teammate may observe readiness. The server checks this
+    // exact queue item under its task lock and grants execution only once.
+    void dispatch({ type: "continue-peer-response", steerId: nextAnswer });
+  }, [nextAnswer, syncing, syncError, dispatch]);
   const steered = annotation.status === "steered";
   const queued = annotation.status === "queued";
   const queuePosition = steeringQueue.findIndex(
@@ -714,10 +786,10 @@ export function HiveWorkspace({
     });
   }, [inviteToken]);
   const signOut = useCallback(() => {
-    void fetch("/api/auth/logout", { method: "POST" }).then(() => {
-      window.location.reload();
+    void client.request("/api/auth/logout", { method: "POST" }).then(() => {
+      client.reload();
     });
-  }, []);
+  }, [client]);
   const annotate = useCallback(async (messageId: string, { body, clientId }: MessageSubmission) => {
     const nextSnapshot = await dispatch({ type: "annotate-message", messageId, body, clientId });
     return nextSnapshot?.session.messages.find((message) => message.id === messageId)?.annotations?.some(
@@ -730,10 +802,16 @@ export function HiveWorkspace({
     if (delivered) setPane("chat");
     return delivered;
   }, [currentMember.id, dispatch]);
+  const answerQuestion = useCallback(async (messageId: string, submission: MessageSubmission, replyThreadId?: string) => {
+    const next = await dispatch({ type: "answer-question", messageId, replyThreadId, ...submission });
+    return next?.session.messages.find((message) => message.id === messageId)?.annotations?.some((reply) => reply.authorId === currentMember.id && reply.clientId === submission.clientId) ?? false;
+  }, [currentMember.id, dispatch]);
+  const resolveReview = useCallback(async (messageId: string, revision: string) => {
+    const next = await dispatch({ type: "resolve-peer-review", messageId, revision });
+    const review = next?.session.messages.find((message) => message.id === messageId)?.interaction;
+    return review?.kind === "review" && review.revision === revision && review.resolved?.by === currentMember.id;
+  }, [currentMember.id, dispatch]);
   const steer = useCallback(() => { void dispatch({ type: "steer-agent" }); }, [dispatch]);
-  const steerMessageAnnotation = useCallback((messageId: string, annotationId: string) => {
-    void dispatch({ type: "steer-message-annotation", messageId, annotationId });
-  }, [dispatch]);
   const steerThread = useCallback(async (messageId: string, throughReplyId: string) => {
     const nextSnapshot = await dispatch({ type: "steer-thread", messageId, throughReplyId });
     return nextSnapshot?.session.messages.find((message) => message.id === messageId)?.threadSteer?.throughReplyId === throughReplyId;
@@ -770,11 +848,9 @@ export function HiveWorkspace({
     try { await dispatch({ type: "set-coding-effort", effort, modelId }); }
     finally { setHarnessSaving(false); }
   }, [dispatch, harnessSaving]);
-  const advance = useCallback(() => {
-    const action = canApplySteer
-      ? ({ type: "apply-next-steer" } as const)
-      : ({ type: "advance-run" } as const);
-    void dispatch(action).then((nextSnapshot) => {
+  const applySteer = useCallback(() => {
+    if (!canApplySteer) return;
+    void dispatch({ type: "apply-next-steer" }).then((nextSnapshot) => {
       if (nextSnapshot?.session.stage === "review") setTab("diff");
     });
   }, [canApplySteer, dispatch]);
@@ -819,20 +895,22 @@ export function HiveWorkspace({
     effortLocked,
     onEffortChange: setCodingEffort,
     onOpenThread: openThread,
-    onSteerReply: steerMessageAnnotation,
-    selectedThreadId: threadMessage?.id ?? null,
+    onAnswerQuestion: answerQuestion,
+    selectedThreadId,
     onMoveSteer: moveSteer,
     onRemoveSteer: removeSteer,
     onSteer: steer,
     onSend: send,
     onTyping: setTyping,
-    onAdvance: advance,
+    onApplySteer: applySteer,
     onTabChange: setTab,
-  }), [activeMembers, activeSteer, advance, openThread, steerMessageAnnotation, threadMessage?.id, annotation.queuedBy, annotation.steeredBy, annotation.text, canApplySteer, currentMember.id, workspaceLocked, harnessSaving, messages, moveSteer, queuePosition, queued, recoverRun, removeSteer, runActive, runStalled, send, sessionId, setTyping, stage, steer, steered, steeringQueue, tab, teamMembers, typingMembers, workspace.agentSession?.runtime, workspace.codingModel, harnessLocked, syncing, syncError, selectHarness, workspace.codingEffort, effortLocked, setCodingEffort, snapshot.codingModels]);
+  }), [activeMembers, activeSteer, applySteer, openThread, answerQuestion, selectedThreadId, annotation.queuedBy, annotation.steeredBy, annotation.text, canApplySteer, currentMember.id, workspaceLocked, harnessSaving, messages, moveSteer, queuePosition, queued, recoverRun, removeSteer, runActive, runStalled, send, sessionId, setTyping, stage, steer, steered, steeringQueue, tab, teamMembers, typingMembers, workspace.agentSession?.runtime, workspace.codingModel, harnessLocked, syncing, syncError, selectHarness, workspace.codingEffort, effortLocked, setCodingEffort, snapshot.codingModels]);
 
   return (
     <main className="flex h-dvh min-h-0 flex-col overflow-hidden bg-[#fafafa] text-[#171717]">
-      <ProductHeader activeMembers={activeMembers} copied={copied} currentMember={currentMember} members={teamMembers} onCopyInvite={copyInvite} onSignOut={signOut} onReset={openReset} repository={repository} sessionTitle={sessionTitle} resetDisabled={resetDisabled} syncing={syncing} syncError={syncError} />
+      <ProductHeader activeMembers={activeMembers} copied={copied} currentMember={currentMember} members={teamMembers} onCopyInvite={copyInvite} onSignOut={signOut} onReset={openReset} repository={repository} sessionTitle={session.title} resetDisabled={resetDisabled} syncing={syncing} syncError={syncError} homeHref={homeHref} connectionLabel={connectionLabel} accountActionsDisabled={accountActionsDisabled} archived={archived} archiveDisabled={syncing || syncError || (!archived && !canArchiveTask(session))} onArchiveChange={changeArchive} renameDisabled={syncing || syncError || workspaceLocked} onRename={renameTask} />
+      {notice}
+      {session.archived ? <div className="shrink-0 border-b border-border bg-muted px-4 py-2 text-xs text-muted-foreground" role="status">Archived by {resolveMember(session.archived.by, teamMembers).shortName} · Read-only for everyone. Restore this task to continue.</div> : null}
       <Dialog onOpenChange={setResetOpen} open={resetOpen}>
         <DialogContent>
           <DialogHeader>
@@ -883,11 +961,31 @@ export function HiveWorkspace({
         conversation={<SharedSession {...shared} compact />}
         workspace={
           <>
-            <div className={cn("min-h-0 flex-1", threadMessage && "hidden")}>
-              <Workspace active={!threadMessage} repository={repository} sessionId={sessionId} tab={shared.tab} workspace={workspace} checkpointRevision={session.version} onRestored={receiveSnapshot} onTabChange={shared.onTabChange} fileCollaboration={{ memberId: currentMember.id, deliveredIds: codeAnnotationIds, disabled: workspaceLocked, onAnnotate: annotateCode }} />
+            <div className={cn("flex min-h-0 flex-1 flex-col", threadMessage && "hidden")}>
+              {workspaceReviews.length > 0 ? <section aria-label="Workspace reviews" className="shrink-0 border-b border-border bg-white px-3 py-2">
+                {workspaceReviews.map((review) => <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-1" key={review.id}>
+                  <div className="min-w-0 flex-1 basis-48">
+                    <PeerRequestSummary className="mb-0" message={review} members={teamMembers} />
+                    {workspaceReviews.length > 1 ? <p className="mt-1 truncate text-xs text-muted-foreground" title={review.body}>{review.body}</p> : null}
+                  </div>
+                  <Button ref={reviewContext ? backToReviewRef : undefined} className="h-7 shrink-0 px-2 text-xs" onClick={() => {
+                    if (reviewContext) { setViewingReviewChanges(false); setPane("workspace"); }
+                    else openThread(review.id);
+                  }} size="sm" variant="ghost">
+                    {reviewContext ? <><ArrowLeft className="size-3.5" /> Back to review</> : <><MessageSquare className="size-3.5" /> Open review</>}
+                  </Button>
+                </div>)}
+                <p className="mt-1 text-xs text-muted-foreground">{archived ? "Archived · Read-only" : "Viewing changes only · Verify in the review thread"}</p>
+                {reviewContext && (!reviewContext.interaction?.revision || reviewContext.interaction.revision !== workspace.reviewRevision) ? <p className="mt-1 text-xs text-muted-foreground">This review does not match the current diff. Return to the thread for context.</p> : null}
+              </section> : null}
+              <div className="min-h-0 flex-1">
+                <Workspace active={!threadMessage} repository={repository} sessionId={sessionId} tab={shared.tab} workspace={workspace} checkpointRevision={session.version} onRestored={receiveSnapshot} recoveryStatus={recoveryStatus} onTabChange={shared.onTabChange} fileCollaboration={{ memberId: currentMember.id, deliveredIds: codeAnnotationIds, disabled: workspaceLocked, onAnnotate: annotateCode }} />
+              </div>
             </div>
-            {!threadMessage && canApproveChanges(session) ? <ApprovalBar onApprove={shared.onAdvance} /> : null}
-            {threadMessage ? <MessageThread currentMember={currentMember.id} disabled={workspaceLocked} key={threadMessage.id} members={teamMembers} message={threadMessage} onClose={closeThread} onReply={annotate} onSteerReply={steerMessageAnnotation} onSteerThread={steerThread} queue={steeringQueue} runActive={runActive} sessionId={sessionId} /> : null}
+            {threadMessage ? <MessageThread requests={messages.filter((message) => message.threadId === threadMessage.id)} currentMember={currentMember.id} disabled={workspaceLocked} key={threadMessage.id} members={teamMembers} message={threadMessage} onClose={closeThread} onReply={annotate} onAnswerQuestion={answerQuestion} onSteerThread={steerThread} queue={steeringQueue} runActive={runActive} sessionId={sessionId}
+              reviewReady={canResolvePeerReview(session, threadMessage, currentMember.id, threadMessage.interaction?.revision ?? "")}
+              reviewCurrent={!runActive && !workspace.restore && Boolean(workspace.reviewRevision && workspace.reviewRevision === threadMessage.interaction?.revision)}
+              onResolveReview={resolveReview} onViewChanges={() => { setViewingReviewChanges(true); setPane("workspace"); setTab("diff"); }} /> : null}
           </>
         }
       />

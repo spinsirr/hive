@@ -130,8 +130,23 @@ try {
   assert.deepEqual(await store.listTaskSessions(newcomer.member.id), []);
   console.log("PASS: first GitHub login needs no invitation and starts with an empty, isolated dashboard.");
 
+  const untouched = await store.getPublicTaskSessionSnapshot(privateTask.sessionId);
+  await assert.rejects(store.applyTaskSessionAction(privateTask.sessionId, {
+    type: "send-message", actor: newcomer.member.id, body: "Must not enter another task", clientId: randomUUID(),
+  }, newcomer.member), /access to this task/i);
+  await assert.rejects(store.applyTaskSessionAction(privateTask.sessionId, {
+    type: "send-message", actor: owner.member.id, body: "Must not impersonate the owner", clientId: randomUUID(),
+  }, newcomer.member), /access to this task/i);
+  await assert.rejects(store.applyTaskSessionAction(privateTask.sessionId, {
+    type: "send-message", actor: owner.member.id, body: "An actor ID alone is not an authenticated identity", clientId: randomUUID(),
+  }), /access to this task/i);
+  await assert.rejects(store.startTaskWorkspaceRestore(privateTask.sessionId, {
+    id: randomUUID(), snapshotId: "foreign-checkpoint", version: privateTask.version,
+  }, newcomer.member), /access to this task/i);
+  assert.deepEqual(await store.getPublicTaskSessionSnapshot(privateTask.sessionId), untouched);
+  console.log("PASS: task writes enforce membership at the storage boundary, not just the HTTP route.");
+
   const form = new FormData();
-  form.set("title", "Newcomer's first task");
   form.set("creator", owner.member.id); // The server must ignore caller-supplied identity.
   const cookieJar = { get: (name) => newcomer.response.cookies.get(name) };
   let taskPath;
@@ -143,8 +158,11 @@ try {
   const ownTasks = await store.listTaskSessions(newcomer.member.id);
   assert.equal(ownTasks.length, 1);
   assert.equal(taskPath, `/sessions/${ownTasks[0].id}`);
-  assert.equal(ownTasks[0].title, "Newcomer's first task");
+  assert.equal(ownTasks[0].title, "", "creation needs no manually supplied title");
   assert.equal(ownTasks[0].repository, null);
+  const newSession = (await store.getPublicTaskSessionSnapshot(ownTasks[0].id)).session;
+  assert.deepEqual(newSession.messages, [], "authenticated creation starts an empty conversation, not a fabricated agent reply");
+  assert.equal(newSession.stage, "waiting");
   assert.equal(await store.isTaskSessionMember(ownTasks[0].id, owner.member.id), false);
   await assert.rejects(requestCookies.run({ get: () => undefined }, () => createTaskSession(form)), /Unauthorized/);
   console.log("PASS: a first-time account creates its own task; creator spoofing and anonymous creation are denied.");
@@ -198,10 +216,23 @@ try {
   const ownUrl = `https://hive.test/api/sessions/${ownTasks[0].id}`;
   const ownHeaders = { cookie: browserCookie(newcomer), origin: "https://hive.test", "Content-Type": "application/json" };
   const ownSnapshot = await (await snapshot(new NextRequest(ownUrl, { headers: ownHeaders }), ownContext)).json();
+  for (const origin of ["https://untrusted.hive.test", undefined]) {
+    const headers = new Headers(ownHeaders);
+    if (origin) headers.set("origin", origin);
+    else headers.delete("origin");
+    const rejected = await action(new NextRequest(ownUrl, {
+      method: "POST", headers,
+      body: JSON.stringify({ type: "annotate-message", messageId: ownSnapshot.session.messages[0].id,
+        body: "Must not be submitted by another origin", clientId: randomUUID() }),
+    }), ownContext);
+    assert.equal(rejected.status, 403);
+  }
+  assert.deepEqual((await (await snapshot(new NextRequest(ownUrl, { headers: ownHeaders }), ownContext)).json()).session, ownSnapshot.session);
+  console.log("PASS: even a valid login cannot mutate tasks through a foreign or missing browser origin.");
   assert.equal("lifecycle" in ownSnapshot.session, false);
   assert.equal("completedAt" in ownSnapshot.session, false);
   assert.ok((await store.listTaskSessions(newcomer.member.id)).some((task) => task.id === ownTasks[0].id));
-  for (const type of ["complete-session", "reopen-session"]) {
+  for (const type of ["complete-session", "reopen-session", "advance-run"]) {
     const retired = await action(new NextRequest(ownUrl, { method: "POST", headers: ownHeaders, body: JSON.stringify({ type }) }), ownContext);
     assert.equal(retired.status, 400, "Retired actions must not silently change the task");
   }
@@ -221,11 +252,27 @@ try {
   assert.equal(legacy.rows[0].completed_at.getTime(), 1000);
   console.log("PASS: retired completion fields do not hide or lock a task; repository attach and attributed discussion work without rewriting historical values, while old actions are rejected.");
 
+  for (const title of [null, "", " ", "x".repeat(121)]) {
+    const invalid = await action(new NextRequest(ownUrl, { method: "POST", headers: ownHeaders, body: JSON.stringify({ type: "rename-task", title }) }), ownContext);
+    assert.equal(invalid.status, 400);
+  }
+  const renamedResponse = await action(new NextRequest(ownUrl, { method: "POST", headers: ownHeaders, body: JSON.stringify({ type: "rename-task", title: "  My task name  ", actor: owner.member.id }) }), ownContext);
+  assert.equal(renamedResponse.status, 200);
+  const renamedSession = (await renamedResponse.json()).session;
+  assert.equal(renamedSession.title, "My task name");
+  assert.equal(renamedSession.sessionId, ownTasks[0].id);
+  assert.deepEqual(renamedSession.messages, discussion.messages);
+  assert.deepEqual(renamedSession.workspace, discussion.workspace);
+  assert.equal((await store.listTaskSessions(newcomer.member.id)).find((task) => task.id === ownTasks[0].id).title, "My task name");
+  const forbiddenRename = await action(new NextRequest(ownUrl, { method: "POST", headers: { ...ownHeaders, cookie: browserCookie(owner) }, body: JSON.stringify({ type: "rename-task", title: "Foreign rename" }) }), ownContext);
+  assert.equal(forbiddenRename.status, 401);
+  console.log("PASS: unnamed creation and authenticated rename keep the link, conversation and workspace stable; invalid names and foreign members are denied.");
+
   const foreignContext = { params: Promise.resolve({ sessionId: privateTask.sessionId }) };
   for (const [suffix, handler, method] of [["", snapshot, "GET"], ["", action, "POST"], ["/files?kind=directory", files, "GET"], ["/checkpoints", checkpoints, "GET"], ["/checkpoints", restore, "POST"], ["/live", live, "GET"]]) {
     const denied = await handler(new NextRequest(`https://hive.test/api/sessions/${privateTask.sessionId}${suffix}`, {
       method, headers: { cookie: browserCookie(newcomer), origin: "https://hive.test", "Content-Type": "application/json" },
-      ...(method === "POST" ? { body: JSON.stringify({ type: "advance-run", actor: owner.member.id }) } : {}),
+      ...(method === "POST" ? { body: JSON.stringify({ type: "reset", actor: owner.member.id }) } : {}),
     }), foreignContext);
     assert.ok([401, 403, 404].includes(denied.status), `${suffix || "/task"} must deny non-members`);
     assert.doesNotMatch(await denied.text(), /Owner's existing private task/);
@@ -245,6 +292,85 @@ try {
   const afterInvite = await repositories(new NextRequest(`https://hive.test/api/github/repositories?session_id=${privateTask.sessionId}`, { headers: { cookie: browserCookie(newcomer) } }));
   assert.deepEqual((await afterInvite.json()).repositories.map(({ id }) => id), [702]);
   console.log("PASS: only a valid task invitation admits a teammate; joining still does not inherit the inviter's GitHub permissions.");
+
+  const sharedUrl = `https://hive.test/api/sessions/${privateTask.sessionId}`;
+  const sharedAction = (signedIn, payload) => action(new NextRequest(sharedUrl, {
+    method: "POST", headers: { cookie: browserCookie(signedIn), origin: "https://hive.test", "Content-Type": "application/json" }, body: JSON.stringify(payload),
+  }), foreignContext);
+  const sharedDiscussion = await sharedAction(owner, {
+    type: "send-message", body: "@fixture-newcomer Please review this task with me", clientId: randomUUID(),
+  });
+  assert.equal(sharedDiscussion.status, 200);
+  const beforeArchive = (await sharedDiscussion.json()).session;
+  assert.equal(beforeArchive.stage, "waiting", "a teammate discussion does not run the agent");
+  assert.equal(beforeArchive.messages[0].role, "human", "archive checks use a real discussion, not a seeded greeting");
+  const archiveResponse = await sharedAction(owner, { type: "archive-task", actor: newcomer.member.id });
+  assert.equal(archiveResponse.status, 200);
+  const archiveSnapshot = (await archiveResponse.json()).session;
+  assert.equal(archiveSnapshot.archived.by, owner.member.id, "archive attribution comes from auth, not payload");
+  const readonly = await snapshot(new NextRequest(sharedUrl, { headers: { cookie: browserCookie(newcomer) } }), foreignContext);
+  assert.equal(readonly.status, 200);
+  assert.deepEqual((await readonly.json()).session.archived, archiveSnapshot.archived);
+  for (const signedIn of [owner, newcomer]) {
+    for (const payload of [{ type: "reset" }, { type: "send-message", body: "Late send", clientId: randomUUID() }, { type: "annotate-message", messageId: archiveSnapshot.messages[0].id, body: "Late discussion", clientId: randomUUID() }]) {
+      const rejected = await sharedAction(signedIn, payload);
+      assert.equal(rejected.status, 409);
+      assert.match((await rejected.json()).error, /archived/);
+    }
+    const rejectedRepo = await attachRequest(signedIn, signedIn === owner ? 701 : 702, privateTask.sessionId);
+    assert.equal(rejectedRepo.status, 409);
+    assert.match((await rejectedRepo.json()).error, /archived/);
+    const rejectedRollback = await restore(new NextRequest(`${sharedUrl}/checkpoints`, { method: "POST", headers: { cookie: browserCookie(signedIn), origin: "https://hive.test", "Content-Type": "application/json" }, body: JSON.stringify({ id: randomUUID(), snapshotId: "old", version: archiveSnapshot.version }) }), foreignContext);
+    assert.equal(rejectedRollback.status, 409);
+  }
+  assert.equal((await sharedAction(newcomer, { type: "restore-task" })).status, 200);
+  const unarchived = await store.getPublicTaskSessionSnapshot(privateTask.sessionId);
+  assert.equal(unarchived.session.archived, undefined);
+  assert.deepEqual(unarchived.session.workspace, archiveSnapshot.workspace);
+  assert.deepEqual(unarchived.session.messages, archiveSnapshot.messages);
+  console.log("PASS: authenticated archive API, shared read access, HTTP 409 for archived writes/repository attach/rollback, and teammate restore without execution.");
+
+  // Exercise the actual row locks and durable recovery journal, without a VM.
+  const { applyHiveRunResult } = await import("../src/lib/task-session.ts");
+  let recoveryState = unarchived.session;
+  for (const turn of [1, 2]) {
+    recoveryState = applyHiveRunResult(recoveryState, {
+      snapshot: { id: `restore-store-${turn}`, createdAt: turn }, sandboxName: "restore-store-sandbox",
+      agentSession: { id: "restore-store-agent", runtime: "codex", resumeFrom: { type: "resume-session", specificationVersion: "harness-v1", harnessId: "codex", data: { privateCheckpoint: turn } } },
+      summary: `Turn ${turn}`, diff: `+ turn ${turn}`, files: [{ path: "qa.txt", content: `turn ${turn}` }], commands: [], changedFiles: ["qa.txt"],
+    });
+  }
+  await pool.query("UPDATE task_sessions SET workspace = $2, version = $3, stage = $4 WHERE id = $1", [privateTask.sessionId, recoveryState.workspace, recoveryState.version, recoveryState.stage]);
+  const restoreRequest = { id: randomUUID(), snapshotId: "restore-store-1", version: recoveryState.version };
+  const starts = await Promise.allSettled([owner, newcomer].map(({ member }) => store.startTaskWorkspaceRestore(privateTask.sessionId, restoreRequest, member)));
+  assert.equal(starts.filter(({ status }) => status === "fulfilled").length, 1, "only one member can claim the restore");
+  const firstRestore = starts.find(({ status }) => status === "fulfilled").value.session.workspace.restore;
+  await store.recordTaskWorkspaceRestoreSource(privateTask.sessionId, restoreRequest.id, firstRestore.startedAt, "original-vm");
+  await store.finishTaskWorkspaceRestore(privateTask.sessionId, restoreRequest.id, false, firstRestore.startedAt);
+  assert.equal((await store.getTaskSessionSnapshot(privateTask.sessionId)).session.workspace.restore.sourceSessionId, "original-vm");
+  mock.timers.enable({ apis: ["Date"], now: firstRestore.retryAfter + 1 });
+  try {
+    const retry = await store.startTaskWorkspaceRestore(privateTask.sessionId, restoreRequest, newcomer.member);
+    const attempt = retry.session.workspace.restore;
+    assert.equal(attempt.sourceSessionId, "original-vm");
+    assert.equal(attempt.by.id, firstRestore.by.id, "a teammate retry preserves the original attribution");
+    await assert.rejects(store.recordTaskWorkspaceRestoreSource(privateTask.sessionId, restoreRequest.id, firstRestore.startedAt, "wrong-vm"), /attempt changed/);
+    for (const confirmed of [true, false]) {
+      await assert.rejects(store.finishTaskWorkspaceRestore(privateTask.sessionId, restoreRequest.id, confirmed, firstRestore.startedAt), /attempt changed/);
+    }
+    const [confirmed, duplicate] = await Promise.all([
+      store.finishTaskWorkspaceRestore(privateTask.sessionId, restoreRequest.id, true, attempt.startedAt),
+      store.finishTaskWorkspaceRestore(privateTask.sessionId, restoreRequest.id, true, attempt.startedAt),
+    ]);
+    for (const snapshot of [confirmed, duplicate]) {
+      assert.equal(snapshot.session.workspace.restore, undefined);
+      assert.equal(snapshot.session.workspace.diff, "+ turn 1");
+      assert.equal(snapshot.session.messages.filter(({ id }) => id === `restore-${restoreRequest.id}`).length, 1);
+      assert.doesNotMatch(JSON.stringify(snapshot), /privateCheckpoint/);
+    }
+    assert.equal((await store.getTaskSessionSnapshot(privateTask.sessionId)).session.workspace.agentSession.resumeFrom.data.privateCheckpoint, 1);
+  } finally { mock.timers.reset(); }
+  console.log("PASS: concurrent restore claims are serialized, VM evidence survives a retry, stale workers cannot finish it, and concurrent confirmations restore files/context exactly once.");
 
   const repositoryUrl = `https://hive.test/api/github/repositories?session_id=${ownTasks[0].id}`;
   const repositoryCookie = newcomer.response.cookies.get("hive_github_user");

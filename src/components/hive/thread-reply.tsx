@@ -1,15 +1,12 @@
 "use client";
 
 import { Check } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { AgentResponse } from "@/components/hive/agent-response";
 import { resolveMember, type MessageAnnotation, type TeamMember } from "@/lib/task-session";
 
-export function ThreadReply({ reply, members, disabled, queueing, onSteer, showTimestamp = false }: {
+export function ThreadReply({ reply, members, showTimestamp = false }: {
   reply: MessageAnnotation;
   members: TeamMember[];
-  disabled: boolean;
-  queueing: boolean;
-  onSteer: () => void;
   showTimestamp?: boolean;
 }) {
   const author = reply.role === "agent" ? { name: "Hive", shortName: "Hive", initials: "H" } : resolveMember(reply.authorId, members);
@@ -22,12 +19,11 @@ export function ThreadReply({ reply, members, disabled, queueing, onSteer, showT
           <span className="break-words font-medium">{author.name}</span>
           {showTimestamp ? <time className="text-xs text-[#999]" dateTime={new Date(reply.createdAt).toISOString()}>{new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(reply.createdAt)}</time> : null}
         </div>
-        <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-6 text-[#414141] [overflow-wrap:anywhere]">{reply.body}</p>
-        {reply.role === "agent" ? null : reply.status === "open" ? (
-          <Button aria-label={`${queueing ? "Queue steer" : "Steer Hive"} for ${author.shortName}'s reply`} className="mt-1 h-6 px-1.5 text-xs text-[#737373]" disabled={disabled} onClick={onSteer} size="sm" variant="ghost">{queueing ? "Queue steer" : "Steer Hive"}</Button>
-        ) : (
+        <div className="mt-1 break-words text-sm leading-6 text-[#414141] [overflow-wrap:anywhere]">{reply.role === "agent" ? <AgentResponse streaming={reply.deliveryStatus === "streaming"}>{reply.body}</AgentResponse> : <p className="whitespace-pre-wrap">{reply.body}</p>}</div>
+        {reply.deliveryStatus === "error" ? <p role="status" className="mt-1 text-xs text-red-700">Run interrupted. Review the result before continuing.</p> : null}
+        {reply.role !== "agent" && reply.status !== "open" ? (
           <p className="mt-1 flex items-center gap-1 text-xs text-[#737373]">{reply.status === "steered" ? <Check className="size-3" /> : null}{reply.status === "queued" ? "Queued" : "Steered"}{promoter ? ` by ${resolveMember(promoter, members).shortName}` : ""}</p>
-        )}
+        ) : null}
       </div>
     </article>
   );

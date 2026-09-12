@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { appendHiveReply, createInitialTaskSessionState, reduceTaskSession } from "./task-session.ts";
+import { appendHiveReply, createInitialTaskSessionState, memberDirectory, reduceTaskSession } from "./task-session.ts";
 import { publicTaskSessionSnapshot, receiveAgentReply, receiveTaskSessionSnapshot } from "./task-session-snapshot.ts";
 import type { TaskSessionSnapshot } from "./task-session-store.ts";
 import { codingModelOptions, CODEX_GATEWAY_MODEL } from "./coding-models.ts";
@@ -14,6 +14,17 @@ function snapshot(sessionId = "shared-task"): TaskSessionSnapshot {
     typingMembers: [],
   };
 }
+
+test("team archive and restore reach clients through public snapshots without stale state reopening a task", () => {
+  const before = snapshot();
+  const members = Object.values(memberDirectory);
+  const archived = publicTaskSessionSnapshot({ ...before, session: reduceTaskSession(before.session, { type: "archive-task", actor: members[0].id }, 2, members) });
+  assert.ok(receiveTaskSessionSnapshot(before, archived).session.archived);
+  assert.equal(receiveTaskSessionSnapshot(archived, before), archived);
+  const restored = publicTaskSessionSnapshot({ ...archived, session: reduceTaskSession(archived.session, { type: "restore-task", actor: members[1].id }, 3, members) });
+  assert.equal(receiveTaskSessionSnapshot(archived, restored).session.archived, undefined);
+  assert.equal(receiveTaskSessionSnapshot(restored, archived), restored);
+});
 
 test("late reconnect snapshots and action responses cannot roll back team messages", async () => {
   const before = snapshot();

@@ -1,4 +1,6 @@
-// Operator-only, one-time binding. Never accepts credentials from a task/browser.
+// Operator-only platform enrollment, never accepts credentials from a browser.
+// All logged-in users can consume this account on their authorized tasks.
+// Enrollment provenance in the envelope is not an access restriction.
 // Supply DATABASE_URL, HIVE_CODEX_AUTH_SECRET and explicit --session, --owner,
 // --repository-id, --auth-file. This command never overwrites a vault entry.
 import { readFile, stat } from "node:fs/promises";
@@ -32,6 +34,9 @@ if (url.searchParams.get("sslmode") === "require") url.searchParams.set("sslmode
 const client = new Client({ connectionString: url.toString(), connectionTimeoutMillis: 10_000 });
 try {
   await client.connect(); await client.query("BEGIN");
+  await client.query("LOCK TABLE codex_subscriptions IN EXCLUSIVE MODE");
+  const existing = await client.query("SELECT 1 FROM codex_subscriptions LIMIT 1");
+  if (existing.rowCount) throw new Error("The platform already has a Codex account; never add a competing refresh owner.");
   const { rows } = await client.query(`SELECT t.id, t.created_by, t.repository, t.stage, t.workspace->'restore' AS restore,
     u.github_login FROM task_sessions t JOIN users u ON u.id = t.created_by WHERE t.id = $1 FOR UPDATE OF t`, [session]);
   const task = rows[0];
@@ -45,7 +50,7 @@ try {
     VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING RETURNING session_id`, [binding.accountHash, session, binding.ownerId, repositoryId, encrypted]);
   if (!inserted.rowCount) throw new Error("An account/task binding already exists; never overwrite it with an older login seed.");
   await client.query("COMMIT");
-  console.log(`Bound credentials to ${session}. Native refresh is now owned by Hive; do not reuse the seed login.`);
+  console.log(`Enrolled platform credentials from ${session}. All authorized tasks share this account. Hive owns refresh; do not reuse the seed login.`);
 } catch {
   await client.query("ROLLBACK").catch(() => undefined);
   // Database/SDK errors can include parameter values. Do not echo them.

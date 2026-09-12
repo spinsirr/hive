@@ -4,7 +4,6 @@ import { createHash, randomBytes } from "node:crypto";
 
 import { and, eq, gt } from "drizzle-orm";
 
-import { db } from "@/db";
 import { authSessions, users } from "@/db/schema";
 import type { GitHubUserPayload } from "@/lib/github-oauth";
 import type { TeamMember } from "@/lib/task-session";
@@ -45,6 +44,7 @@ export async function createUserSession(
   if (!Number.isSafeInteger(githubUser.id) || githubUser.id <= 0 || !githubUser.login?.trim()) {
     throw new Error("GitHub did not return a valid user identity.");
   }
+  const { db } = await import("@/db");
 
   const name = displayName(githubUser);
   const member: TeamMember = {
@@ -95,6 +95,7 @@ export async function createUserSession(
 
 export async function getSessionMember(token?: string | null) {
   if (!token) return null;
+  const { db } = await import("@/db");
 
   const [result] = await db
     .select({ user: users })
@@ -113,6 +114,7 @@ export async function getSessionMember(token?: string | null) {
 
 export async function deleteUserSession(token?: string | null) {
   if (!token) return;
+  const { db } = await import("@/db");
   await db
     .delete(authSessions)
     .where(eq(authSessions.tokenHash, tokenHash(token)));
