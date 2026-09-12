@@ -43,6 +43,8 @@ const { demoTasks } = await import("../src/lib/ui-demo.ts");
 try {
   render(h(DemoWorkspace, { task: { id: "demo-new", title: "", repositoryName: null, updatedAt: 1 } }));
   assert.ok(screen.getByRole("button", { name: "Rename task: Untitled task" }));
+  assert.ok(!screen.queryByText(/What should we accomplish/), "new tasks do not fabricate a Hive greeting");
+  assert.equal(screen.getByRole("textbox", { name: "Ask Hive or mention a teammate" }).disabled, false);
   assert.equal(screen.queryByRole("button", { name: "Open collaboration thread" }), null, "an empty task has no invented human request");
   fireEvent.change(screen.getByRole("textbox", { name: "Ask Hive or mention a teammate" }), { target: { value: "@casey Polish the Settings menu" } });
   fireEvent.click(screen.getByRole("button", { name: "Send message", exact: true }));

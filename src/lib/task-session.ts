@@ -322,17 +322,7 @@ export function createInitialTaskSessionState(
     version: 1,
     revision: 1,
     stage: "waiting",
-    messages: [
-      {
-        id: "initial-1",
-        name: "Hive",
-        initials: "AI",
-        body: "What should we accomplish? We can clarify the task first and attach a GitHub repository whenever the team is ready to work on code.",
-        role: "agent",
-        time: timeLabel(now),
-        createdAt: now,
-      },
-    ],
+    messages: [],
     annotation: {
       status: "open",
       text: "",
@@ -586,17 +576,6 @@ export function reduceTaskSession(
         commands: [],
         changedFiles: [],
       },
-      messages: [
-        {
-          id: `agent-${now}-1`,
-          name: "Hive",
-          initials: "AI",
-          body: `${state.repository.name} is connected. What should we work on?`,
-          role: "agent",
-          time: timeLabel(now),
-          createdAt: now,
-        },
-      ],
     };
   }
 

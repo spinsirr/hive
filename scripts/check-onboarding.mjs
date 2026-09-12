@@ -159,6 +159,9 @@ try {
   assert.equal(taskPath, `/sessions/${ownTasks[0].id}`);
   assert.equal(ownTasks[0].title, "", "creation needs no manually supplied title");
   assert.equal(ownTasks[0].repository, null);
+  const newSession = (await store.getPublicTaskSessionSnapshot(ownTasks[0].id)).session;
+  assert.deepEqual(newSession.messages, [], "authenticated creation starts an empty conversation, not a fabricated agent reply");
+  assert.equal(newSession.stage, "waiting");
   assert.equal(await store.isTaskSessionMember(ownTasks[0].id, owner.member.id), false);
   await assert.rejects(requestCookies.run({ get: () => undefined }, () => createTaskSession(form)), /Unauthorized/);
   console.log("PASS: a first-time account creates its own task; creator spoofing and anonymous creation are denied.");
@@ -293,6 +296,13 @@ try {
   const sharedAction = (signedIn, payload) => action(new NextRequest(sharedUrl, {
     method: "POST", headers: { cookie: browserCookie(signedIn), origin: "https://hive.test", "Content-Type": "application/json" }, body: JSON.stringify(payload),
   }), foreignContext);
+  const sharedDiscussion = await sharedAction(owner, {
+    type: "send-message", body: "@fixture-newcomer Please review this task with me", clientId: randomUUID(),
+  });
+  assert.equal(sharedDiscussion.status, 200);
+  const beforeArchive = (await sharedDiscussion.json()).session;
+  assert.equal(beforeArchive.stage, "waiting", "a teammate discussion does not run the agent");
+  assert.equal(beforeArchive.messages[0].role, "human", "archive checks use a real discussion, not a seeded greeting");
   const archiveResponse = await sharedAction(owner, { type: "archive-task", actor: newcomer.member.id });
   assert.equal(archiveResponse.status, 200);
   const archiveSnapshot = (await archiveResponse.json()).session;

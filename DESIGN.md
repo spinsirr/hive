@@ -75,7 +75,9 @@ out of scope; this change does not mandate an unrelated token migration.
 ### Task naming (2026-09-12)
 
 New task creates the member-owned task and opens its conversation immediately,
-without a naming dialog or agent run. An empty stored title means not yet named;
+without a naming dialog, seeded greeting or agent run. New and reset conversations
+start empty; the existing composer guides the first message. Historical messages
+are not rewritten. An empty stored title means not yet named;
 the interface displays `Untitled task`. The first accepted main-conversation
 message assigns a whitespace-normalized excerpt (at most 72 graphemes and 120
 UTF-16 code units), atomically with that message. This is not an AI summary.
