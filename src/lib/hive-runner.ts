@@ -15,7 +15,9 @@ import { consumeAgentText } from "@/lib/agent-stream";
 import { createHiveCodex } from "@/lib/codex-harness";
 import { createHiveClaude } from "@/lib/claude-harness";
 import { claudeSubscriptionToken } from "@/lib/claude-subscription";
-import { codexModel, codingModelOptions, selectedCodingModel } from "@/lib/coding-models";
+import { selectedCodingModel } from "@/lib/coding-models";
+import { platformCodingModels, usesPlatformSubscriptions } from "@/lib/platform-models";
+import type { CodexAccess } from "@/lib/codex-subscription-broker";
 import { getRepositoryCloneCredentials } from "@/lib/github-app";
 import { buildHivePrompt } from "@/lib/hive-prompt";
 import { createHiveMemory } from "@/lib/hive-memory";
@@ -72,7 +74,7 @@ async function commandOutput(
   };
 }
 
-async function ensureCodexBridgeDependencies(
+export async function ensureCodexBridgeDependencies(
   sandbox: Experimental_SandboxSession,
   sessionWorkDir: string,
   abortSignal?: AbortSignal,
@@ -268,7 +270,7 @@ export async function runHiveCodingTask(
   taskSession: TaskSessionState,
   actor: MemberId,
   steer?: string,
-  auth?: { preferSubscription?: boolean; actorName?: string; memoryQuery?: string; vercelOidcToken?: string; onText?: (body: string) => void; onSubagents?: (update: HiveSubagentUpdate) => void; toolConnection?: { url: string; token: string; controlCapability: string; runId: string } },
+  auth?: { codexSubscription?: CodexAccess; actorName?: string; memoryQuery?: string; vercelOidcToken?: string; onText?: (body: string) => void; onSubagents?: (update: HiveSubagentUpdate) => void; toolConnection?: { url: string; token: string; controlCapability: string; runId: string } },
 ): Promise<HiveRunResult> {
   if (taskSession.workspace.restore) throw new HiveAgentError("Finish restoring the workspace before starting Hive.", new Error("Workspace restore in progress."));
   if (!taskSession.repository) {
@@ -292,15 +294,19 @@ export async function runHiveCodingTask(
       taskSession.repository.connectedAt,
     );
   const runtime = taskSession.workspace.agentSession?.runtime ?? "codex";
-  const claudeToken = runtime === "claude-code" ? claudeSubscriptionToken(taskSession, process.env) : undefined;
+  const subscription = usesPlatformSubscriptions(process.env);
+  const claudeToken = runtime === "claude-code" ? claudeSubscriptionToken(process.env) : undefined;
+  if (subscription && (runtime === "claude-code" ? !claudeToken : !auth?.codexSubscription)) {
+    throw new HiveAgentError(`Reconnect the ${runtime === "claude-code" ? "Claude" : "Codex"} subscription.`, new Error("Platform credential unavailable."));
+  }
   const model = selectedCodingModel(
-    codingModelOptions(codexModel(process.env.HIVE_CODEX_MODEL, auth?.preferSubscription), Boolean(claudeToken)),
+    platformCodingModels(process.env),
     runtime, taskSession.workspace.codingModel,
   );
   if (!model) throw new HiveAgentError("Choose a model available with this task's current connection.", new Error("Selected coding model is unavailable."));
   const effort = model.efforts.length ? taskSession.workspace.codingEffort ?? model.efforts[0] : undefined;
   if (effort && !model.efforts.includes(effort)) throw new HiveAgentError("Choose a supported effort for this model.", new Error("Selected coding effort is unavailable."));
-  const failureMessage = (error: unknown) => hiveAgentFailureMessage(error, claudeToken ? "claude-subscription" : "gateway");
+  const failureMessage = (error: unknown) => hiveAgentFailureMessage(error, subscription ? runtime === "claude-code" ? "claude-subscription" : "codex-subscription" : "gateway");
   const authentication = runtime === "claude-code" ? (claudeToken ? "claude-subscription" : "gateway") : undefined;
   if (runtime === "claude-code" && taskSession.workspace.agentSession?.resumeFrom &&
     taskSession.workspace.agentSession.authentication !== authentication) {
@@ -340,7 +346,8 @@ export async function runHiveCodingTask(
       persistent: true,
       snapshotExpiration: 0,
       keepLastSnapshots: { count: WORKSPACE_CHECKPOINT_LIMIT, expiration: 0 },
-      resources: { vcpus: 1 },
+      // The pinned Claude bootstrap OOMs at 2 GiB; 2 vCPUs provide 4 GiB.
+      resources: { vcpus: runtime === "claude-code" ? 2 : 1 },
       tags: {
         app: "hive",
         session: taskSession.sessionId,
@@ -362,7 +369,7 @@ export async function runHiveCodingTask(
           headers: { Authorization: `Bearer ${auth.toolConnection.token}` },
         } } } : {}),
       }) : createHiveCodex({
-        auth: gatewayAuth,
+        auth: subscription ? {} : gatewayAuth,
         reasoningEffort: effort,
         webSearch: false,
         codexConfig: { model_verbosity: "low" },
@@ -370,13 +377,13 @@ export async function runHiveCodingTask(
         // credential and database access remain in the authenticated host route.
         ...(auth?.toolConnection ? { mcpServers: { hive: {
           url: auth.toolConnection.url,
-          http_headers: { Authorization: `Bearer ${auth.toolConnection.token}`, "X-Hive-Control": auth.toolConnection.controlCapability, "X-Hive-Run-Id": auth.toolConnection.runId, ...(auth.preferSubscription ? { "X-Hive-Auth": "prefer-chatgpt", "X-Hive-Gateway-Model": codexModel(process.env.HIVE_CODEX_MODEL) } : {}) },
+          http_headers: { Authorization: `Bearer ${auth.toolConnection.token}`, "X-Hive-Control": auth.toolConnection.controlCapability, "X-Hive-Run-Id": auth.toolConnection.runId },
           startup_timeout_sec: 10,
           tool_timeout_sec: 15,
         } } } : {}),
       }, (attributes) => {
         console.info(attributes.event === "authentication" ? "Hive model routing" : "Hive Gateway request", { taskSessionId: taskSession.sessionId, ...attributes });
-      }, auth?.onSubagents);
+      }, auth?.onSubagents, auth?.codexSubscription);
     const agent = new HarnessAgent({
       id: "hive-coding-agent",
       harness,
@@ -387,7 +394,7 @@ export async function runHiveCodingTask(
         inactiveTools: ["Agent", "SendMessage", "AskUserQuestion", "EnterPlanMode", "ExitPlanMode", "EnterWorktree", "ExitWorktree", "CronCreate", "CronDelete", "CronList", "RemoteTrigger", "ScheduleWakeup", "Workflow"] as const,
         skills: [{
           name: "hive-collaboration",
-          description: "Work within a Hive multiplayer task using team discussion and repository memory.",
+          description: "Use when a request needs Hive teammate IDs, a structured human question or review, a contribution to another Thread, or repository memory. Not for ordinary greetings or direct conversational answers.",
           content: await readFile(path.join(process.cwd(), "src/lib/codex-bridge/hive-collaboration/SKILL.md"), "utf8"),
         }],
       } : {}),
@@ -463,6 +470,13 @@ export async function runHiveCodingTask(
           if (part.type === "tool-error") observedTools.toolResults.push({ toolCallId: part.toolCallId, output: part.error });
         },
       );
+      console.info("Hive turn activity", {
+        taskSessionId: taskSession.sessionId,
+        runId: taskSession.workspace.liveReply?.id,
+        runtime,
+        toolCallCount: observedTools.toolCalls.length,
+        toolNames: [...new Set(observedTools.toolCalls.map((call) => call.toolName))],
+      });
       if (!sandboxSession || !sandboxWorkDir) {
         throw new Error("Vercel Sandbox session was not made available to Hive.");
       }

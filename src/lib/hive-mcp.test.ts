@@ -25,13 +25,13 @@ test("MCP delegation, result reads and stop remain bound to the current authenti
   try {
     const tools = await client.listTools();
     for (const name of ["spawn_subagent", "read_subagent", "stop_subagent"]) assert.ok(tools.tools.some((tool) => tool.name === name));
-    await client.callTool({ name: "spawn_subagent", arguments: { kind: "research", task: "Inspect queue.ts" } });
+    await client.callTool({ name: "spawn_subagent", arguments: { key: "inspect-queue", kind: "research", task: "Inspect queue.ts" } });
     await client.callTool({ name: "read_subagent", arguments: { id: task.id } });
     await client.callTool({ name: "stop_subagent", arguments: { id: task.id } });
     assert.deepEqual(calls.map((input) => input.action), ["spawn", "read", "stop"]);
     assert.equal(context.steeringQueue.length, 0);
     context = { ...context, workspace: { ...context.workspace, liveReply: { id: "new-run" } } };
-    assert.equal((await client.callTool({ name: "spawn_subagent", arguments: { kind: "research", task: "Must not run" } })).isError, true);
+    assert.equal((await client.callTool({ name: "spawn_subagent", arguments: { key: "stale", kind: "research", task: "Must not run" } })).isError, true);
     assert.equal(calls.length, 3);
   } finally { await client.close(); }
 });
@@ -60,7 +60,7 @@ test("Claude shares discussion and memory tools without advertising Codex child 
     assert.deepEqual((await client.listTools()).tools.map((tool) => tool.name).sort(), ["get_context", "remember_memory", "reply_to_thread", "search_memory"]);
     const result = await client.callTool({ name: "get_context", arguments: {} });
     assert.match(JSON.stringify(result), /claude-code/);
-    const reply = await client.callTool({ name: "reply_to_thread", arguments: { messageId: "human-one", body: "Can you clarify?" } });
+    const reply = await client.callTool({ name: "reply_to_thread", arguments: { key: "clarify", messageId: "human-one", body: "Can you clarify?" } });
     assert.match(JSON.stringify(reply), /hive-reply/);
     assert.equal(controlled, false);
   } finally { await client.close(); }
@@ -129,7 +129,7 @@ test("real MCP client can read, remember, recall and reply without starting anot
     assert.match(JSON.stringify(recalled), /Use pnpm/);
     assert.equal(providerBodies.length, 2);
     const version = context.version;
-    await client.callTool({ name: "reply_to_thread", arguments: { messageId: "human-one", body: "Should this apply to CI too?" } });
+    await client.callTool({ name: "reply_to_thread", arguments: { key: "ci-policy", messageId: "human-one", body: "Should this apply to CI too?" } });
     assert.equal(replies.length, 1);
     assert.equal(context.version, version);
     assert.equal(context.steeringQueue.length, 0);
@@ -138,3 +138,39 @@ test("real MCP client can read, remember, recall and reply without starting anot
     assert.equal(providerBodies.length, 2);
   } finally { await client.close(); }
 });
+
+for (const kind of ["message", "message-annotation", "message-thread"] as const) {
+test(`pending ${kind} content is not readable or shareable as memory by the active agent`, async () => {
+  const context = fixture();
+  const messageId = kind === "message" ? "queued-message" : "human-one";
+  const replyId = kind === "message" ? undefined : "queued-reply";
+  if (kind === "message") {
+    context.messages.push({ ...context.messages[0], id: messageId, body: "FUTURE_REQUEST_ONLY" });
+  } else {
+    context.messages[0].annotations = [{ id: "queued-reply", body: "FUTURE_REQUEST_ONLY", authorId: "spencer", createdAt: 2, status: kind === "message-annotation" ? "queued" : "open" }];
+    if (kind === "message-thread") context.messages[0].threadSteer = {
+      id: "queue-one", throughReplyId: "queued-reply", replyCount: 1, requestedBy: "spencer", requestedAt: 2, status: "queued",
+    };
+  }
+  context.steeringQueue.push({ id: "queue-one", authorId: "spencer", body: "FUTURE_REQUEST_ONLY", queuedAt: 2,
+    source: kind === "message" ? { kind, messageId } : kind === "message-thread" ? { kind, messageId, steerId: "queue-one" } : { kind, messageId, annotationId: "queued-reply" }, sourceLabel: "Spencer's message" });
+  const client = new Client({ name: "queue-boundary", version: "1" });
+  const writes: unknown[] = [];
+  await client.connect(new StreamableHTTPClientTransport(new URL("https://hive.test/agent-tools"), {
+    fetch: (input, init) => handleHiveMcp(new Request(input, init), scope, {
+      read: async () => context,
+      reply: async () => { throw new Error("No reply requested"); },
+    }, createHiveMemory("local-fixture", async (_url, options) => {
+      writes.push(options?.body);
+      return Response.json({ results: [{ id: "must-not-save" }] });
+    })),
+  }));
+  try {
+    const result = await client.callTool({ name: "get_context", arguments: {} });
+    assert.match(JSON.stringify(result), /queue-one/);
+    assert.doesNotMatch(JSON.stringify(result), /FUTURE_REQUEST_ONLY/);
+    assert.equal((await client.callTool({ name: "remember_memory", arguments: { messageId, ...(replyId ? { replyId } : {}) } })).isError, true);
+    assert.deepEqual(writes, [], "Unapplied requests must never leave this task as shared memory");
+  } finally { await client.close(); }
+});
+}

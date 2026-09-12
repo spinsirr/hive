@@ -9,11 +9,13 @@ import { runHiveConversation } from "@/lib/hive-conversation";
 import { hiveErrorCopy } from "@/lib/hive-error-copy";
 import { isClientSubmissionId } from "@/lib/message-draft";
 import { runHiveCodingTask } from "@/lib/hive-runner";
-import { prefersCodexSubscription } from "@/lib/codex-subscription-store";
+import { readCodexSubscription } from "@/lib/codex-subscription-store";
+import { usesPlatformSubscriptions } from "@/lib/platform-models";
 import { buildHiveRunInput } from "@/lib/hive-prompt";
 import { createHiveToolToken, hiveToolEndpoint } from "@/lib/hive-tool-token";
 import { MESSAGE_BODY_LIMIT, MessageEditError, type TaskSessionAction } from "@/lib/task-session";
 import { isTaskSessionId } from "@/lib/task-session-id";
+import { normalizeTaskTitle } from "@/lib/task-title";
 import { publicTaskSessionSnapshot } from "@/lib/task-session-snapshot";
 import { WorkspaceRestoreError } from "@/lib/workspace-restore-state";
 import { subagentCapability } from "@/lib/subagent-control";
@@ -25,6 +27,7 @@ import {
   checkpointSubagents,
   getPublicTaskSessionSnapshot,
   isTaskSessionMember,
+  TaskSessionAccessError,
 } from "@/lib/task-session-store";
 import type { TaskSessionSnapshot } from "@/lib/task-session-store";
 
@@ -64,6 +67,9 @@ export async function GET(request: NextRequest, context: TaskSessionRouteContext
 }
 
 export async function POST(request: NextRequest, context: TaskSessionRouteContext) {
+  if (request.headers.get("origin") !== request.nextUrl.origin) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403, headers: { "Cache-Control": "private, no-store" } });
+  }
   const auth = await authenticatedSession(request, context);
   if (!auth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -77,8 +83,14 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
   }
 
   if (
+    payload.type !== "rename-task" &&
+    payload.type !== "archive-task" &&
+    payload.type !== "restore-task" &&
     payload.type !== "send-message" &&
     payload.type !== "edit-message" &&
+    payload.type !== "answer-question" &&
+    payload.type !== "resolve-peer-review" &&
+    payload.type !== "continue-peer-response" &&
     payload.type !== "select-harness" &&
     payload.type !== "set-coding-effort" &&
     payload.type !== "annotate-message" &&
@@ -89,7 +101,6 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
     payload.type !== "remove-queued-steer" &&
     payload.type !== "reorder-queued-steer" &&
     payload.type !== "steer-agent" &&
-    payload.type !== "advance-run" &&
     payload.type !== "recover-stalled-run" &&
     payload.type !== "reset"
   ) {
@@ -102,6 +113,23 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
     !("expectedRevision" in payload) || typeof payload.expectedRevision !== "number" || !Number.isSafeInteger(payload.expectedRevision) || payload.expectedRevision < 0 ||
     ("queuedSteerId" in payload && (typeof payload.queuedSteerId !== "string" || !payload.queuedSteerId))
   )) return NextResponse.json({ error: "Choose a message and enter up to 8,000 characters with its current revision." }, { status: 400 });
+  if (payload.type === "rename-task" && (!("title" in payload) || typeof payload.title !== "string" || !normalizeTaskTitle(payload.title))) {
+    return NextResponse.json({ error: "Use a task name between 1 and 120 characters." }, { status: 400 });
+  }
+
+  if (payload.type === "answer-question" && (!("messageId" in payload) || typeof payload.messageId !== "string" || payload.messageId.length > 200 ||
+    ("replyThreadId" in payload && payload.replyThreadId !== undefined && (typeof payload.replyThreadId !== "string" || !payload.replyThreadId || payload.replyThreadId.length > 200)) ||
+    !("body" in payload) || typeof payload.body !== "string" || !payload.body.trim() || payload.body.trim().length > 4000 ||
+    !("clientId" in payload) || !isClientSubmissionId(payload.clientId))) {
+    return NextResponse.json({ error: "Choose a question and provide an answer with a submission ID." }, { status: 400 });
+  }
+  if (payload.type === "continue-peer-response" && (!("steerId" in payload) || typeof payload.steerId !== "string" || payload.steerId.length > 200)) {
+    return NextResponse.json({ error: "Choose a queued answer." }, { status: 400 });
+  }
+  if (payload.type === "resolve-peer-review" && (!("messageId" in payload) || typeof payload.messageId !== "string" || payload.messageId.length > 200 ||
+    !("revision" in payload) || typeof payload.revision !== "string" || !payload.revision || payload.revision.length > 200)) {
+    return NextResponse.json({ error: "Choose the code revision you reviewed." }, { status: 400 });
+  }
 
   if (payload.type === "select-harness" &&
     (!("runtime" in payload) || (payload.runtime !== "codex" && payload.runtime !== "claude-code"))) {
@@ -182,6 +210,7 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
   try { applied = await applyTaskSessionAction(sessionId, action, member, actionAt); }
   catch (error) {
     if (error instanceof MessageEditError) return NextResponse.json({ error: error.message }, { status: error.status });
+    if (error instanceof TaskSessionAccessError) return NextResponse.json({ error: error.message }, { status: 403, headers: { "Cache-Control": "private, no-store" } });
     if (error instanceof WorkspaceRestoreError) return NextResponse.json({ error: error.message }, { status: error.status });
     throw error;
   }
@@ -215,7 +244,7 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
         }
       : undefined;
   const activeSteer =
-    action.type === "apply-next-steer" || action.type === "steer-thread"
+    action.type === "apply-next-steer" || action.type === "steer-thread" || action.type === "answer-question" || action.type === "continue-peer-response"
       ? snapshot.session.activeSteer
       : undefined;
 
@@ -240,6 +269,15 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
       action,
       snapshot.members,
     );
+    let codexSubscription;
+    if (usesPlatformSubscriptions(process.env) && snapshot.session.workspace.agentSession?.runtime !== "claude-code") {
+      try {
+        codexSubscription = await readCodexSubscription({ sessionId, memberId: member.id, runId: replyId });
+      } catch {
+        // Vault/provider failures must never include credentials or change billing.
+        throw new HiveAgentError("Reconnect the Codex subscription.", new Error("Platform credential unavailable."));
+      }
+    }
     if (!snapshot.session.repository) {
       const reply = await runHiveConversation(
         snapshot.session,
@@ -247,6 +285,7 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
         actorName,
         writer.push,
         steer,
+        codexSubscription,
       );
       await writer.close();
       return sessionResponse(
@@ -269,7 +308,7 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
       runId: replyId,
     } : undefined;
     const runResult = await runHiveCodingTask(snapshot.session, runActor, steer, {
-      preferSubscription: snapshot.session.workspace.agentSession?.runtime !== "claude-code" && await prefersCodexSubscription(sessionId),
+      codexSubscription,
       actorName,
       memoryQuery,
       vercelOidcToken,

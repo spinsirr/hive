@@ -28,15 +28,17 @@ let reducer;
 let codeRunInput;
 let codeRuns = 0;
 mock.module(new URL("../src/lib/codex-subscription-store.ts", import.meta.url).href, { namedExports: {
-  prefersCodexSubscription: async () => false,
+  readCodexSubscription: async () => { throw new Error("File browsing must not request a model credential"); },
 } });
 mock.module(new URL("../src/lib/auth-session.ts", import.meta.url).href, { namedExports: {
   HIVE_SESSION_COOKIE: "hive_session", getSessionMember: async () => member,
 } });
 mock.module(new URL("../src/lib/task-session-store.ts", import.meta.url).href, { namedExports: {
+  TaskSessionAccessError: class extends Error {},
   withTaskWorkspaceRead: async (_id, read) => read(session),
   startTaskWorkspaceRestore: async () => { throw new Error("Restore is outside this read-only check"); },
   finishTaskWorkspaceRestore: async () => { throw new Error("Restore is outside this read-only check"); },
+  recordTaskWorkspaceRestoreSource: async () => { throw new Error("Restore is outside this read-only check"); },
   isTaskSessionMember: async () => admitted,
   getTaskSessionSnapshot: async () => ({ session }),
   getPublicTaskSessionSnapshot: async () => ({ session }),
@@ -164,7 +166,7 @@ try {
 
   const { POST } = await import("../src/app/api/sessions/[sessionId]/route.ts");
   member = { id: "github-101", name: "QA User", shortName: "QA", initials: "QA" };
-  const post = (body) => POST(new NextRequest("https://hive.example/api/sessions/files-qa", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }), { params: Promise.resolve({ sessionId: "files-qa" }) });
+  const post = (body) => POST(new NextRequest("https://hive.example/api/sessions/files-qa", { method: "POST", headers: { "Content-Type": "application/json", origin: "https://hive.example" }, body: JSON.stringify(body) }), { params: Promise.resolve({ sessionId: "files-qa" }) });
   const annotation = { type: "annotate-code", actor: "forged-author", clientId: "43725302-b3ef-47b6-a717-70cc459d839f", body: "Preserve keyboard focus", reference: { path: "src/main.tsx", startLine: 3, endLine: 3, quote: "<button>Save</button>" } };
   admitted = false;
   assert.equal((await post(annotation)).status, 401);

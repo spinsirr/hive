@@ -1,10 +1,8 @@
 import { cookies } from "next/headers";
 
-import { createTaskSession } from "@/app/actions";
 import { HiveSignIn } from "@/components/hive/hive-sign-in";
 import { TaskDashboard } from "@/components/hive/task-dashboard";
 import { getSessionMember, HIVE_SESSION_COOKIE } from "@/lib/auth-session";
-import { listTaskSessions } from "@/lib/task-session-store";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +13,7 @@ export default async function Home({
 }) {
   const { signin } = await searchParams;
   const cookieStore = await cookies();
-  const member = await getSessionMember(
+  const member = signin === "retry" ? null : await getSessionMember(
     cookieStore.get(HIVE_SESSION_COOKIE)?.value,
   );
   if (!member || signin === "retry") {
@@ -33,6 +31,11 @@ export default async function Home({
 
   // Keep the existing membership-scoped query. The client only needs list
   // metadata, not repository authorization details or a full task transcript.
+  // Visitors can reach the public demo without loading the task database.
+  const [{ listTaskSessions }, { createTaskSession }] = await Promise.all([
+    import("@/lib/task-session-store"),
+    import("@/app/actions"),
+  ]);
   const sessions = await listTaskSessions(member.id);
   // This dynamic Server Component captures one request time; the client only
   // renders that serialized value, including during hydration.
@@ -49,6 +52,7 @@ export default async function Home({
         title: session.title,
         repositoryName: session.repository?.name ?? null,
         updatedAt: session.updatedAt,
+        archivedAt: session.archived?.at ?? null,
       }))}
     />
   );

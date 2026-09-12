@@ -22,6 +22,8 @@ export function launchCodexAppServer(workdir, subscription = false) {
 }
 
 function threadSettings(start, workdir, subscription = false) {
+  const nativeConfig = { ...start.codexConfig };
+  delete nativeConfig.hive_subscription_tokens;
   const gatewayBaseUrl = process.env.AI_GATEWAY_BASE_URL;
   const gateway = !subscription && Boolean(process.env.AI_GATEWAY_API_KEY || gatewayBaseUrl);
   if (gateway && !gatewayBaseUrl) throw new Error("AI Gateway base URL is missing.");
@@ -29,7 +31,7 @@ function threadSettings(start, workdir, subscription = false) {
   const model = gateway && start.model && !start.model.includes("/")
     ? `openai/${start.model}` : start.model;
   const config = {
-    ...start.codexConfig,
+    ...nativeConfig,
     web_search: start.webSearch ? "live" : "disabled",
     ...(start.reasoningEffort ? { model_reasoning_effort: start.reasoningEffort } : {}),
     model_reasoning_summary: "detailed",
@@ -78,29 +80,11 @@ export async function runCodexAppServerTurn(options) {
   if (start.tools?.length) throw new Error("Hive's Codex bridge does not accept host-executed tools.");
   turn.abortSignal.throwIfAborted();
   turn.emit({ type: "stream-start" });
-  let continuedThreadId = options.threadId;
-  let gatewayStart = start;
   if (subscriptionPreferred(start)) {
-    try {
-      const tokens = await readSubscriptionTokens(start, turn.abortSignal);
-      return await runWithCompatibleHistory({ ...options, subscription: true, tokens, settings: threadSettings(start, workdir, true) });
-    } catch (error) {
-      if (!(error instanceof SubscriptionUnavailable)) throw error;
-      // Only preflight failures or a positively excluded, empty rejected turn
-      // can switch. A command, tool, text delta, or ambiguous failure cannot.
-      continuedThreadId = error.threadId || continuedThreadId;
-      if (!process.env.AI_GATEWAY_BASE_URL) throw error;
-      const model = start.mcpServers.hive.http_headers["X-Hive-Gateway-Model"];
-      if (typeof model !== "string" || !model.trim()) throw new Error("Gateway fallback model is missing.");
-      // The existing fallback is Codex Mini, which accepts only these three
-      // efforts. Preserve the user's subscription setting for the next turn.
-      const reasoningEffort = ["xhigh", "max"].includes(start.reasoningEffort) ? "high" : start.reasoningEffort;
-      gatewayStart = { ...start, model, reasoningEffort, ...(error.continuationPrompt ? { prompt: error.continuationPrompt } : {}) };
-      turn.bridgeLog?.({ level: "warn", subsystem: "hive.auth", message: "Authentication fallback",
-        attrs: { source: "ai-gateway", reason: error.reason, model, requestedEffort: start.reasoningEffort, effort: reasoningEffort } });
-    }
+    const tokens = readSubscriptionTokens(start);
+    return runWithCompatibleHistory({ ...options, subscription: true, tokens, settings: threadSettings(start, workdir, true) });
   }
-  const settings = threadSettings(gatewayStart, workdir);
+  const settings = threadSettings(start, workdir);
   let gateway;
   try {
     if (process.env.AI_GATEWAY_BASE_URL) {
@@ -125,7 +109,7 @@ export async function runCodexAppServerTurn(options) {
       });
     }
     turn.abortSignal.throwIfAborted();
-    return await runWithCompatibleHistory({ ...options, start: gatewayStart, threadId: continuedThreadId, settings });
+    return await runWithCompatibleHistory({ ...options, settings });
   } finally {
     await gateway?.close();
   }
@@ -141,11 +125,7 @@ async function runWithCompatibleHistory(options) {
       attrs: { source: options.subscription ? "chatgpt" : "ai-gateway", model: options.settings.model, reason: "incompatible_native_history" } });
     // One recovery only, after confirmed rejection and clean shutdown. Never
     // edit/delete rollout files or re-run tools from a completed/partial turn.
-    try { return await runNativeTurn({ ...options, start, threadId: undefined }); }
-    catch (failure) {
-      if (failure instanceof SubscriptionUnavailable) failure.continuationPrompt = start.prompt;
-      throw failure;
-    }
+    return runNativeTurn({ ...options, start, threadId: undefined });
   }
 }
 
@@ -254,11 +234,12 @@ async function runNativeTurn({
       const message = JSON.parse(line);
       if (message.method && message.id != null) {
         if (subscription && message.method === "account/chatgptAuthTokens/refresh") {
-          try {
-            const refreshed = await readSubscriptionTokens(start, turn.abortSignal, true);
-            if (refreshed.chatgptAccountId !== tokens.chatgptAccountId) throw new Error("Account changed.");
-            send({ id: message.id, result: refreshed });
-          } catch { send({ id: message.id, error: { code: -32000, message: "Authentication refresh unavailable." } }); }
+          // Host refresh happens before each bounded run; never hand a real
+          // account token to repository code or replay this turn on paid auth.
+          send({ id: message.id, error: { code: -32000, message: "Reconnect the Codex subscription." } });
+          // This account-wide request can originate from optional background
+          // settings, not inference. Refuse it, then let the native turn report
+          // its outcome; genuine inference auth failures still fail below.
           continue;
         }
         // Approval/input requests are not silently granted or left hanging.
@@ -302,12 +283,9 @@ async function runNativeTurn({
           }
           send({ id: 2, method: "turn/start", params: {
             threadId,
-            input: [
-              { type: "text", text: start.prompt, text_elements: [] },
-              // Explicit native skill input preserves an existing thread. The
-              // generic adapter's skills replacement would request a restart.
-              ...(start.mcpServers?.hive ? [{ type: "skill", name: "hive-collaboration", path: fileURLToPath(new URL("./hive-collaboration/SKILL.md", import.meta.url)) }] : []),
-            ],
+            // Extra roots make the collaboration skill discoverable when needed.
+            // Naming it here would explicitly invoke it even for a plain greeting.
+            input: [{ type: "text", text: start.prompt, text_elements: [] }],
             ...(start.reasoningEffort ? { effort: start.reasoningEffort } : {}),
             ...(start.responseFormat?.type === "json" && start.responseFormat.schema
               ? { outputSchema: start.responseFormat.schema } : {}),
@@ -377,18 +355,7 @@ async function runNativeTurn({
         throw new NativeHistoryMismatch(portableNativeHistory(read?.thread, turnId));
       }
       const reason = subscription ? subscriptionFailureReason(result.error ?? failure) : null;
-      if (reason && !observedActivity && result.status === "failed" && threadId && turnId) {
-        // Preserve the original history. Continue from a native fork immediately
-        // before this positively identified, rejected empty turn, never replay
-        // completed work or use the deprecated destructive rollback API.
-        const read = await request("thread/read", { threadId, includeTurns: true });
-        const last = read?.thread?.turns?.at(-1);
-        if (last?.id === turnId && last.status === "failed" && Array.isArray(last.items) && last.items.every((item) => item.type === "userMessage" || item.type === "reasoning")) {
-          const fork = await request("thread/fork", { ...settings, threadId, beforeTurnId: turnId, deferGoalContinuation: true, ephemeral: false });
-          const forkId = fork?.thread?.id;
-          if (typeof forkId === "string" && forkId && forkId !== threadId) throw new SubscriptionUnavailable(reason, forkId);
-        }
-      }
+      if (reason) throw new SubscriptionUnavailable(reason);
       throw new Error(result.error?.message || failure?.message || `Codex turn ${result.status}.`);
     }
     if ([...commands.keys()].some((id) => !completedItems.has(id))) {
@@ -412,8 +379,7 @@ async function runNativeTurn({
       pending.reject(new Error("Codex has stopped."));
     }
     pendingRequests.clear();
-    // This also overrides a pending fallback: an unflushed native fork must
-    // never be resumed and replayed by another provider.
+    // An unflushed native checkpoint must never be resumed or replayed.
     if (processExit.code !== 0 || processExit.signal) {
       throw new Error("Codex did not shut down cleanly; its history checkpoint could not be confirmed.");
     }

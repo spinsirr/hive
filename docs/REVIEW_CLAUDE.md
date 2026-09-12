@@ -2,7 +2,7 @@
 
 - **Reviewed**: 2026-09-09 (Pacific) / early 2026-09-10 UTC
 - **Baseline**: HEAD `2799196ed42714e6f63135d605766b2708bb7073` (`docs: record live memory boundaries and Gateway evidence`)
-- **Working tree at start**: `## main...origin/main [ahead 1]`; uncommitted edits to `docs/GOAL.md`, `docs/MEMORY_TRADEOFF.md`, `docs/PRESENTATION_NOTES.md`, `docs/SUBMISSION.md` (4 files, +16/−5); untracked `docs/CLAUDE_REVIEW_HANDOFF.md`. This matches the handoff. The review covers the working tree, including the uncommitted docs.
+- **Working tree at start**: `## main...origin/main [ahead 1]`, with uncommitted evidence-document updates and the review handoff. The review covers that working tree, including its uncommitted docs. Documentation paths have since been reorganized; line references below describe the reviewed revision.
 - **Working tree at end of the review**: unchanged apart from this report. The `origin/main` tracking ref was fast-forwarded to `2799196` at 18:52:53 −0700 by a background `fetch` that I did not start (the reflog shows `fetch --no-recurse-submodules --no-write-fetch-head`, typical of an IDE), which is why `[ahead 1]` disappeared. I ran no push, pull or fetch. Conclusion: HEAD is already on GitHub.
 - **Evidence sources**: the current repository, the installed dependency versions in `node_modules`, and controlled local tests. The CoreSpeed memory connector was available; three queries (Hive / team-agent-ui-prototype / Codex harness Mem0 / Vercel Neon) returned **no Hive-related decisions** (only unrelated HaaS/AE entries). Nothing was written to CoreSpeed memory during this review.
 - **Boundaries**: `.env.local` and all credentials were left unread; no production database, Vercel, Mem0, model or real GitHub account was touched; nothing was committed, pushed or deployed; source code was not modified during the review itself. The only additions were this file and explainable local build products (`.next/`, `next-env.d.ts`, `tsconfig.tsbuildinfo`, all gitignored).
@@ -11,7 +11,7 @@
 
 ## 1. Overall conclusion
 
-**The take-home demo can proceed along the prepared route, but two P1 issues can kill a task live on stage and should be fixed before the rehearsal.** No confirmed P0 was found (privilege escalation, credential leakage, cross-task or cross-account IDOR). The core boundaries — auth/membership/repository intersection, frozen Threads, row locks and idempotency, private native-history projection, safe file reads, tool-capability fencing — hold up in the source and in the local real-Postgres integration checks.
+**The core collaboration path works, but two P1 issues can interrupt an active task and should be fixed before broader use.** No confirmed P0 was found (privilege escalation, credential leakage, cross-task or cross-account IDOR). The core boundaries — auth/membership/repository intersection, frozen Threads, row locks and idempotency, private native-history projection, safe file reads, tool-capability fencing — hold up in the source and in the local real-Postgres integration checks.
 
 Risks that block the core path, ordered by demo impact:
 
@@ -125,7 +125,7 @@ None. No finding has enough evidence to count as a "severe security/data risk re
 
 #### P3-5 Run-failure copy is over-collapsed
 
-- `src/lib/hive-agent.ts:42-75` maps sandbox creation failures, dependency repair failures, clone failures and more to "Run failed. Try again." (`hive-error-copy.ts:6`); the cause exists only in Vercel logs. This is in tension with "Show honest failures" and leaves the presenter unable to judge whether to retry. Keep a few categories (Workspace unavailable / Repository unavailable / Rate limit).
+- `src/lib/hive-agent.ts:42-75` maps sandbox creation failures, dependency repair failures, clone failures and more to "Run failed. Try again." (`hive-error-copy.ts:6`); the cause exists only in Vercel logs. This is in tension with "Show honest failures" and leaves the user unable to judge whether to retry. Keep a few categories (Workspace unavailable / Repository unavailable / Rate limit).
 
 #### P3-6 Two overly strict success checks in the Codex bridge
 
@@ -166,7 +166,7 @@ None. No finding has enough evidence to count as a "severe security/data risk re
 | **D. Live sync / presence / DB / cache cost** | `session-live.ts`, `session-events.ts`, `session-presence.ts`, `live/route.ts`, `use-shared-session.ts`, `use-workspace-read.ts`, `workspace-read-cache.tsx`, `db/index.ts` | Unit tests (live/presence/out-of-order snapshots); `check-shared-session.mjs` (real hook, no HTTP heartbeat, reconnect recovers one message); `pnpm test:session-egress` on real local Postgres plus real WebSockets, 9 checks: typing causes 0 task reads, **31 s idle causes 0 pooled queries and 1 NOTIFY of 185 bytes**, reconnect causes 1 task read of 1483 bytes with private history removed in SQL, revoked member 4401, expired login 4401 | **Verified** (locally). The real cross-instance NOTIFY path (`check-live-transport.ts`) not run. **Findings P2-3, P2-6, P3-8 (authorisation query rate, 270 s reconnect)** |
 | **E. Files / Diff / Runs / collaboration UI** | `workspace-files.ts`, `workspace-browser.ts`, `workspace-read-script.ts`, `workspace-file-type.ts`, `code-reference.ts`, `files/route.ts`, `components/hive/*`, `ai-elements/conversation.tsx`, `message.tsx`, `use-message-draft.ts`, `message-draft*.ts`, `message-keyboard.ts` | `workspace-files.test.ts` (the read script executed in a real child process: traversal/symlink/credential files/binary/512 KB/UTF-8/507-entry pagination/shell-like filenames); `check-workspace-files.mjs`, `check-workspace-cache.mjs` (SWR keys isolate task/path/revision, late responses, Monaco remounts), `check-conversation-scroll.mjs`, `check-thread-preview.mjs`, `check-workspace-runs.mjs`, `check-dashboard-preview.mjs`; Streamdown default link policy checked | Core safety boundaries and cache isolation **verified**; no real browser/narrow-viewport/keyboard-focus pass (no browser authorisation). **Findings P2-1, P3-2, P3-3, P3-5, P3-8** |
 | **F. Memory / agent tools / untrusted context** | `hive-memory.ts`, `hive-memory-recall.ts`, `hive-mcp.ts`, `hive-tool-context.ts`, `hive-tool-token.ts`, `agent-tools/route.ts`, `SKILL.md` | `check-memory-recall.mjs` (real HarnessAgent lifecycle, 8 checks: one lookup per fresh turn, tool steps/continuations do not re-query, 2 s deadline releases the turn, empty/error/timeout never block, scope filtering, bounded provenance, unsafe queries never leave the host); `hive-mcp.test.ts` (real MCP client/transport); `hive-memory.test.ts`; `hive-tool-token.test.ts` (an invite token cannot act as a tool token and vice versa: HMAC domain prefix `hive-agent-tools:` plus audience); the egress check's real route covers 401/413/retry-safe reply/stale run/revoked member | **Verified** (fixtures). Server-enforced: repo+installation scope, `hive_scope` post-filter, sources limited to existing human messages/replies, 1,000 characters plus obvious-secret rejection, 5-minute task/member/run capability, 16 KB body, idempotent requests, pending is not saved. **Enforced only by skill/model**: `remember_memory` needs "an explicit human request", no repeated lookups, old memories are not instructions, `reply_to_thread` does not claim delivery. Repository content could prompt-inject the model into saving an existing human sentence to shared memory (bounded impact: only existing human text). **Finding P3-4** |
-| **G. Test validity / maintenance / commit credibility** | `package.json` scripts, all `*.test.ts` and `scripts/check-*.mjs`, `scripts/diagnostics/*`, `prepare-*.mjs`, `next.config.ts`, `eslint.config.mjs`, `tsconfig.json`, `drizzle.config.ts`, README/CONTEXT/SETUP/GOAL/MEMORY_TRADEOFF/SUBMISSION/DEMO_BRIEF/STREAMING_DIAGNOSIS/PRESENTATION_NOTES (sampled sections) | See §4 | **Verified**: no skips or false greens in `pnpm test`; the mock/real boundary is honest (each script's header states what is doubled). **Gaps**: `pnpm test` excludes the two real-Postgres integration checks (env-gated), so CI would not run them by default; no concurrency stress test; no real-browser e2e. Documentation inconsistencies in §6 |
+| **G. Test validity / maintenance / commit credibility** | `package.json` scripts, all `*.test.ts` and `scripts/check-*.mjs`, `scripts/diagnostics/*`, `prepare-*.mjs`, `next.config.ts`, `eslint.config.mjs`, `tsconfig.json`, `drizzle.config.ts`, README/CONTEXT/SETUP/ROADMAP/MEMORY_TRADEOFF/DEMO_BRIEF/STREAMING_DIAGNOSIS/DEVELOPMENT (sampled sections) | See §4 | **Verified**: no skips or false greens in `pnpm test`; the mock/real boundary is honest (each script's header states what is doubled). **Gaps**: `pnpm test` excludes the two real-Postgres integration checks (env-gated), so CI would not run them by default; no concurrency stress test; no real-browser e2e. Documentation inconsistencies in §6 |
 
 ---
 
@@ -198,20 +198,20 @@ Environment: Node `v25.2.1`, pnpm `11.19.0`, macOS Darwin 25.5.0; a local Homebr
 
 ### Distinguishing historical evidence
 
-- "125 sandbox-revision unit tests / Exit 0", "158/149/150 unit tests" and the September 6–10 production observations in the docs are historical records, not results of this review. The actual unit-test count of this working tree is **150** (matching `GOAL.md` and the September 9 entries in `PRESENTATION_NOTES.md`).
+- "125 sandbox-revision unit tests / Exit 0", "158/149/150 unit tests" and the September 6–10 production observations in the docs are historical records, not results of this review. The actual unit-test count of this working tree is **150** (matching `ROADMAP.md` and the September 9 entries in `DEVELOPMENT.md`).
 - Every external service was doubled or loopback in this review; the MCP client/transport, the HarnessAgent lifecycle, Postgres and WebSockets were the real implementations.
 
 ---
 
 ## 5. Minimal fix order
 
-### Must fix before submission/rehearsal (all small, within the frozen scope)
+### Must fix for the current release (within the existing scope)
 
 1. **P1-1 Reset**: remove the UI entry, or add confirmation plus a server-side idle gate. Acceptance: reducer test "reset returns the same state while running or with a queue"; route returns 409; component test "click opens confirmation, cancel dispatches nothing".
 2. **P1-2 dead-run recovery**: add a member-confirmed "mark run as failed" (or detection by `startedAt` age on read) reusing `applyHiveRunError`, keeping messages/queue. Acceptance: state-machine tests; route boundaries; docs disclose the "5-minute limit and how to recover".
 3. **P2-1 time labels**: `ChatMessage.createdAt` plus client-side formatting; remove the hard-coded `America/New_York`. Acceptance: a component test that the three time sources agree; old messages fall back.
 4. **P2-2 message limit**: consistent across route/reducer/UI. Acceptance: route 400, reducer ignores, `maxLength`.
-5. **§6 doc sync**: memory status in README/SETUP, the "no cross-task memory" wording in DEMO_BRIEF/PRESENTATION, whether Reset exists.
+5. **§6 doc sync**: memory status in README/SETUP, the "no cross-task memory" wording in DEMO_BRIEF/DEVELOPMENT, whether Reset exists.
 
 ### Can follow later
 
@@ -221,17 +221,17 @@ Environment: Node `v25.2.1`, pnpm `11.19.0`, macOS Darwin 25.5.0; a local Homebr
 9. P2-5 a re-clone action after sandbox loss.
 10. P3-4 recall field naming plus regression; P3-2 dead code; P3-3 diff line numbers; the remaining P3s.
 
-Do not widen scope before submission (Workflow, PRs, membership management, invitation revocation UI, etc.).
+Do not widen the current release scope (Workflow, PRs, membership management, invitation revocation UI, etc.).
 
 ---
 
-## 6. Documentation/presentation inconsistencies and remaining manual acceptance
+## 6. Documentation inconsistencies and remaining manual acceptance
 
-### Documentation/presentation inconsistencies (to reconcile by date and fact; not code bugs)
+### Documentation inconsistencies (to reconcile by date and fact; not code bugs)
 
-1. **Memory status lags the latest uncommitted evidence**: `README.md:33, 88, 104` and `docs/SETUP.md:21` still say "not yet a verified live capability / acceptance remains pending", while the uncommitted `GOAL.md`, `MEMORY_TRADEOFF.md` and `PRESENTATION_NOTES.md` (September 10, 01:12–01:14 UTC) record one real ADD plus a cross-task SEARCH hit and keep three boundaries (source-task citation defect, 429 not permanently resolved, cross-repository isolation untested). README/SETUP should be updated and keep those three boundaries.
-2. **"No cross-task memory"**: `docs/DEMO_BRIEF.md:60` and `docs/PRESENTATION_NOTES.md:212` still say the demo has no cross-task memory, but repository-scoped cross-task memory is deployed. If it is deliberately kept out of the demo, say "not demonstrated live"; otherwise this contradicts GOAL.
-3. **Reset is acknowledged by no product document**: README/CONTEXT lack the action; `DEMO_BRIEF.md:28` and `GOAL.md:47,72` only warn "do not reset to manufacture evidence". Either remove the feature or document its boundary.
+1. **Memory status lags the latest uncommitted evidence**: `README.md:33, 88, 104` and `docs/SETUP.md:21` still say "not yet a verified live capability / acceptance remains pending", while the uncommitted `ROADMAP.md`, `MEMORY_TRADEOFF.md` and `DEVELOPMENT.md` (September 10, 01:12–01:14 UTC) record one real ADD plus a cross-task SEARCH hit and keep three boundaries (source-task citation defect, 429 not permanently resolved, cross-repository isolation untested). README/SETUP should be updated and keep those three boundaries.
+2. **"No cross-task memory"**: `docs/DEMO_BRIEF.md:60` and `docs/DEVELOPMENT.md:212` still say the demo has no cross-task memory, but repository-scoped cross-task memory is deployed. If it is deliberately kept out of the demo, say "not demonstrated live"; otherwise this contradicts GOAL.
+3. **Reset is acknowledged by no product document**: README/CONTEXT lack the action; `DEMO_BRIEF.md:28` and `ROADMAP.md:47,72` only warn "do not reset to manufacture evidence". Either remove the feature or document its boundary.
 4. **Time expressions**: the evidence log mixes UTC/Pacific/EDT while the UI shows server-UTC hours (P2-1). Matching records to the UI during the demo will be confusing.
 5. **Truncation caps undocumented**: 12 changed files, 60K diff, 20K command output (`hive-runner.ts:35-37`); README only documents the 512 KB preview limit.
 6. **`.env.example`** describes `HIVE_INVITE_SECRET` as signing invite links only; it also signs agent-tool capabilities (SETUP mentions it, the example file does not).
@@ -242,9 +242,8 @@ Do not widen scope before submission (Workflow, PRs, membership management, invi
 
 - A genuinely new GitHub account: first signup → creates its own task → after being invited into someone else's task the repo list reflects only its own permissions (passed locally on real Postgres, not yet in production).
 - Live cross-repository memory isolation; re-verification of the source-task citation after the fix (needs one model request with owner approval).
-- The approximately 20-minute timed narrated rehearsal; confirm the presentation date and send the four items 24 hours before.
-- Repository publication and external sending both need explicit owner approval; `.vercel/project.json` and `.env.local` are gitignored, but the owner should still review history before publication (the documented pattern scan reached `ce2741b`; later commits were not scanned).
-- Gateway 429: two successes do not mean stable quota; rehearse with the DEMO_BRIEF "hard stop at minute nine", and until P1-2 is fixed prepare a script for a dead run.
+- `.vercel/project.json` and `.env.local` are gitignored. The pattern scan cited by this review reached `ce2741b`; it did not cover later commits or establish a complete security audit.
+- Gateway 429: two successes do not mean stable quota; keep live checks bounded, and until P1-2 is fixed document the dead-run recovery boundary.
 
 ---
 
@@ -265,7 +264,7 @@ The review stopped here awaiting the owner's decision; no fixes, deployment or l
 | **P2-4 one failed checkpoint save aborted the turn** | `createReplyWriter` is now best effort: failures are reported through `onSaveError` (the route logs them), `push` no longer throws, the next delta tries again, `close()` returns `{ delivered }` and never throws; `finishAgentReply` prefers the completed text (`body || liveReply.body`) so a lagging checkpoint cannot overwrite the final reply | `agent-stream.ts`, `route.ts`, `task-session.ts` | two new cases in `agent-stream.test.ts`; "refresh restores…" now expects the final text to win |
 | **P3-3 Diff line numbers** | New `annotateUnifiedDiff`; the Diff pane shows real old/new file line numbers, with headers/hunk markers/truncation notices as meta | `src/lib/diff-lines.ts`, `diff-pane.tsx` | `diff-lines.test.ts` |
 | **P3-4 recall provenance fields** | Prompt fields renamed to `sourceTaskId/sourceMessageId/sourceReplyId`, with a one-sentence field description and an instruction to cite the task by `sourceTaskId` | `hive-memory-recall.ts` | new assertions in `scripts/check-memory-recall.mjs` |
-| **§6 documentation inconsistencies** | README (memory status, Reset/lost-run/limits/time zone/truncation caps), SETUP, DEMO_BRIEF, PRESENTATION_NOTES (18–20 min wording plus a new dated entry), CONTEXT (Run entry), `.env.example` (`HIVE_INVITE_SECRET` also signs tool capabilities) | see `git diff --stat` | manual check |
+| **§6 documentation inconsistencies** | README (memory status, Reset/lost-run/limits/time zone/truncation caps), SETUP, DEMO_BRIEF, DEVELOPMENT (capability boundaries and dated evidence), CONTEXT (Run entry), `.env.example` (`HIVE_INVITE_SECRET` also signs tool capabilities) | see `git diff --stat` | manual check |
 
 ### Not fixed (kept in §2; need design or larger changes)
 

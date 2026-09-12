@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import useSWRInfinite from "swr/infinite";
+import { useHiveClient, type HiveClient } from "@/components/hive/hive-client";
 
 import { workspaceReadResponse, type WorkspaceReadResponse } from "@/lib/workspace-files";
 
@@ -14,6 +15,8 @@ export function useWorkspaceRead({ sessionId, kind, path, revision, enabled = tr
   revision: string;
   enabled?: boolean;
 }) {
+  const client = useHiveClient();
+  const read = useCallback((key: ReadKey) => readPath(key, client), [client]);
   const key = JSON.stringify([sessionId, kind, path, revision]);
   const loadingRequest = useRef<string | null>(null);
   const { data: pages, error, isValidating, setSize } = useSWRInfinite<WorkspaceReadResponse, Error>(
@@ -23,7 +26,7 @@ export function useWorkspaceRead({ sessionId, kind, path, revision, enabled = tr
       if (previous?.kind !== "directory" || previous.nextOffset === null) return null;
       return [sessionId, kind, path, revision, previous.nextOffset];
     },
-    readPath,
+    read,
     { revalidateFirstPage: false, keepPreviousData: false },
   );
   const data = useMemo(() => {
@@ -50,9 +53,9 @@ export function useWorkspaceRead({ sessionId, kind, path, revision, enabled = tr
   return { data, error: error?.message, pending: enabled && !data && !error, loadingMore: Boolean(data && isValidating), loadMore };
 }
 
-async function readPath([sessionId, kind, path, , offset]: ReadKey) {
+async function readPath([sessionId, kind, path, , offset]: ReadKey, client: HiveClient) {
   const query = new URLSearchParams({ kind, path, offset: String(offset) });
-  const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/files?${query}`, { cache: "no-store", signal: AbortSignal.timeout(50_000) });
+  const response = await client.request(`/api/sessions/${encodeURIComponent(sessionId)}/files?${query}`, { cache: "no-store", signal: AbortSignal.timeout(50_000) });
   const body = await response.json();
   if (!response.ok) throw new Error(typeof body.error === "string" ? body.error : "Workspace could not be read. Try again.");
   const result = workspaceReadResponse.safeParse(body);

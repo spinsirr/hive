@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Check, ChevronRight, GitBranch, LoaderCircle, Square } from "lucide-react";
 import { AgentResponse } from "@/components/hive/agent-response";
 import { Button } from "@/components/ui/button";
+import { useHiveClient } from "@/components/hive/hive-client";
 import { isSubagentActive, type HiveSubagent } from "@/lib/hive-subagents";
 
 const labels: Record<HiveSubagent["status"], string> = {
@@ -12,6 +13,7 @@ const labels: Record<HiveSubagent["status"], string> = {
 };
 
 function SubagentRow({ task, sessionId, live }: { task: HiveSubagent; sessionId: string; live: boolean }) {
+  const client = useHiveClient();
   const [requesting, setRequesting] = useState(false);
   const [error, setError] = useState("");
   const active = isSubagentActive(task);
@@ -19,7 +21,7 @@ function SubagentRow({ task, sessionId, live }: { task: HiveSubagent; sessionId:
     setRequesting(true);
     setError("");
     try {
-      const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/subagents`, {
+      const response = await client.request(`/api/sessions/${encodeURIComponent(sessionId)}/subagents`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: task.id, runId: task.runId }),
       });

@@ -8,7 +8,7 @@
 - GitHub：`spinsirr/hive`，目前 private，必须保持 private。
 - 线上产品：<https://hive-roan-mu.vercel.app/>；无数据库 UI demo：<https://hive-roan-mu.vercel.app/demo>。
 - 交接时 HEAD：`2799196ed42714e6f63135d605766b2708bb7073`。这是定位点，不是要求你只 review 此提交。
-- 交接时有四个尚未提交的证据文档改动：`docs/GOAL.md`、`docs/MEMORY_TRADEOFF.md`、`docs/PRESENTATION_NOTES.md`、`docs/SUBMISSION.md`；本 handoff 也是新增文件。它们包含最新 memory 实测结果，不能丢弃或只读 HEAD 版本。
+- 原始交接时有尚未提交的证据文档改动，包含最新 memory 实测结果。审查时应读取实际工作区，并保留已有改动，不只看 HEAD。本文是该轮审查的历史交接，当前版本状态见 `docs/ROADMAP.md`。
 - `origin/main` 的本地 tracking ref 可能滞后；该 HEAD 曾通过显式 GitHub URL 成功推送。不要仅凭 `ahead 1` 断言未上线，更不要为 review 自动 push/pull。
 
 开始时记录实际状态，若已变化则以实际工作树为准，并说明与本交接的差异：
@@ -25,7 +25,7 @@ git diff --cached --stat
 
 ## 2. 先理解产品与约束
 
-先完整阅读 `CLAUDE.md`、`AGENTS.md`、`CONTEXT.md`、`README.md`、`package.json`，再读 `docs/GOAL.md`、`docs/SETUP.md`、`docs/MEMORY_TRADEOFF.md`。按需要查阅 `docs/PRESENTATION_NOTES.md` 的相关日期、`docs/STREAMING_DIAGNOSIS.md`、`docs/VERCEL_HARNESS_DECISION.md`、`docs/WORKFLOW_TRADEOFF.md`、`docs/SUBMISSION.md` 和 `docs/DEMO_BRIEF.md`。
+先完整阅读 `CLAUDE.md`、`AGENTS.md`、`CONTEXT.md`、`README.md`、`package.json`，再读 `docs/ROADMAP.md`、`docs/SETUP.md`、`docs/MEMORY_TRADEOFF.md`。按需要查阅 `docs/DEVELOPMENT.md` 的相关日期、`docs/STREAMING_DIAGNOSIS.md`、`docs/VERCEL_HARNESS_DECISION.md`、`docs/WORKFLOW_TRADEOFF.md` 和 `docs/DEMO_BRIEF.md`。
 
 遵守适用的全局/目录指令。若 CoreSpeed memory connector 可用，先搜索既有 Hive 决策；不可用就说明证据来源是当前仓库，不要声称已经检索，也不要为了 review 配置新服务。仓库要求核对安装版本的 Next.js 文档：`node_modules/next/dist/docs/`。判断 Harness/Codex/SWR 等行为时也应查安装版本的类型和实现，不要凭印象断言库不支持某功能。
 
@@ -45,7 +45,7 @@ git diff --cached --stat
 
 ### 不扩大 scope
 
-Take-home 设计约 6 focused hours，评价 judgment/taste，而不是企业平台完整度。展示约 20 分钟，顺序为问题 → 方案 → 代码 → AI journey，其余为讨论。要有真实可用的 end-to-end 路径，不只是 demo。
+目标是验证真实可用的 end-to-end 协作路径，而不只是 UI demo。优先检查当前核心行为和明确的安全边界，不扩展成企业管理平台。
 
 当前明确不做：PR 创建、Sandbox branch push/merge、生成代码的部署工作流、issue triage、图片/文件上传、多团队管理、Vercel Workflow 迁移。Memory 与已有协作 tools 是后来明确批准的有限扩展。可以指出现有架构的具体风险；不要把新增这些功能写成必须修复的 findings。
 
@@ -102,7 +102,7 @@ Take-home 设计约 6 focused hours，评价 judgment/taste，而不是企业平
 
 检查哪些测试是真生产入口、哪些是实现同形的 mock、跳过或 false green；尤其关注 `pnpm test` 未包含的集成检查。检查错误吞掉、隐式 fallback、过度抽象、dead path、重复状态与关键大模块，但必须说明实际影响。依赖/配置按 lockfile 安装版本审查，不因版本看起来新就推断不支持。
 
-核对 README、SETUP、GOAL、presentation 与实际行为是否一致。仅剩旧字段/历史迁移不是必须删库的理由。文档中的实验日期、旧失败、prepared task 的旧 revision 测试数不能伪装成当前代码或本次 review 的测试结果。
+核对 README、SETUP、ROADMAP、开发记录 与实际行为是否一致。仅剩旧字段/历史迁移不是必须删库的理由。文档中的实验日期、旧失败、prepared task 的旧 revision 测试数不能伪装成当前代码或本次 review 的测试结果。
 
 ## 5. 最新证据与已知缺口（请独立核对）
 
@@ -115,7 +115,6 @@ Take-home 设计约 6 focused hours，评价 judgment/taste，而不是企业平
 - **已观察到的 defect：** answer 写了 `来源任务：initial-1`，这是 message ID；正确 source session 是 `verify-repository-memory-save-q1wdex`。Mem0 保存的 metadata 正确。请检查模型输入/formatter/UI 的来源表达；不要未经证据就认定是数据库 mapping bug，也不要把整条 memory 功能标为未接通。
 - 旧 memory attempt 曾遇到 429；新 round 成功不代表永久解决 rate limit，已有 credit 也不证明吞吐无限。准确的限流层和配额窗口未确认。
 - 全新真实 GitHub 账号首次 signup/create 与真实跨账号 repo 隔离仍缺生产验收；现有受控 GitHub + real local Postgres 测试不能替代。
-- 约 20 分钟 narrated rehearsal 尚未完成；presentation 日期未定；repo 未批准公开；四件提交材料尚未对外发送。这些是交付缺口，不是代码 bug。
 - README/SETUP 的 memory acceptance 文案可能落后于四份最新未提交证据文档；按时间与事实核对，不为保持文档一致而抹掉新实测。
 
 ## 6. 建议执行方式与安全测试
@@ -150,7 +149,7 @@ git diff --check
 
 写入 `docs/REVIEW_CLAUDE.md`，用中文给 owner 一个简短总结。报告结构：
 
-1. **总体结论**：当前是否适合 take-home 演示、哪些现有核心路径有阻断风险；不要把“可以演示”说成“企业级生产安全”。
+1. **总体结论**：当前核心协作流程是否可用、哪些现有核心路径有阻断风险；不要把“可以演示”说成“企业级生产安全”。
 2. **Findings，按 P0/P1/P2/P3 排序**：每项给出标题、相关文件与准确行号、触发条件/最小复现、期望 vs 实际、用户/数据影响、证据、置信度，以及最小修复方向。不写修复代码。
    - P0：需要立即处理的严重安全/数据风险。
    - P1：阻断核心路径、越权、重复执行或数据丢失等高影响问题。
@@ -160,6 +159,6 @@ git diff --check
 3. **Coverage matrix**：上述 A–G 每域审过哪些路径/测试、已验证/部分验证/未验证及原因。若不能完成全量覆盖，明确报告缺口，不声称 full pass。
 4. **测试记录**：实际执行的命令和结果、未执行项与限制。严格区分本次执行、历史证据、mock/loopback 与真实线上行为。
 5. **最小修复顺序**：优先级最高的少量工作和各自回归验收；分清提交前必修与可留后续的事项，不扩大既定 scope。
-6. **文档/展示不一致**与**剩余人工验收**：不要把 publication、presentation rehearsal 或缺第二账号混到代码 bug 列表里。
+6. **文档/展示不一致**与**剩余人工验收**：不要把缺少第二账号或未执行的人工验收混到已确认的代码 bug 列表里。
 
 没有发现足够证据支持的问题就直说；不要凑数量。完成 review 后停下来等 owner 决定，不自动进入修复、部署或线上复测。

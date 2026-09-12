@@ -1,71 +1,44 @@
-# Hive — 20-minute presenter card
+# Hive — Product walkthrough
 
-**Purpose:** keep the take-home demo focused on a working multiplayer coding task. This is the speaking outline, not a claim that a 20-minute narrated rehearsal has happened.
+Hive supports agentic peer programming: start a task, invite a teammate into work in progress, and use discussion, questions and review to shape the next change. Use a small repository change to explore this collaboration. The [public interactive demo](https://hive-roan-mu.vercel.app/demo) has four sample task pages. It uses page-local sample data and simulated responses, and does not run an agent. Use the [live application](https://hive-roan-mu.vercel.app/) for real collaboration.
 
-**Timing:** September 14, 2026, **9:30–11:00 AM PDT**; submit all four items by **September 13, 9:30 AM PDT**. The [official guide](https://vercel.notion.site/Take-Home-Build-Submission-Guide-3ade06b059c481aa8a31f6be0e18b30f) requires key-code explanation, not a fixed five-minute code segment. Its roughly six-hour expectation applies to the whole build, not just design. Our work exceeded that intended scope; be honest about the iteration and keep this demo to the shared control loop.
+## Before starting
 
-**Open beforehand:** the [real acceptance task](https://hive-roan-mu.vercel.app/sessions/label-the-return-to-latest-messa-qvezdg) as Spinsirr and josephmreb1 in separate browsers. The [public UI demo](https://hive-roan-mu.vercel.app/demo) uses sample data; it is optional design context, never execution evidence.
+- Sign in with two GitHub accounts in separate browsers. Create a task and use its Invite link to admit the other account.
+- Attach a repository authorized for the current account. An invitation does not grant access to the inviter's other repositories or tasks.
+- Confirm both identity menus and live connection status. Read the task's actual runtime/model selection.
+- Choose a bounded change, such as adding an accessible name to an existing button while preserving a caller override. Use a disposable task for new execution; preserve any result you still need to inspect.
 
-**Go/no-go:** check the [current availability gate](GOAL.md#completion-checklist) first. Both accounts must freshly load the same real task and reconnect successfully before rehearsal. A cached task page or the sample-data UI demo does not clear a database outage.
+## Shared task flow
 
-**Release and model check:** use the canonical live application for the prepared coding result. Message editing is a separate [PR #5 preview](https://hive-git-feat-message-actions-spinsirrs-projects.vercel.app/demo/conversation), not part of that result or proof of production two-account editing. Read the actual task's runtime/model controls before presenting; do not switch them to match old notes. The recorded 125-test check used GPT-5.1-Codex Mini on an older Sandbox checkout. It is not the model or test count of every current task.
+1. Discuss the behavior in a Thread with a reply from each teammate. Replies remain human discussion until someone explicitly steers them.
+2. Ask Hive to implement the bounded change and run the repository's relevant checks. While it is active, queue a Thread once. Both browsers should show the same frozen reply boundary, authors and promoter.
+3. Add a later discussion reply and verify that it does not silently enter the already queued instruction. Apply remains unavailable while the current run is active.
+4. Inspect the actual Diff, unchanged as well as changed Files, and expanded command output in Runs. An exit code is process evidence, not an inferred test verdict.
+5. At the safe boundary, apply the queued input and inspect the attributed result. If execution finished before queuing, this is an immediate-steer case; do not rerun just to manufacture a queue window.
+6. Open View changes from a review, inspect Diff or Runs, then use Back to review. Only the designated reviewer can Verify & resolve the current revision in its Thread. Refresh the second browser and verify that discussion and workspace state persist; a finished run or verified review leaves the conversation open.
 
-## Run of show
+## Questions and review in the same task
 
-| Time | Show | Main point |
-| --- | --- | --- |
-| 0–3 min | The problem, before opening code | “Coding agents are usually private workspaces. Hive lets teammates participate while the agent is working, instead of reconstructing intent after it finishes.” |
-| 3–10 min | One task in both accounts; Thread; Diff, Files and expanded Runs; bounded live check and queued Thread | Several humans control one agent. Discussion does not execute. A steer freezes which replies and authors become instructions. |
-| 10–15 min | The three code boundaries below | The database grants one run, the state machine defines when it may start, and the prompt preserves authorship. |
-| 15–18 min | Three decisions from the actual AI collaboration | Human direction changed the product; AI implemented and diagnosed; observable checks decided whether the output worked. |
-| 18–20 min | Scope, limitations, questions | One team, one task, one late-attached repo. The product is the shared control loop, not another agent runtime. |
+Ask Hive to request a specific decision from the team. A structured question accepts choices or free text; the first eligible answer becomes an attributed continuation. When the agent is busy, the answer stays queued until a connected client observes a safe boundary. The continuation uses saved task context and returns its output to the original Thread. Ordinary replies remain discussion until explicitly steered.
 
-## The product segment
+For a review request, inspect the saved changes, discuss a concern, and steer that feedback. Check the returned revision before choosing **Verify & resolve**. This records human verification of that review, not workspace approval or a merge. A later run or restore invalidates stale verification.
 
-1. Check the identity menus, not just avatars. Show that the repository was attached after the task began.
-2. Open the existing implementation Thread. Joseph specified the default accessible name and preserved caller override; Spinsirr required real regression checks and no pushing. The third localization reply was excluded. **“2 replies steered”** describes the old frozen boundary; do not click **Steer entire thread with 3 replies** on this discussion.
-3. Show the actual two-file Diff and full file explorer. Expand the current combined check in Runs. Its recorded result is **125 sandbox-revision unit tests**, the controlled regressions and TypeScript passing, with **Exit 0**. These belong to the saved Sandbox checkout, not the current app release's local test suite. Say that the implementation was completed beforehand and required repair guidance.
-4. For the live-control portion, use a **new** human-only review Thread and the exact bounded prompts in the [full route](PRESENTATION_NOTES.md#demo-sequence-20-minutes). Two authors reply; one combined read-only check runs; Joseph queues the Thread while it is active; Spinsirr applies it only after inspecting the completed check.
-5. Stop the live portion at minute nine even if it fails or is still running. Preserve the real state and move to code. If it finishes before queuing, name it an immediate-steer case; do not repeat work to manufacture a queue window.
-6. Explain the Checkpoints boundary without restoring the prepared result. A finished run does not close the shared conversation; teammates can keep reviewing or steering without a Complete/Reopen step.
+These new paths passed controlled UI and real local Postgres checks; production model/two-account acceptance is still pending.
 
-**Runs changes with the turn.** Show and inspect the check before applying the reply-only steer. That later turn may show **No commands in this turn**, correctly. It does not mean earlier tests disappeared from reality, and it is not a run-history viewer. Do not reset or restore merely to make the old result appear again.
+## Recovery and evidence
 
-## Three code boundaries
+Runs shows the latest turn, not a command-history browser. A later reply-only turn can correctly show **No commands in this turn**. Inspect useful command output before starting another turn; do not reset or restore merely to recreate an old view.
 
-- **Who may run next?** [`canApplyNextSteer` and `reduceTaskSession`](../src/lib/task-session.ts) gate execution and freeze a Thread through `throughReplyId`.
-- **What if two people act together?** [`applyTaskSessionAction`](../src/lib/task-session-store.ts) locks the task row, applies the transition and grants execution within that transaction.
-- **Whose instruction is it?** [`buildHiveRunInput`](../src/lib/hive-prompt.ts) separates authors, promoter and execution starter. Resumed prompts avoid duplicating native agent history while retaining attributed human context.
+Checkpoints pair files with native agent context. Unmatched snapshots cannot be restored. Restoring is a separate, explicit operation that preserves team discussion and pending steers and invalidates approval.
 
-Do not walk every file. Keep the [runner](../src/lib/hive-runner.ts), [restore implementation](../src/lib/workspace-restore.ts) and [live-session hook](../src/hooks/use-shared-session.ts) for Q&A.
+If a request fails or is rate-limited, retain the real failure and pending queue. Avoid repeated retries or presenting saved output as a new pass. A run that has not reported for six minutes can be marked lost without erasing the discussion; Reset instead clears it and requires confirmation and an idle task.
 
-## AI journey — speak in concrete examples
+## Code boundaries
 
-**Lead with ownership:** “I designed the module boundaries and overall architecture. AI worked with me on brainstorming alternatives and implementing the design.” Use the [product definition and scope](PRESENTATION_NOTES.md#what-hive-is) to keep the story consistent.
+- [Task state machine](../src/lib/task-session.ts): discussion versus execution, frozen Thread input and safe-boundary application.
+- [Task store](../src/lib/task-session-store.ts): row-locked transitions and one execution grant when teammates act concurrently.
+- [Prompt construction](../src/lib/hive-prompt.ts): separate authors, promoter and execution starter.
+- [Runner](../src/lib/hive-runner.ts) and [restore path](../src/lib/workspace-restore.ts): execution and paired recovery.
 
-- **Spencer set the product direction:** a multiplayer agent conversation, not a long-lived team chat; one task per session; repository attachment can happen later.
-- **Spencer challenged persistence:** a Codex session ID alone does not make sandbox history durable. Team history and paired recovery became explicit product boundaries.
-- **AI work needed verification:** a shell exit zero masked failed edits, and a regression queried a deliberately hidden button. The supervising AI inspected real output, reproduced the defects, supplied a repair and verified the final sandbox command. Do not present that as a manual human fix or an autonomous first-pass success.
-
-## Workflow tradeoff — Q&A, not another demo segment
-
-This is a **September 8 post-build review**, not an original decision reconstructed after the fact. See the [short presentation explanation](PRESENTATION_NOTES.md#short-presentation-explanation) and [sourced comparison](WORKFLOW_TRADEOFF.md).
-
-Spencer then [froze the submission scope](GOAL.md#submission-scope-freeze--september-8): no Workflow integration or execution-architecture migration before this submission. Present it as a consciously deferred reliability improvement, not an unfinished promised feature.
-
-Postgres owns who said what, which replies become instructions, and who may run next. It does not make the current request-bound execution crash-resumable. Workflow is a credible execution layer, including official Harness/Codex-compatible integration primitives; it would not remove our responsibility for permissions, effect deduplication and matching files to native context. The existing streaming bridge's compatibility remains untested. We have not integrated it or verified recovery after hard worker termination.
-
-## What not to claim
-
-- A successful continuation does not mean 429 is permanently resolved. Bounded retries stop; they do not create more quota.
-- Two authenticated accounts were operated by the assistant during acceptance; that is not two independent human reviews.
-- Paired checkpoint restore is not permanent-sandbox-deletion disaster recovery.
-- Persisted messages and browser reconnection are not proof of automatic recovery after the executing process is killed. Do not describe Postgres as a substitute for durable execution or Workflow as unsuitable for interactive agents.
-- No PR automation, issue triage, attachment ingestion or multi-team administration is in this demo. Repository-scoped memory exists and passed one bounded live round, but it is not demonstrated live; do not claim it is fully verified.
-- If a run has not reported for six minutes, use **Mark run as lost** rather than Reset: it keeps the discussion and queue. Reset needs confirmation and an idle task, and it erases the shared conversation for everyone.
-- The public dashboard preview is not a fake substitute for the real task.
-- Model/effort menus describe the installed adapter's supported choices, not proof that every choice has passed a live run. Keep [SDK compatibility limits](VERCEL_HARNESS_DECISION.md#current-decision-and-sdk-compatibility-boundaries), memory, subagents and preview-only message editing for Q&A; do not turn the 20-minute core demo into a feature tour.
-
-## Before submission
-
-Use the existing [two-paragraph summary](SUBMISSION.md#summary-blurb), confirmed by Spencer on September 8, 2026. Run the narrated rehearsal with a timer and record actual outcomes, not just elapsed browsing time. Public repository access and external sending still require separate explicit approval. The confirmed submission deadline is September 13, 2026, 9:30 AM PDT, at least 24 hours before the presentation.
+See [release status](ROADMAP.md), the [development log](DEVELOPMENT.md#evidence-log) and [SDK compatibility limits](VERCEL_HARNESS_DECISION.md#current-decision-and-sdk-compatibility-boundaries). Controlled tests, read-only UI checks and successful live execution should always be described separately.

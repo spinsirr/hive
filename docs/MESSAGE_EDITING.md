@@ -1,34 +1,26 @@
 # Message actions
 
-Requested September 10, 2026. The conversation and queue use the same compact menu and edit composer; the UI preview at `/demo/conversation` uses those production components with invented data and no model calls.
+Message editing follows [Slack's in-place interaction](SLACK_MESSAGE_REFERENCE.md), while Hive preserves explicit agent execution boundaries. Production and Demo use the same message, menu, inline editor and steering queue.
 
 ## Behavior
 
-- A member can edit only their own ordinary conversation messages. Agent output and quoted code selections remain evidence; discuss them in a Thread instead.
-- Editing a pending message updates both its displayed text and its queued input atomically, without moving it or interrupting the active run.
-- Editing already-dispatched text changes the discussion, not the saved native agent history. It never starts/retries a run. Previous versions remain visible through **Edited** / **View edit history**.
-- A queued whole-thread steer keeps its frozen discussion boundary. Editing its parent does not rewrite that saved steer.
-- Editing captures the message revision and pending queue identity. Another edit or a dequeue before saving produces a conflict, not an overwrite. Failed saves leave the draft in the editor.
-- **Remove from queue** cancels pending direction, not the conversation. Existing member-controlled reordering and safe-boundary application remain available.
-- **Open thread** reuses the existing discussion. This change adds neither a second independent agent chat nor a switch that disables shared execution serialization.
+- Members edit only their own ordinary messages. Agent output, code quotes, structured interactions and restore receipts remain evidence.
+- Edit in place; Save changes or Ctrl/Command+Enter saves, Escape cancels, and Enter remains a newline. The main composer's draft is independent. Failed saves retain the edit draft.
+- Identity, author, timestamp, timeline position and Thread stay stable. **Edited** / **View edit history** exposes previous versions; shared history is a Hive choice, not a claim about Slack.
+- A pending plain-message edit updates its queued input atomically without reordering it or interrupting a run. Already-dispatched work and whole-Thread steers retain their captured inputs.
+- A historical edit changes discussion only. It never starts or retries a model run; subsequent agent context labels revised discussion.
+- Captured revision and pending queue identity prevent stale overwrites or editing an input that has already been dispatched. Same-body retries add no duplicate revision.
+- Queue actions sit above the composer: edit, reorder, remove, open Thread and Run next at a safe boundary. Removal keeps the conversation message.
+- Thread replies remain discussion-only until an explicit whole-Thread steer. Editing neither creates another Thread nor starts a separate agent.
+- Existing membership, archive and recovery guards apply. The public response never exposes private harness checkpoint data.
 
-Messages and revisions use the existing Postgres JSON message records, row-locked action path and versioned WebSocket snapshots. No new dependency, migration, polling loop, model request or external memory write is needed to edit a message.
+Messages and revisions use existing Postgres JSON records, row-locked actions and versioned WebSocket snapshots. No dependency or schema migration is needed.
 
-## Verification — September 10 Pacific
+## Verification — September 12, 2026
 
-- `pnpm test`: 186 unit tests, memory checks and controlled regression suites pass, including the new message UI check.
-- `pnpm test:messages`: own-message menu, copy, Thread, CJK/multiline editing, failed-draft retention, history, queued edit/removal and running-agent lock pass.
-- `pnpm typecheck`, `pnpm lint`, `git diff --check`, and `pnpm build --webpack`: pass.
-- `scripts/check-onboarding.mjs` on disposable loopback Postgres with Node 24: the real authenticated action/GET routes reject identity spoofing and malformed edits; store text/history across reads by both fixture accounts; serialize competing updates into one success and one conflict; reject the old queue editor after application. External model calls are forbidden in this fixture.
-- `scripts/check-shared-session.mjs`: the real client hook preserves online status on a rejected edit, publishes saved text/history to another viewer, and rejects a stale snapshot.
-- Browser UI preview: edited a historical sample message; queued, edited and removed a follow-up; checked the **Edited** marker and unchanged discussion after removal. At 390 × 844, document/editor width was 390 px and the open menu remained within the viewport. Temporary viewport override was reset.
+- Reducer and real-component checks cover authorship, frozen execution inputs, optimistic conflicts, idempotent retries, multiline/IME editing, failed draft retention, history and queue controls.
+- Disposable loopback Postgres exercises authenticated routes, two fixture accounts, persisted edits/history, concurrent saves and dispatch races. It verifies private workspace/checkpoint context is unchanged while HTTP responses remain redacted.
+- The live-client regression covers rejected edits without disconnecting, synchronized history for another viewer and stale snapshot rejection.
+- Browser interaction with the shared Demo verified in-place save, unchanged main draft and timestamp, retained history, Escape cancellation with restored keyboard focus, and non-author menus without Edit.
 
-These are local/fixture and browser-preview results. They are not a claim of production two-account message-edit acceptance; that remains a post-deployment check. Preview edits intentionally reset on reload, unlike authenticated task data.
-
-## Published preview — September 10 Pacific
-
-Implementation head `49760db34bbfcf22de840bfbcf34faeccc89ed29` is in draft [PR #5](https://github.com/spinsirr/hive/pull/5), based on `d15d2c0`. [CI run 34562528572](https://github.com/spinsirr/hive/actions/runs/34562528572) passed Tests (including the complete disposable-Postgres integration chain), Lint and types, and Production build. The matching [Vercel deployment](https://vercel.com/spinsirrs-projects/hive/2qvMMsmwju3HYGJBLbQ97VjMQt7L) is Ready.
-
-The [deployed conversation preview](https://hive-git-feat-message-actions-spinsirrs-projects.vercel.app/demo/conversation) was clicked through: historical edit → save → old-version history; working-state follow-up → queue → edit with matching conversation/queue text; queue removal → discussion retained. Its recorded browser error/warning log was empty. This is deployed sample-data UI evidence, not an authenticated production edit or model run.
-
-At this check the branch was not merged or promoted to the canonical live application. External independent review still requires approval to share the private repository. Preserve the prepared real coding task and its latest Runs while that gate is open.
+These are regression and local browser results, not production acceptance. Production two-account and real-agent evidence belongs in the PR verification record after deployment.

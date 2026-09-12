@@ -5,19 +5,23 @@ import { customAlphabet } from "nanoid";
 import { db } from "@/db";
 import { taskSessionMembers, taskSessions, users } from "@/db/schema";
 import { sessionNotification } from "@/lib/session-events";
-import { codexModel, codingModelOptions, type CodingModelOption } from "./coding-models.ts";
-import { prefersCodexSubscription } from "./codex-subscription-store.ts";
-import { claudeSubscriptionToken } from "./claude-subscription.ts";
+import { normalizeTaskTitle } from "./task-title.ts";
+import { type CodingModelOption } from "./coding-models.ts";
+import { platformCodingModels } from "./platform-models.ts";
 import { assertHiveToolRun, hiveThreadReply, type HiveToolContext } from "@/lib/hive-tool-context";
 import type { HiveToolScope } from "@/lib/hive-tool-token";
+import { requestPeerInput, type PeerRequest, type PeerRequestReceipt } from "./peer-collaboration.ts";
 import { subagentUpdateSchema, type HiveSubagent, type SubagentSession } from "./hive-subagents.ts";
-import { beginWorkspaceRestore, completeWorkspaceRestore, failWorkspaceRestore, WorkspaceRestoreError, type RestoreWorkspaceRequest } from "@/lib/workspace-restore-state";
+import { assertWorkspaceRestoreAttempt, beginWorkspaceRestore, completeWorkspaceRestore, failWorkspaceRestore, recordWorkspaceRestoreSource, WorkspaceRestoreError, type RestoreWorkspaceRequest } from "@/lib/workspace-restore-state";
 import {
   applyHiveRunError,
+  ARCHIVED_TASK_MESSAGE,
+  taskActionBlockReason,
   applyHiveRunResult,
   appendHiveReply as appendHiveReplyToSession,
   createInitialTaskSessionState,
   didStartHiveRun,
+  hiveReplyThreadId,
   type HiveRunResult,
   type HiveSessionCheckpoint,
   type MemberId,
@@ -35,10 +39,16 @@ export type TaskSessionSnapshot = {
   typingMembers: MemberId[];
   codingModels?: CodingModelOption[];
 };
+export class TaskSessionAccessError extends Error {
+  constructor() {
+    super("You no longer have access to this task.");
+  }
+}
 const randomSuffix = customAlphabet("abcdefghijklmnopqrstuvwxyz0123456789", 6);
 
 function sessionValues(session: TaskSessionState) {
   return {
+    archived: session.archived ?? null,
     id: session.sessionId,
     title: session.title,
     createdBy: session.createdBy,
@@ -58,6 +68,7 @@ function sessionValues(session: TaskSessionState) {
 
 function sessionState(row: typeof taskSessions.$inferSelect): TaskSessionState {
   return {
+    archived: row.archived ?? undefined,
     sessionId: row.id,
     title: row.title,
     createdBy: row.createdBy ?? "hive-system",
@@ -77,6 +88,7 @@ function sessionState(row: typeof taskSessions.$inferSelect): TaskSessionState {
 
 // Agent tools never load code artifacts, credentials, or the native recovery checkpoint.
 const agentToolColumns = {
+  archived: taskSessions.archived,
   sessionId: taskSessions.id, title: taskSessions.title,
   version: taskSessions.version, stage: taskSessions.stage,
   messages: taskSessions.messages, repository: taskSessions.repository,
@@ -93,7 +105,7 @@ const agentToolColumns = {
 export async function readHiveToolContext(scope: HiveToolScope): Promise<HiveToolContext> {
   const [row] = await db.select(agentToolColumns).from(taskSessions).where(eq(taskSessions.id, scope.sessionId));
   if (!row) throw new Error("Task not found.");
-  const context = { ...row, repository: row.repository ?? undefined, activeSteer: row.activeSteer ?? undefined, members: await getSessionMembers(scope.sessionId) };
+  const context = { ...row, archived: row.archived ?? undefined, repository: row.repository ?? undefined, activeSteer: row.activeSteer ?? undefined, members: await getSessionMembers(scope.sessionId) };
   assertHiveToolRun(context, scope);
   return context;
 }
@@ -103,20 +115,24 @@ export async function appendHiveToolReply(scope: HiveToolScope, messageId: strin
     const [row] = await transaction.select(agentToolColumns).from(taskSessions).where(eq(taskSessions.id, scope.sessionId)).for("update");
     if (!row) throw new Error("Task not found.");
     const members = await transaction.select({ memberId: taskSessionMembers.memberId }).from(taskSessionMembers).where(and(eq(taskSessionMembers.sessionId, scope.sessionId), eq(taskSessionMembers.memberId, scope.memberId)));
-    const context = { ...row, repository: row.repository ?? undefined, activeSteer: row.activeSteer ?? undefined, members: members.map(({ memberId }) => resolveMember(memberId)) };
+    const context = { ...row, archived: row.archived ?? undefined, repository: row.repository ?? undefined, activeSteer: row.activeSteer ?? undefined, members: members.map(({ memberId }) => resolveMember(memberId)) };
     assertHiveToolRun(context, scope);
-    const parent = row.messages.find((message) => message.id === messageId && !message.status);
+    const requested = row.messages.find((message) => message.id === messageId && !message.status);
+    const parent = requested?.threadId ? row.messages.find((message) => message.id === requested.threadId && !message.status) : requested;
     if (!parent) throw new Error("Thread not found.");
     const replyId = `hive-${scope.runId}-${requestId}`;
     const existing = parent.annotations?.find((reply) => reply.id === replyId);
-    if (existing) return { messageId, replyId: existing.id };
+    if (existing) {
+      if (existing.body !== body.trim()) throw new Error("Reply key already used for different content.");
+      return { messageId: parent.id, replyId: existing.id };
+    }
     const reply = hiveThreadReply(body, replyId);
     await transaction.update(taskSessions).set({
-      messages: row.messages.map((message) => message.id === messageId ? { ...message, annotations: [...(message.annotations ?? []), reply] } : message),
+      messages: row.messages.map((message) => message.id === parent.id ? { ...message, annotations: [...(message.annotations ?? []), reply] } : message),
       version: row.version + 1, updatedAt: new Date(),
     }).where(eq(taskSessions.id, scope.sessionId));
     await transaction.execute(sessionNotification(scope.sessionId));
-    return { messageId, replyId };
+    return { messageId: parent.id, replyId };
   });
 }
 
@@ -163,8 +179,8 @@ export async function createTaskSession(
   creator: TeamMember,
   now = Date.now(),
 ) {
-  const normalizedTitle = title.trim().slice(0, 120);
-  if (!normalizedTitle) throw new Error("Task title is required.");
+  const normalizedTitle = title.trim() ? normalizeTaskTitle(title) : "";
+  if (normalizedTitle === null) throw new Error("Use a task title of at most 120 characters.");
 
   const sessionId = sessionSlug(normalizedTitle);
   const initialSession = createInitialTaskSessionState(now, sessionId, {
@@ -182,6 +198,26 @@ export async function createTaskSession(
   });
 
   return initialSession;
+}
+
+export async function createHivePeerRequest(scope: HiveToolScope, request: PeerRequest): Promise<PeerRequestReceipt> {
+  return db.transaction(async (transaction) => {
+    const [row] = await transaction.select(getTableColumns(taskSessions)).from(taskSessions)
+      .innerJoin(taskSessionMembers, and(eq(taskSessionMembers.sessionId, taskSessions.id), eq(taskSessionMembers.memberId, scope.memberId)))
+      .where(eq(taskSessions.id, scope.sessionId)).for("update");
+    if (!row) throw new TaskSessionAccessError();
+    const membership = await transaction.select({ id: taskSessionMembers.memberId }).from(taskSessionMembers)
+      .where(eq(taskSessionMembers.sessionId, scope.sessionId)).for("share");
+    const state = sessionState(row);
+    const published = requestPeerInput(state, scope, request, membership.map(({ id }) => resolveMember(id)), Date.now());
+    if (published.session !== state) {
+      await transaction.update(taskSessions).set(sessionValues(published.session)).where(eq(taskSessions.id, scope.sessionId));
+      await transaction.execute(sessionNotification(scope.sessionId));
+    }
+    const interaction = published.session.messages.find((message) => message.id === published.messageId)!.interaction!;
+    return { messageId: published.messageId, created: published.session !== state,
+      status: interaction.kind === "review" ? "review" : interaction.answer ? "answered" : "awaiting_answer" };
+  });
 }
 
 export async function isTaskSessionMember(sessionId: string, memberId: MemberId) {
@@ -225,6 +261,7 @@ export async function listTaskSessions(memberId: MemberId) {
       title: taskSessions.title,
       repository: taskSessions.repository,
       updatedAt: taskSessions.updatedAt,
+      archived: taskSessions.archived,
     })
     .from(taskSessionMembers)
     .innerJoin(taskSessions, eq(taskSessionMembers.sessionId, taskSessions.id))
@@ -240,46 +277,54 @@ export async function listTaskSessions(memberId: MemberId) {
 export async function applyTaskSessionAction(
   sessionId: string,
   action: TaskSessionAction,
-  actor?: TeamMember,
+  actor: TeamMember,
   now = Date.now(),
 ) {
+  if (!actor || actor.id !== action.actor) throw new TaskSessionAccessError();
   const storedMembers = await getSessionMembers(sessionId);
+  if (!storedMembers.some((member) => member.id === action.actor)) throw new TaskSessionAccessError();
   const changingModel = action.type === "select-harness" || action.type === "set-coding-effort";
-  const preferSubscription = changingModel && await prefersCodexSubscription(sessionId);
-  const members = actor
-    ? [actor, ...storedMembers.filter((member) => member.id !== actor.id)]
-    : storedMembers;
+  const members = [actor, ...storedMembers.filter((member) => member.id !== actor.id)];
 
   const applied = await db.transaction(async (transaction) => {
     const [storedSession] = await transaction
-      .select()
+      .select(getTableColumns(taskSessions))
       .from(taskSessions)
+      .innerJoin(taskSessionMembers, and(
+        eq(taskSessionMembers.sessionId, taskSessions.id),
+        eq(taskSessionMembers.memberId, action.actor),
+      ))
       .where(eq(taskSessions.id, sessionId))
+      // Lock membership along with the task so a stale route check cannot
+      // authorize a write after membership has been revoked.
       .for("update");
 
     if (!storedSession) {
-      throw new Error(`Session ${sessionId} could not be loaded.`);
+      throw new TaskSessionAccessError();
     }
 
     const previousSession = sessionState(storedSession);
+    const blocked = taskActionBlockReason(previousSession, action);
+    if (blocked) throw new WorkspaceRestoreError(409, blocked);
     if (previousSession.workspace.restore) throw new WorkspaceRestoreError(409, "Finish restoring the workspace before continuing.");
     const nextSession = reduceTaskSession(
       previousSession,
       action,
       now,
       members,
-      changingModel ? codingModelOptions(codexModel(process.env.HIVE_CODEX_MODEL, preferSubscription), Boolean(claudeSubscriptionToken(previousSession, process.env))) : undefined,
+      changingModel ? platformCodingModels(process.env) : undefined,
     );
-    if (changingModel && nextSession === previousSession) {
+    if (nextSession === previousSession) {
       // Return the current shared state on a no-op or stale selection. Do not
       // broadcast a fabricated version or overwrite a teammate's newer model.
       return { session: previousSession, startedRun: false };
     }
     const startedRun = didStartHiveRun(previousSession, nextSession);
     if (startedRun) {
+      const threadId = hiveReplyThreadId(nextSession, action);
       nextSession.workspace = {
         ...nextSession.workspace,
-        liveReply: { id: `agent-${randomUUID()}`, body: "", sequence: 0, startedAt: now },
+        liveReply: { id: `agent-${randomUUID()}`, threadId, body: "", sequence: 0, startedAt: now },
       };
     }
     await transaction
@@ -335,7 +380,7 @@ export async function appendHiveReply(
     }
 
     const currentSession = sessionState(storedSession);
-    if (currentSession.workspace.restore) return;
+    if (currentSession.archived || currentSession.workspace.restore) return;
     if (options.forReplyId && currentSession.workspace.liveReply?.id !== options.forReplyId) return;
     if (options.subagents && currentSession.workspace.liveReply) {
       currentSession.workspace.liveReply = { ...currentSession.workspace.liveReply, subagents: options.subagents };
@@ -397,6 +442,7 @@ export async function checkpointAgentReply(sessionId: string, replyId: string, b
     }).where(and(
       eq(taskSessions.id, sessionId),
       eq(taskSessions.stage, "running"),
+      sql`${taskSessions.archived} IS NULL`,
       sql`${taskSessions.workspace}->>'startedAt' IS NOT NULL`,
       sql`${taskSessions.workspace}->>'completedAt' IS NULL`,
       sql`${taskSessions.workspace}->'liveReply'->>'id' = ${replyId}`,
@@ -415,6 +461,7 @@ export async function checkpointSubagents(sessionId: string, replyId: string, va
         (${taskSessions.workspace}->'liveReply') || ${JSON.stringify({ subagents: update.tasks, subagentSequence: update.sequence })}::jsonb)`,
     }).where(and(
       eq(taskSessions.id, sessionId), eq(taskSessions.stage, "running"),
+      sql`${taskSessions.archived} IS NULL`,
       sql`${taskSessions.workspace}->>'startedAt' IS NOT NULL`,
       sql`${taskSessions.workspace}->>'completedAt' IS NULL`,
       sql`${taskSessions.workspace}->'liveReply'->>'id' = ${replyId}`,
@@ -430,7 +477,7 @@ export async function withTaskSubagentControl<T>(sessionId: string, control: (se
     const lock = await transaction.execute(sql`select pg_try_advisory_xact_lock_shared(hashtextextended(${'hive-workspace:' + sessionId}, 0)) as acquired`);
     if (!lock.rows[0]?.acquired) throw new WorkspaceRestoreError(409, "Workspace is busy. Try again shortly.");
     const [row] = await transaction.select({
-      sessionId: taskSessions.id, stage: taskSessions.stage, repository: taskSessions.repository,
+      sessionId: taskSessions.id, stage: taskSessions.stage, repository: taskSessions.repository, archived: taskSessions.archived,
       workspace: sql<SubagentSession["workspace"]>`jsonb_build_object(
         'startedAt', ${taskSessions.workspace}->'startedAt', 'completedAt', ${taskSessions.workspace}->'completedAt',
         'restore', ${taskSessions.workspace}->'restore', 'sandboxName', ${taskSessions.workspace}->'sandboxName',
@@ -439,6 +486,7 @@ export async function withTaskSubagentControl<T>(sessionId: string, control: (se
       )`,
     }).from(taskSessions).where(eq(taskSessions.id, sessionId));
     if (!row) throw new WorkspaceRestoreError(404, "Task not found.");
+    if (row.archived) throw new WorkspaceRestoreError(409, ARCHIVED_TASK_MESSAGE);
     return control({ ...row, repository: row.repository ?? undefined });
   });
 }
@@ -460,8 +508,12 @@ export async function startTaskWorkspaceRestore(sessionId: string, request: Rest
   return db.transaction(async (transaction) => {
     const lock = await transaction.execute(sql`select pg_try_advisory_xact_lock(hashtextextended(${'hive-workspace:' + sessionId}, 0)) as acquired`);
     if (!lock.rows[0]?.acquired) throw new WorkspaceRestoreError(409, "Files are still loading. Try restoring again shortly.");
-    const [row] = await transaction.select().from(taskSessions).where(eq(taskSessions.id, sessionId)).for("update");
-    if (!row) throw new WorkspaceRestoreError(404, "Task not found.");
+    const [row] = await transaction.select(getTableColumns(taskSessions)).from(taskSessions)
+      .innerJoin(taskSessionMembers, and(
+        eq(taskSessionMembers.sessionId, taskSessions.id),
+        eq(taskSessionMembers.memberId, member.id),
+      )).where(eq(taskSessions.id, sessionId)).for("update");
+    if (!row) throw new TaskSessionAccessError();
     const previous = sessionState(row);
     const next = beginWorkspaceRestore(previous, request, member);
     if (next === previous) return { session: previous, started: false };
@@ -471,11 +523,28 @@ export async function startTaskWorkspaceRestore(sessionId: string, request: Rest
   });
 }
 
-export async function finishTaskWorkspaceRestore(sessionId: string, operationId: string, confirmed: boolean) {
+export async function recordTaskWorkspaceRestoreSource(sessionId: string, operationId: string, startedAt: number, sourceSessionId: string) {
+  return db.transaction(async (transaction) => {
+    const [row] = await transaction.select().from(taskSessions).where(eq(taskSessions.id, sessionId)).for("update");
+    if (!row) throw new WorkspaceRestoreError(404, "Task not found.");
+    const session = sessionState(row);
+    const next = recordWorkspaceRestoreSource(session, operationId, startedAt, sourceSessionId);
+    if (next !== session) {
+      await transaction.update(taskSessions).set(sessionValues(next)).where(eq(taskSessions.id, sessionId));
+      await transaction.execute(sessionNotification(sessionId));
+    }
+    return next;
+  });
+}
+
+export async function finishTaskWorkspaceRestore(sessionId: string, operationId: string, confirmed: boolean, startedAt: number) {
   await db.transaction(async (transaction) => {
     const [row] = await transaction.select().from(taskSessions).where(eq(taskSessions.id, sessionId)).for("update");
     if (!row) throw new WorkspaceRestoreError(404, "Task not found.");
     const session = sessionState(row);
+    // A late status check or timed-out worker cannot finish a newer retry.
+    if (session.workspace.lastRestore?.id === operationId && !session.workspace.restore) return;
+    assertWorkspaceRestoreAttempt(session, operationId, startedAt);
     const next = confirmed ? completeWorkspaceRestore(session, operationId) : failWorkspaceRestore(session, operationId);
     if (next === session) return;
     await transaction.update(taskSessions).set(sessionValues(next)).where(eq(taskSessions.id, sessionId));
@@ -519,14 +588,11 @@ export async function getTaskSessionSnapshot(
 
 /** Durable reads contain the roster. Only live connections can assert who is online. */
 async function snapshotWithMembers(session: TaskSessionState): Promise<TaskSessionSnapshot> {
-  const [members, preferSubscription] = await Promise.all([
-    getSessionMembers(session.sessionId),
-    prefersCodexSubscription(session.sessionId),
-  ]);
+  const members = await getSessionMembers(session.sessionId);
   return {
     session,
     members,
-    codingModels: codingModelOptions(codexModel(process.env.HIVE_CODEX_MODEL, preferSubscription), Boolean(claudeSubscriptionToken(session, process.env))),
+    codingModels: platformCodingModels(process.env),
     activeMembers: [],
     typingMembers: [],
   };

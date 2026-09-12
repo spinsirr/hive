@@ -1,72 +1,59 @@
 "use client";
 
-import { ArrowRight, Eye, FolderGit2, Plus } from "lucide-react";
+import { ArrowRight, FolderGit2, Users } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { CreateSessionButton } from "@/components/hive/create-session-button";
+import { TaskArchiveControl } from "@/components/hive/task-archive-control";
+import { useHiveClient } from "@/components/hive/hive-client";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { dashboardTasks, taskUpdatedLabel, type DashboardTask } from "@/lib/task-dashboard";
+import { taskTitleLabel } from "@/lib/task-title";
 
 function NewTask({ createAction }: { createAction: (formData: FormData) => Promise<void> }) {
-  const [title, setTitle] = useState("");
-  const [open, setOpen] = useState(false);
   return (
-    <Dialog onOpenChange={setOpen} open={open}>
-      <DialogTrigger render={<Button className="h-9 gap-2 px-3 text-xs" />}>
-        <Plus className="size-3.5" /> New task
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
-        <form action={async (formData) => {
-          await createAction(formData);
-          setOpen(false);
-          setTitle("");
-        }}>
-          <DialogHeader>
-            <DialogTitle>New task</DialogTitle>
-            <DialogDescription>Start with an outcome. Invite teammates and attach a repository inside the task.</DialogDescription>
-          </DialogHeader>
-          <div className="py-5">
-            <label className="mb-2 block text-xs font-medium" htmlFor="new-task-title">Task name</label>
-            <input
-              autoComplete="off"
-              autoFocus
-              className="h-10 w-full rounded-md border border-[#dedede] bg-white px-3 text-base outline-none sm:text-sm placeholder:text-[#aaa] focus:border-[#737373] focus:ring-2 focus:ring-[#171717]/10"
-              id="new-task-title"
-              maxLength={120}
-              name="title"
-              onChange={(event) => setTitle(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229)) event.preventDefault();
-              }}
-              placeholder="What should we build together?"
-              pattern={".*\\S.*"}
-              required
-              title="Enter a task name."
-              value={title}
-            />
-          </div>
-          <DialogFooter>
-            <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
-            <CreateSessionButton />
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+    <form action={createAction}>
+      <CreateSessionButton />
+    </form>
   );
 }
 
-export function TaskDashboard({ tasks, memberName, memberInitials, loadedAt, createAction, homeHref = "/", onPreviewTask }: {
+export function TaskDashboard({ tasks, memberName, memberInitials, loadedAt, createAction, homeHref = "/", previewTaskHref, onArchiveTask }: {
   tasks: DashboardTask[];
   memberName: string;
   memberInitials: string;
   loadedAt: number;
   createAction: (formData: FormData) => Promise<void>;
   homeHref?: string;
-  onPreviewTask?: (task: DashboardTask) => void;
+  previewTaskHref?: (task: DashboardTask) => string;
+  onArchiveTask?: (id: string, archived: boolean) => Promise<void>;
 }) {
-  const visible = dashboardTasks(tasks);
+  const client = useHiveClient();
+  const [showArchived, setShowArchived] = useState(false);
+  const [updates, setUpdates] = useState<Record<string, Pick<DashboardTask, "archivedAt" | "updatedAt">>>({});
+  const [notice, setNotice] = useState("");
+  const filterRef = useRef<HTMLButtonElement>(null);
+  const all = dashboardTasks(tasks.map((task) => task.id in updates ? { ...task, ...updates[task.id] } : task));
+  const archivedCount = all.filter((task) => Boolean(task.archivedAt)).length;
+  const visible = all.filter((task) => Boolean(task.archivedAt) === showArchived);
+  async function changeArchive(task: DashboardTask, archived: boolean) {
+    let update = { archivedAt: archived ? loadedAt : null, updatedAt: loadedAt };
+    if (onArchiveTask) await onArchiveTask(task.id, archived);
+    else {
+      const response = await client.request(`/api/sessions/${encodeURIComponent(task.id)}`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: archived ? "archive-task" : "restore-task" }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Could not update this task. Try again.");
+      if (Boolean(payload.session?.archived) !== archived) throw new Error("The task could not be updated. Refresh and try again.");
+      update = { archivedAt: payload.session.archived?.at ?? null, updatedAt: payload.session.updatedAt };
+    }
+    setUpdates((current) => ({ ...current, [task.id]: update }));
+    setNotice(`${taskTitleLabel(task.title)} ${archived ? "archived for everyone" : "restored"}.`);
+    filterRef.current?.focus();
+  }
 
   return (
     <main className="min-h-dvh bg-[#fafafa] text-[#171717]">
@@ -86,16 +73,29 @@ export function TaskDashboard({ tasks, memberName, memberInitials, loadedAt, cre
       </header>
 
       <div className="mx-auto max-w-5xl px-5 py-9 sm:px-8 sm:py-12">
-        <div className="mb-8 flex items-start justify-between gap-4">
+        <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold tracking-[-0.04em]">{onPreviewTask ? "Sample tasks" : "Tasks"}</h1>
-            <p className="mt-1.5 text-sm text-[#737373]">{onPreviewTask ? "Explore the dashboard. These are not live tasks." : "Your shared work with Hive."}</p>
+            <h1 className="text-2xl font-semibold tracking-[-0.04em]">{previewTaskHref ? "Sample tasks" : "Tasks"}</h1>
+            <p className="mt-1.5 text-sm text-[#737373]">{previewTaskHref ? "Open a sample task to try Hive. No live agents or repository changes." : "Your shared work with Hive."}</p>
           </div>
-          <NewTask createAction={createAction} />
+          <div className="flex flex-wrap items-center gap-2">
+            {!previewTaskHref ? (
+              <Link className="inline-flex min-h-9 items-center gap-2 rounded-md px-3 py-2 text-xs font-medium text-[#737373] transition hover:bg-[#eeeeee] hover:text-[#171717] focus-visible:outline-2 focus-visible:outline-offset-2" href="/demo" prefetch={false}>
+                <Users aria-hidden="true" className="size-3.5" /> Explore demo
+              </Link>
+            ) : null}
+            <NewTask createAction={createAction} />
+          </div>
         </div>
 
+        <div aria-label="Task status" className="mb-4 flex items-center gap-2" role="group">
+          {[false, true].map((archived) => <Button key={String(archived)} ref={archived === showArchived ? filterRef : undefined} aria-pressed={archived === showArchived} className="gap-2 text-xs" onClick={() => setShowArchived(archived)} variant={archived === showArchived ? "secondary" : "ghost"}>
+            {archived ? "Archived" : "Active"}{" "}<span className="text-muted-foreground">{archived ? archivedCount : all.length - archivedCount}</span>
+          </Button>)}
+        </div>
+        <p className="sr-only" role="status">{notice}</p>
         <section aria-label="Task list" className="overflow-hidden rounded-lg border border-[#e1e1e1] bg-white">
-          <div aria-hidden="true" className="grid grid-cols-[minmax(0,1fr)_70px] gap-4 border-b border-[#ebebeb] bg-[#fcfcfc] px-5 py-3 text-xs text-[#888] sm:grid-cols-[minmax(0,1fr)_minmax(0,0.6fr)_80px_16px]">
+          <div aria-hidden="true" className="grid grid-cols-[minmax(0,1fr)_60px_40px] gap-2 border-b border-[#ebebeb] bg-[#fcfcfc] px-4 py-3 text-xs text-[#888] sm:grid-cols-[minmax(0,1fr)_minmax(0,0.6fr)_80px_16px_90px] sm:gap-4 sm:px-5">
             <span>Task</span>
             <span className="hidden sm:block">Repository</span>
             <span>Updated</span>
@@ -103,13 +103,14 @@ export function TaskDashboard({ tasks, memberName, memberInitials, loadedAt, cre
           {visible.length > 0 ? (
             <ul className="divide-y divide-[#eeeeee]">
               {visible.map((task) => {
-                const rowClassName = "group grid min-h-20 w-full grid-cols-[minmax(0,1fr)_70px] items-center gap-4 px-5 py-4 text-left transition-colors hover:bg-[#fafafa] focus-visible:bg-[#fafafa] focus-visible:outline-2 focus-visible:outline-offset-[-2px] sm:grid-cols-[minmax(0,1fr)_minmax(0,0.6fr)_80px_16px]";
+                const title = taskTitleLabel(task.title);
+                const rowClassName = "group grid min-h-20 min-w-0 flex-1 grid-cols-[minmax(0,1fr)_60px] items-center gap-2 py-4 pl-4 text-left transition-colors hover:bg-[#fafafa] focus-visible:bg-[#fafafa] focus-visible:outline-2 focus-visible:outline-offset-[-2px] sm:grid-cols-[minmax(0,1fr)_minmax(0,0.6fr)_80px_16px] sm:gap-4 sm:pl-5";
                 const content = (
                   <>
                     <div className="min-w-0">
                       <p className="flex items-center gap-2 text-sm font-medium tracking-[-0.015em]">
-                        <span className="truncate" title={task.title}>{task.title}</span>
-                        {onPreviewTask ? <span className="shrink-0 rounded bg-[#f2f2f2] px-1.5 py-0.5 text-xs font-normal tracking-normal text-[#737373]">Preview</span> : null}
+                        <span className="truncate" title={title}>{title}</span>
+                        {previewTaskHref ? <span className="shrink-0 rounded bg-[#f2f2f2] px-1.5 py-0.5 text-xs font-normal tracking-normal text-[#737373]">Demo</span> : null}
                       </p>
                       <p className="mt-1 truncate text-xs text-[#888] sm:hidden">{task.repositoryName ?? "No repository attached"}</p>
                     </div>
@@ -118,16 +119,13 @@ export function TaskDashboard({ tasks, memberName, memberInitials, loadedAt, cre
                       <span className="truncate">{task.repositoryName ?? "Not attached"}</span>
                     </span>
                     <time className="text-xs text-[#888]" dateTime={new Date(task.updatedAt).toISOString()}>{taskUpdatedLabel(task.updatedAt, loadedAt)}</time>
-                    {onPreviewTask ? <Eye aria-hidden="true" className="hidden size-3.5 text-[#aaa] group-hover:text-[#171717] sm:block" /> : <ArrowRight aria-hidden="true" className="hidden size-3.5 text-[#aaa] group-hover:text-[#171717] sm:block" />}
+                    <ArrowRight aria-hidden="true" className="hidden size-3.5 text-[#aaa] group-hover:text-[#171717] sm:block" />
                   </>
                 );
                 return (
-                  <li key={task.id}>
-                    {onPreviewTask ? (
-                      <button aria-label={`Preview sample task: ${task.title}`} className={rowClassName} onClick={() => onPreviewTask(task)} type="button">{content}</button>
-                    ) : (
-                      <Link className={rowClassName} href={`/sessions/${task.id}`}>{content}</Link>
-                    )}
+                  <li className="flex items-center gap-2 pr-4 sm:gap-4 sm:pr-5" key={task.id}>
+                    <Link aria-label={previewTaskHref ? `Open sample task: ${title}` : undefined} className={rowClassName} href={previewTaskHref ? previewTaskHref(task) : `/sessions/${task.id}`} prefetch={previewTaskHref ? false : undefined}>{content}</Link>
+                    <div className="flex w-10 shrink-0 justify-end sm:w-[90px]"><TaskArchiveControl title={title} archived={Boolean(task.archivedAt)} onChange={(archived) => changeArchive(task, archived)} /></div>
                   </li>
                 );
               })}
@@ -135,8 +133,8 @@ export function TaskDashboard({ tasks, memberName, memberInitials, loadedAt, cre
           ) : (
             <div className="grid min-h-60 place-items-center px-6 py-10 text-center">
               <div>
-                <p className="text-sm font-medium">Start your first shared task</p>
-                <p className="mt-2 max-w-xs text-xs leading-5 text-[#888]">Create a task, then invite a teammate to work with Hive.</p>
+                <p className="text-sm font-medium">{showArchived ? "No archived tasks" : "Start your first shared task"}</p>
+                <p className="mt-2 max-w-xs text-xs leading-5 text-[#888]">{showArchived ? "Archived tasks stay here for the whole team. Restore one whenever you’re ready to continue." : "Create a task, then invite a teammate to work with Hive."}</p>
               </div>
             </div>
           )}

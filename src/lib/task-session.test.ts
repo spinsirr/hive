@@ -6,7 +6,6 @@ import {
   applyHiveRunResult,
   appendHiveReply,
   canApplyNextSteer,
-  canApproveChanges,
   canSelectHarness,
   canSetCodingEffort,
   createInitialTaskSessionState,
@@ -51,6 +50,23 @@ function finishInspection(state: TaskSessionState, diff = "") {
     commands: [{ command: "git status --short", output: "", exitCode: 0 }],
   }, 40);
 }
+
+test("a new task stays empty until a member sends the first message", () => {
+  for (const title of ["", "Plan navigation"]) {
+    const initial = createInitialTaskSessionState(1, "empty-task", { title, createdBy: "spencer" });
+    assert.deepEqual(initial.messages, []);
+    assert.equal(isHiveRunActive(initial), false);
+    assert.equal(initial.workspace.agentSession, undefined);
+    const running = reduceTaskSession(initial, { type: "send-message", actor: "spencer", body: "Help us plan navigation" }, 2);
+    assert.equal(running.messages.length, 1);
+    assert.equal(running.messages[0].role, "human");
+    assert.equal(running.messages[0].body, "Help us plan navigation");
+    assert.equal(didStartHiveRun(initial, running), true);
+    const replied = appendHiveReply(running, "Which routes should we cover?", 3);
+    assert.deepEqual(replied.messages.map((message) => message.role), ["human", "agent"]);
+    assert.deepEqual(reduceTaskSession(replied, { type: "reset", actor: "spencer" }, 4).messages, []);
+  }
+});
 
 test("the team can select Claude before coding, then keep that engine through results and reset", () => {
   const selected = reduceTaskSession(connectedSession(), { type: "select-harness", actor: "spencer", runtime: "claude-code" }, 15);
@@ -138,7 +154,7 @@ test("model selection preserves native history, normalizes effort, and respects 
   assert.equal(reduceTaskSession(opus, { type: "reset", actor: "maya" }, 60).workspace.codingModel, opus.workspace.codingModel);
 });
 
-test("a successful read-only run does not offer or accept diff approval", () => {
+test("a successful read-only run returns to waiting without approval", () => {
   const running = reduceTaskSession(connectedSession(), {
     type: "send-message", actor: "spencer", body: "Inspect navigation only",
   }, 20);
@@ -146,32 +162,25 @@ test("a successful read-only run does not offer or accept diff approval", () => 
   assert.equal(finished.stage, "waiting");
   assert.equal(finished.workspace.status, "ready");
   assert.equal(finished.workspace.commands[0]?.exitCode, 0);
-  assert.equal(reduceTaskSession(finished, { type: "advance-run", actor: "spencer" }, 50), finished);
 });
 
-test("approval requires a current successful nonempty diff and no pending work", () => {
+test("the retired global approval action cannot change a task or its history", () => {
   const running = reduceTaskSession(connectedSession(), {
     type: "send-message", actor: "spencer", body: "Update navigation",
   }, 20);
   const review = finishInspection(running, "+ keyboard support");
   const cases: TaskSessionState[] = [
+    review,
     { ...review, workspace: { ...review.workspace, diff: " \n " } },
     { ...review, workspace: { ...review.workspace, status: "error", error: "Rate limit reached." } },
     { ...review, repository: undefined },
     { ...review, steeringQueue: [{ id: "pending", authorId: "maya", body: "Check focus", source: { kind: "message", messageId: "m1" }, queuedAt: 45, sourceLabel: "Teammate message" }] },
     { ...review, activeSteer: { id: "active", authorId: "maya", body: "Check focus", source: { kind: "message", messageId: "m1" }, queuedAt: 35, appliedAt: 45, sourceLabel: "Teammate message" } },
   ];
-  for (const invalid of cases) {
-    assert.equal(canApproveChanges(invalid), false);
-    assert.equal(reduceTaskSession(invalid, { type: "advance-run", actor: "spencer" }, 50), invalid);
+  const retiredAction = JSON.parse('{"type":"advance-run","actor":"spencer"}');
+  for (const state of cases) {
+    assert.equal(reduceTaskSession(state, retiredAction, 50), state);
   }
-
-  assert.equal(canApproveChanges(review), true);
-  const approved = reduceTaskSession(review, { type: "advance-run", actor: "spencer" }, 50);
-  assert.equal(approved.stage, "approved");
-  assert.match(approved.messages.at(-1)!.body, /Spencer approved the current diff\./);
-  assert.doesNotMatch(approved.messages.at(-1)!.body, /pull request|GitHub write/i);
-  assert.equal(reduceTaskSession(approved, { type: "advance-run", actor: "spencer" }, 60), approved);
 });
 
 test("removing the final steer after a read-only run returns to ready, not review", () => {
@@ -347,12 +356,11 @@ test("attaching a repository preserves the task transcript and existing Codex id
   assert.equal(ignoredReplacement.repository?.name, "team/project");
 });
 
-test("finishing and approving a run leaves the same task open for discussion and another steer", () => {
+test("historically approved tasks remain open for discussion and another steer", () => {
   const running = reduceTaskSession(connectedSession(), { type: "send-message", actor: "spencer", body: "Update navigation" }, 20);
   const finished = finishInspection(running, "+ keyboard support");
   assert.equal(isHiveRunActive(finished), false);
-  const approved = reduceTaskSession(finished, { type: "advance-run", actor: "spencer" }, 50);
-  assert.equal(approved.stage, "approved");
+  const approved: TaskSessionState = { ...finished, stage: "approved" };
   const parent = approved.messages.at(-1)!;
   const discussed = reduceTaskSession(approved, { type: "annotate-message", actor: "maya", messageId: parent.id, body: "Also check touch targets" }, 60);
   assert.equal(discussed.stage, "approved");
@@ -696,7 +704,7 @@ test("reset preserves the repository but clears run artifacts", () => {
   assert.equal(reset.stage, "waiting");
   assert.equal(reset.workspace.status, "ready");
   assert.deepEqual(reset.workspace.changedFiles, []);
-  assert.equal(reset.messages.length, 1);
+  assert.deepEqual(reset.messages, [], "reset does not insert another greeting for the connected repository");
   assert.notEqual(
     reset.workspace.agentSession?.id,
     session.workspace.agentSession?.id,
@@ -826,7 +834,6 @@ test("conversation messages carry a machine timestamp alongside the legacy label
   const running = reduceTaskSession(connectedSession(), { type: "send-message", actor: "spencer", body: "Update navigation" }, 20);
   assert.equal(running.messages.at(-1)?.createdAt, 20);
   assert.equal(running.messages.at(-2)?.createdAt, 10, "the repository-connected notice");
-  assert.equal(running.messages[0]?.createdAt, 1, "the initial greeting");
   assert.equal(finishInspection(running, "+ change").messages.at(-1)?.createdAt, 40);
   assert.equal(applyHiveRunError(running, "boom", 45).messages.at(-1)?.createdAt, 45);
   const streamed = { ...running, workspace: { ...running.workspace, liveReply: { id: "reply", body: "Partial", sequence: 1, startedAt: 22 } } };

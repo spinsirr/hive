@@ -19,7 +19,7 @@ test("an author edits queued input without moving it, interrupting a run, or cha
   assert.equal(next.messages.at(-1)!.createdAt, message.createdAt);
   assert.deepEqual(next.messages.at(-1)!.edits, [{ body: "Check keyboard focus", replacedAt: 4 }]);
   assert.deepEqual(next.steeringQueue[0], { ...queued.steeringQueue[0], body: "Check keyboard focus and Escape" });
-  assert.equal(next.messages[1], queued.messages[1]);
+  assert.equal(next.messages.find((entry) => entry.memberId === "spencer"), queued.messages.find((entry) => entry.memberId === "spencer"));
   assert.equal(next.workspace, queued.workspace);
   assert.equal(next.stage, queued.stage);
   assert.equal(didStartHiveRun(queued, next), false);
@@ -33,9 +33,11 @@ test("an author edits queued input without moving it, interrupting a run, or cha
 test("editing completed discussion preserves execution evidence and marks subsequent context as an edit", () => {
   const { running } = fixture();
   const finished = appendHiveReply(running, "Inspection finished", 3);
-  const next = reduceTaskSession(finished, { type: "edit-message", actor: "spencer", messageId: finished.messages[1].id, expectedRevision: 0, body: "Inspect the navigation only" }, 4);
+  const next = reduceTaskSession(finished, { type: "edit-message", actor: "spencer", messageId: finished.messages.find((entry) => entry.memberId === "spencer")!.id, expectedRevision: 0, body: "Inspect the navigation only" }, 4);
   assert.equal(next.workspace, finished.workspace);
   assert.equal(next.stage, finished.stage);
+  assert.equal(next.title, finished.title, "editing the first message does not rename the task");
+  assert.deepEqual(next.messages.map((entry) => [entry.id, entry.createdAt]), finished.messages.map((entry) => [entry.id, entry.createdAt]), "edits preserve message identity, order and original timestamps");
   assert.equal(next.messages.at(-1), finished.messages.at(-1));
   assert.equal(didStartHiveRun(finished, next), false);
   const later = reduceTaskSession(next, { type: "send-message", actor: "maya", body: "Summarize the changes" }, 5);
@@ -44,10 +46,11 @@ test("editing completed discussion preserves execution evidence and marks subseq
 
 test("teammates and spoofed authors cannot edit someone else's message or an agent reply", () => {
   const { queued, edit } = fixture();
+  const finished = appendHiveReply(queued, "Agent evidence", 5);
   for (const action of [
     { type: "edit-message" as const, actor: "spencer", ...edit },
-    { type: "edit-message" as const, actor: "maya", ...edit, messageId: "initial-1" },
-  ]) assert.throws(() => reduceTaskSession(queued, action, 4), (error) => error instanceof MessageEditError && error.status === 403);
+    { type: "edit-message" as const, actor: "maya", ...edit, messageId: finished.messages.find((entry) => entry.role === "agent")!.id },
+  ]) assert.throws(() => reduceTaskSession(finished, action, 6), (error) => error instanceof MessageEditError && error.status === 403);
 });
 
 test("stale edits do not overwrite newer text, while retrying an acknowledged edit adds no revision", () => {
@@ -69,10 +72,11 @@ test("a queued edit is rejected after application or cancellation instead of sil
 
 test("editing a parent never rewrites the frozen whole-thread steer", () => {
   const { running } = fixture();
-  let state = reduceTaskSession(running, { type: "annotate-message", actor: "maya", messageId: running.messages[1].id, body: "Keep it small" }, 3);
-  state = reduceTaskSession(state, { type: "steer-thread", actor: "maya", messageId: running.messages[1].id, throughReplyId: state.messages[1].annotations![0].id }, 4);
+  const parent = running.messages.find((entry) => entry.memberId === "spencer")!;
+  let state = reduceTaskSession(running, { type: "annotate-message", actor: "maya", messageId: parent.id, body: "Keep it small" }, 3);
+  state = reduceTaskSession(state, { type: "steer-thread", actor: "maya", messageId: parent.id, throughReplyId: state.messages.find((entry) => entry.id === parent.id)!.annotations![0].id }, 4);
   const frozen = state.steeringQueue[0];
-  const edited = reduceTaskSession(state, { type: "edit-message", actor: "spencer", messageId: running.messages[1].id, expectedRevision: 0, body: "Changed discussion" }, 5);
+  const edited = reduceTaskSession(state, { type: "edit-message", actor: "spencer", messageId: parent.id, expectedRevision: 0, body: "Changed discussion" }, 5);
   assert.deepEqual(edited.steeringQueue[0], frozen);
   assert.match(frozen.body, /Inspect navigation/);
   assert.doesNotMatch(frozen.body, /Changed discussion/);
@@ -82,4 +86,11 @@ test("empty and oversized edits are rejected without losing the saved original",
   const { queued, edit } = fixture();
   for (const body of ["  ", "x".repeat(8_001)]) assert.throws(() => reduceTaskSession(queued, { type: "edit-message", actor: "maya", ...edit, body }, 4), (error) => error instanceof MessageEditError && error.status === 400);
   assert.equal(queued.messages.at(-1)!.body, "Check keyboard focus");
+});
+
+test("restore receipts remain immutable even for their attributed member", () => {
+  const { running } = fixture();
+  const receipt = { ...running.messages[0], id: "restore-attempt-1", body: "Restored workspace and agent context" };
+  const state = { ...running, messages: [...running.messages, receipt] };
+  assert.throws(() => reduceTaskSession(state, { type: "edit-message", actor: "spencer", messageId: receipt.id, expectedRevision: 0, body: "Changed receipt" }), (error) => error instanceof MessageEditError && error.status === 400);
 });

@@ -8,14 +8,16 @@ registerHooks({ resolve(specifier, context, next) {
   if (specifier.startsWith("@/")) return next(new URL(`../src/${specifier.slice(2)}.ts`, import.meta.url).href, context);
   return next(specifier, context);
 } });
-const { beginWorkspaceRestore, completeWorkspaceRestore, failWorkspaceRestore, WorkspaceRestoreError } = await import("../src/lib/workspace-restore-state.ts");
+const { assertWorkspaceRestoreAttempt, beginWorkspaceRestore, completeWorkspaceRestore, failWorkspaceRestore, recordWorkspaceRestoreSource, WorkspaceRestoreError } = await import("../src/lib/workspace-restore-state.ts");
 const { applyHiveRunResult, createInitialTaskSessionState } = await import("../src/lib/task-session.ts");
 let member = { id: "github-101", name: "QA Member", shortName: "QA", initials: "QA" };
 let admitted = true, session, status, currentSnapshotId, sourceSnapshotId, pointerFailure = false, retentionFailure = false, foreign = false;
+let providerSessionId, providerSnapshots, lostResumeResponse = false;
 const calls = [];
 const snapshot = () => ({ session, members: [member], activeMembers: [], typingMembers: [] });
 mock.module(new URL("../src/lib/auth-session.ts", import.meta.url).href, { namedExports: { HIVE_SESSION_COOKIE: "hive_session", getSessionMember: async () => member } });
 mock.module(new URL("../src/lib/task-session-store.ts", import.meta.url).href, { namedExports: {
+  TaskSessionAccessError: class extends Error {},
   isTaskSessionMember: async () => admitted,
   getTaskSessionSnapshot: async () => snapshot(),
   getPublicTaskSessionSnapshot: async () => snapshot(),
@@ -24,13 +26,14 @@ mock.module(new URL("../src/lib/task-session-store.ts", import.meta.url).href, {
     const previous = session; session = beginWorkspaceRestore(session, request, author);
     return { session, started: previous !== session };
   },
-  finishTaskWorkspaceRestore: async (_id, id, confirmed) => { session = confirmed ? completeWorkspaceRestore(session, id) : failWorkspaceRestore(session, id); return snapshot(); },
+  recordTaskWorkspaceRestoreSource: async (_id, id, startedAt, source) => { session = recordWorkspaceRestoreSource(session, id, startedAt, source); return session; },
+  finishTaskWorkspaceRestore: async (_id, id, confirmed, startedAt) => { assertWorkspaceRestoreAttempt(session, id, startedAt); session = confirmed ? completeWorkspaceRestore(session, id) : failWorkspaceRestore(session, id); return snapshot(); },
 } });
 const sandbox = {
   name: "hive-session-test-agent", get status() { return status; }, get tags() { return { session: foreign ? "other-task" : "restore-qa" }; },
   get currentSnapshotId() { return currentSnapshotId; }, keepLastSnapshots: { count: 3 },
-  currentSession: () => ({ sourceSnapshotId }),
-  listSnapshots: async () => ({ snapshots: [{ id: "snap-old", status: "created", createdAt: 1 }, { id: "snap-new", status: "created", createdAt: 2 }] }),
+  currentSession: () => ({ sessionId: providerSessionId, sourceSnapshotId }),
+  listSnapshots: async () => ({ snapshots: providerSnapshots }),
   stop: async () => { calls.push("stop"); status = "stopped"; currentSnapshotId = "snap-safety"; return { snapshot: { id: "snap-safety", status: "created", createdAt: 3 } }; },
   update: async (update) => {
     calls.push(update);
@@ -38,7 +41,14 @@ const sandbox = {
     if (update.currentSnapshotId) { currentSnapshotId = update.currentSnapshotId; if (pointerFailure) throw new Error("PRIVATE PROVIDER ERROR after pointer update"); }
   },
 };
-mock.module("@vercel/sandbox", { namedExports: { Sandbox: { get: async ({ resume }) => { calls.push(resume ? "resume" : "metadata"); if (resume) { status = "running"; sourceSnapshotId = currentSnapshotId; } return sandbox; } } } });
+mock.module("@vercel/sandbox", { namedExports: { Sandbox: { get: async ({ resume }) => {
+  calls.push(resume ? "resume" : "metadata");
+  if (resume) {
+    status = "running"; sourceSnapshotId = currentSnapshotId; providerSessionId = "resumed-session";
+    if (lostResumeResponse) throw new DOMException("Provider resumed, but response timed out", "TimeoutError");
+  }
+  return sandbox;
+} } } });
 
 function fresh() {
   session = createInitialTaskSessionState(1, "restore-qa");
@@ -52,6 +62,8 @@ function fresh() {
   // sourceSnapshotId is not proof of restoration: it still has to stop/repoint.
   status = "running"; currentSnapshotId = "snap-new"; sourceSnapshotId = "snap-old";
   calls.length = 0; pointerFailure = false; retentionFailure = false; foreign = false;
+  providerSessionId = "original-session"; lostResumeResponse = false;
+  providerSnapshots = [{ id: "snap-old", status: "created", createdAt: 1 }, { id: "snap-new", status: "created", createdAt: 2 }];
 }
 try {
   const { NextRequest } = await import("next/server.js");
@@ -104,4 +116,84 @@ try {
   assert.equal(session.workspace.restore, undefined);
   assert.equal(session.workspace.files[0].content, "old");
   console.log("PASS: retention housekeeping cannot misreport a confirmed restore as a failure");
+
+  fresh(); lostResumeResponse = true;
+  const recovered = await post({ ...input, version: session.version });
+  assert.equal(recovered.status, 200, "a lost resume response must be reconciled against the actual new session, not leave the task locked");
+  assert.equal(session.workspace.restore, undefined);
+  assert.equal(session.workspace.files[0].content, "old");
+  assert.equal(calls.filter((call) => call === "stop").length, 1, "reconciliation never repeats the destructive operation");
+  console.log("PASS: a timeout after provider success is confirmed with metadata only, without a second stop or restore");
+
+  fresh(); pointerFailure = true;
+  assert.equal((await post({ ...input, version: session.version })).status, 503);
+  assert.equal(session.workspace.restore.sourceSessionId, "original-session");
+  const checkRequest = { ...input, mode: "check" };
+  const beforeCheck = calls.length;
+  assert.equal((await post(checkRequest)).status, 202, "status checks wait for the live worker's lease before probing");
+  assert.equal(calls.length, beforeCheck);
+  assert.equal((await post({ ...checkRequest, id: "e8a7d291-c9db-44cb-9d1c-2e974dc92671" })).status, 409);
+  session.workspace.restore.retryAfter = 0;
+  status = "running"; sourceSnapshotId = "snap-old"; // Original VM, possibly edited after startup.
+  assert.equal((await post(checkRequest)).status, 202, "matching source snapshot on the original VM is not proof of restore");
+  assert.ok(session.workspace.restore);
+  providerSessionId = "late-resumed-session"; sourceSnapshotId = "snap-new";
+  assert.equal((await post(checkRequest)).status, 202, "a new VM from the wrong snapshot is not proof either");
+  sourceSnapshotId = "snap-old";
+  foreign = true;
+  assert.equal((await post(checkRequest)).status, 403);
+  foreign = false;
+  const changesBeforeConfirm = calls.filter((call) => call !== "metadata").length;
+  const confirmed = await post(checkRequest);
+  assert.equal(confirmed.status, 200);
+  assert.equal(session.workspace.restore, undefined);
+  assert.equal(session.workspace.files[0].content, "old");
+  assert.equal(calls.filter((call) => call !== "metadata").length, changesBeforeConfirm, "recovery checks are provider metadata-only");
+  assert.equal((await post(checkRequest)).status, 200, "completed checks are idempotent");
+  assert.doesNotMatch(await confirmed.text(), /NATIVE SECRET|resumeFrom/);
+  console.log("PASS: late completion is reconciled after worker expiry, without writes or trusting an old/foreign/wrong-snapshot VM");
+
+  fresh(); pointerFailure = true;
+  assert.equal((await post({ ...input, version: session.version })).status, 503);
+  session.workspace.restore.retryAfter = 0;
+  status = "stopped"; currentSnapshotId = "snap-after-sleep"; sourceSnapshotId = "snap-old";
+  const sleepSnapshot = { id: currentSnapshotId, sourceSessionId: "late-resumed-session", parentId: "snap-old", status: "created", createdAt: Date.now() };
+  providerSnapshots.push(sleepSnapshot);
+  assert.equal((await post(checkRequest)).status, 202, "the original VM cannot prove restoration even after stopping");
+  providerSessionId = "late-resumed-session";
+  sleepSnapshot.sourceSessionId = "foreign-vm";
+  assert.equal((await post(checkRequest)).status, 202, "the saved snapshot must come from the restored VM");
+  sleepSnapshot.sourceSessionId = providerSessionId;
+  sleepSnapshot.parentId = "snap-new";
+  assert.equal((await post(checkRequest)).status, 202, "the saved snapshot must descend directly from the restore target");
+  sleepSnapshot.parentId = "snap-old";
+  sleepSnapshot.status = "failed";
+  assert.equal((await post(checkRequest)).status, 202);
+  sleepSnapshot.status = "created";
+  sleepSnapshot.expiresAt = Date.now() - 1;
+  assert.equal((await post(checkRequest)).status, 202);
+  delete sleepSnapshot.expiresAt;
+  currentSnapshotId = "unknown-snapshot";
+  assert.equal((await post(checkRequest)).status, 202);
+  currentSnapshotId = sleepSnapshot.id;
+  status = "snapshotting";
+  assert.equal((await post(checkRequest)).status, 202, "incomplete snapshotting cannot unlock the workspace");
+  status = "stopped";
+  const writesBeforeSleepConfirm = calls.filter((call) => call !== "metadata").length;
+  assert.equal((await post(checkRequest)).status, 200, "a successfully restored VM can sleep before a viewer reconnects");
+  assert.equal(session.workspace.restore, undefined);
+  assert.equal(session.workspace.files[0].content, "old");
+  assert.equal(calls.filter((call) => call !== "metadata").length, writesBeforeSleepConfirm, "sleep confirmation must not resume or rewind the sandbox");
+  assert.equal((await post(checkRequest)).status, 200);
+  console.log("PASS: a restored sandbox that has slept is confirmed only through the new VM and its valid target-derived snapshot, without waking or restoring it again");
+
+  fresh(); pointerFailure = true;
+  assert.equal((await post({ ...input, version: session.version })).status, 503);
+  session.workspace.restore.retryAfter = 0;
+  status = "running"; sourceSnapshotId = "snap-old"; providerSessionId = "late-resumed-session";
+  const stopsBeforeRetry = calls.filter((call) => call === "stop").length;
+  pointerFailure = false;
+  assert.equal((await post(input)).status, 200, "even explicit retry first checks for completed work");
+  assert.equal(calls.filter((call) => call === "stop").length, stopsBeforeRetry);
+  console.log("PASS: explicit retry also acknowledges a completed restore without repeating it");
 } finally { mock.restoreAll(); }

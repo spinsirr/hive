@@ -1,4 +1,5 @@
 import { GitBranch } from "lucide-react";
+import Link from "next/link";
 
 export function HiveSignIn({
   description = "One shared coding agent, one task, and a clear record of who steered what.",
@@ -27,6 +28,14 @@ export function HiveSignIn({
         >
           <GitBranch className="size-4" /> Continue with GitHub
         </a>
+        <Link
+          className="mt-3 flex min-h-10 items-center justify-center rounded-md border border-[#e1e1e1] px-4 py-2 text-sm font-medium transition hover:bg-[#fafafa] focus-visible:outline-2 focus-visible:outline-offset-2"
+          href="/demo"
+          prefetch={false}
+        >
+          Explore demo
+        </Link>
+        <p className="mt-2 text-center text-xs leading-5 text-[#737373]">No sign-in required. Sample data only.</p>
       </section>
     </main>
   );

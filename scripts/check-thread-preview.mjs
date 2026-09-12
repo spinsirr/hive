@@ -5,6 +5,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { registerHooks } from "node:module";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { JSDOM } from "jsdom";
 import { JsxEmit, ModuleKind, transpileModule } from "typescript";
 
 registerHooks({
@@ -21,6 +22,7 @@ registerHooks({
 });
 
 const { MessageThreadPreview } = await import("../src/components/hive/message-thread-preview.tsx");
+const { ConversationMessage, ConversationTurn } = await import("../src/components/hive/conversation-message.tsx");
 const members = [
   { id: "demo-alex", name: "Alex Example", shortName: "Alex", initials: "AL" },
   { id: "demo-casey", name: "Casey Example", shortName: "Casey", initials: "CA" },
@@ -29,46 +31,88 @@ const reply = (id, body, extra = {}) => ({ id, body, authorId: "demo-casey", cre
 let actions = 0;
 const props = {
   message: { id: "demo-parent", name: "Alex Example", initials: "AL", body: "Review this", role: "human", time: "10:00 AM" },
-  members, disabled: false, queueing: false,
-  onOpen: () => { actions += 1; }, onSteerReply: () => { actions += 1; },
+  members,
+  onOpen: () => { actions += 1; },
 };
 const render = (replies, extra = {}) => renderToStaticMarkup(createElement(MessageThreadPreview, { ...props, ...extra, message: { ...props.message, annotations: replies } }));
 
 assert.equal(render([]), "");
 const single = render([reply("one", "Is this correct?\n请保留作者。")]);
-assert.match(single, /Casey Example/);
-assert.match(single, /Is this correct\?\n请保留作者。/);
-assert.match(single, /Steer Hive for Casey&#x27;s reply/);
+assert.match(single, /Casey:/);
+assert.match(single, /Is this correct\? 请保留作者。/);
+assert.doesNotMatch(single, /Steer Hive/);
 assert.match(single, /Open thread with 1 reply/);
 assert.doesNotMatch(single, /<details|<time/);
 assert.match(render([reply("one", "<script>alert(1)<\/script>")]), /&lt;script&gt;/);
-console.log("PASS: a short thread renders its author's full reply inline, escapes content, and keeps the thread entry.");
+console.log("PASS: a short thread shows an attributed excerpt, escapes content, and has one entry.");
 
-const busy = render([reply("one", "Please check")], { queueing: true });
-assert.match(busy, /Queue steer for Casey&#x27;s reply/);
-const disabled = render([reply("one", "Please check")], { disabled: true });
-const disabledSteer = disabled.match(/<button[^>]*aria-label="Steer Hive[^>]*>/)?.[0] ?? "";
-assert.match(disabledSteer, /\sdisabled=""/);
 const queued = render([reply("one", "Please check", { status: "queued", queuedBy: "demo-alex" })]);
-assert.match(queued, /Queued.*by Alex/);
-assert.match(queued, /Casey Example/);
+assert.match(queued, /Casey:/);
+assert.doesNotMatch(queued, /Alex:/);
 assert.doesNotMatch(queued, /aria-label="Steer Hive/);
-console.log("PASS: inline steer labels follow run state, honor disabled state, and keep author/promoter attribution separate.");
+assert.doesNotMatch(queued, /disabled=""/);
+console.log("PASS: the preview retains the author, never the promoter, and remains readable without mutation controls.");
 
 const agentReply = render([reply("agent-one", "Should this also apply to CI?", { authorId: "hive-agent", role: "agent" })]);
-assert.match(agentReply, />Hive<\/span>/);
+assert.match(agentReply, />Hive: <\/span>/);
 assert.match(agentReply, /Should this also apply to CI\?/);
 assert.doesNotMatch(agentReply, /Casey Example|aria-label="(?:Steer Hive|Queue steer)/);
 assert.match(agentReply, /Open thread with 1 reply/);
 console.log("PASS: agent replies are attributed to Hive, not a teammate, and cannot steer themselves.");
 
 const many = render([1, 2, 3, 4, 5].map((id) => reply(String(id), `Unique reply ${id}`)));
-assert.match(many, /<details[^>]*>/);
-assert.doesNotMatch(many, /<details[^>]*\bopen(?:[=>\s])/);
-assert.match(many, /2 earlier replies/);
-const visible = many.replace(/<details[\s\S]*?<\/details>/, "");
-assert.doesNotMatch(visible, /Unique reply [12]/);
-assert.match(visible, /Unique reply 3[\s\S]*Unique reply 4[\s\S]*Unique reply 5/);
-assert.match(visible, /Open thread with 5 replies/);
+assert.doesNotMatch(many, /<details|Unique reply [1234]/);
+assert.match(many, /Unique reply 5/);
+assert.match(many, /Open thread with 5 replies/);
 assert.equal(actions, 0);
-console.log("PASS: only older replies collapse; the newest three remain visible in order and rendering triggers no actions.");
+console.log("PASS: only the latest reply is previewed; older replies stay in the thread and rendering triggers no actions.");
+
+const longReply = "Here are the pros and cons. ".repeat(40) + "Only visible inside the full thread.";
+const question = { ...props.message, role: "agent", name: "Hive", body: "Should we close the tab?", interaction: { kind: "question", runId: "qa-run", targetMemberId: "demo-casey", options: ["Yes", "No"] }, annotations: [reply("opinion", "What are the tradeoffs?"), reply("analysis", longReply, { role: "agent", authorId: "hive-agent" })] };
+const cardProps = { message: question, currentMember: "demo-alex", members, sessionId: "thread-preview", disabled: false, runActive: false, selected: false, onOpenThread() {} };
+const card = renderToStaticMarkup(createElement(ConversationMessage, cardProps));
+assert.equal((card.match(/aria-label="(?:Open thread with|Reply in thread to)[^"]*"|>Open collaboration thread</g) ?? []).length, 1, "one discussion must have one entry, not Reply + Open collaboration thread + Open thread");
+assert.doesNotMatch(card, /Only visible inside the full thread/, "the main conversation must not contain a second full thread transcript");
+const openCard = renderToStaticMarkup(createElement(ConversationMessage, { ...cardProps, selected: true }));
+assert.doesNotMatch(openCard, /Here are the pros and cons/, "when the thread is open, its reply must not also be shown in the main conversation");
+assert.match(openCard, /aria-expanded="true"/);
+assert.match(openCard, /Thread open/);
+const emptyQuestion = renderToStaticMarkup(createElement(ConversationMessage, { ...cardProps, message: { ...question, annotations: [] } }));
+assert.doesNotMatch(emptyQuestion, /Open collaboration thread|Open thread with/);
+assert.match(emptyQuestion, /Reply in thread to/);
+assert.match(emptyQuestion, /data-slot="question-message"/);
+const archivedCard = renderToStaticMarkup(createElement(ConversationMessage, { ...cardProps, disabled: true }));
+assert.match(archivedCard, /Open thread with 2 replies/);
+assert.doesNotMatch(archivedCard, /disabled=""/);
+console.log("PASS: a question has one thread entry and never repeats a full transcript alongside the open thread.");
+
+const grouped = renderToStaticMarkup(createElement(ConversationTurn, {
+  ...cardProps, selectedThreadId: question.id,
+  turn: { message: { id: "qa-run", name: "Hive", initials: "H", role: "agent", body: "We need one preference before continuing.", time: "10:00 AM" }, requests: [question] },
+}));
+const groupedDoc = new JSDOM(grouped).window.document;
+assert.equal(groupedDoc.querySelectorAll('[role="img"][aria-label="Hive logo"]').length, 1, "a turn and its tool-created card share an author header");
+assert.equal(groupedDoc.querySelectorAll('[data-message-id]').length, 2, "grouping preserves both addressable source messages");
+const attachedCard = groupedDoc.querySelector('[data-slot="threaded-message"]');
+assert.ok(attachedCard);
+assert.equal(attachedCard.lastElementChild.getAttribute("aria-label"), "Open thread with 2 replies", "the Thread entry is the attached card footer");
+assert.equal(attachedCard.querySelectorAll('button[aria-expanded]').length, 1, "one card has one Thread entry");
+assert.equal(attachedCard.querySelectorAll('button[aria-label="Copy response"]').length, 1, "the question retains its own copy action");
+assert.equal(groupedDoc.querySelectorAll('button[aria-label="Copy response"]').length, 2, "grouping must not discard the original response action");
+assert.equal(attachedCard.lastElementChild.getAttribute("aria-expanded"), "true");
+const ordinary = new JSDOM(renderToStaticMarkup(createElement(ConversationMessage, { ...cardProps, message: { ...question, interaction: undefined } }))).window.document.querySelector('[data-slot="threaded-message"]');
+assert.ok(ordinary, "ordinary replies use the same body-and-footer surface");
+const collapsedQuestion = new JSDOM(card).window.document.querySelector('button[aria-expanded]');
+assert.equal(ordinary.lastElementChild.className, collapsedQuestion.className, "tool-created and ordinary Thread entries have identical styles");
+assert.match(ordinary.lastElementChild.textContent, /Open thread/);
+for (const message of [
+  { ...question, role: "human", memberId: "demo-alex", interaction: undefined },
+  { ...question, interaction: { kind: "review", runId: "qa-run", status: "open", revision: "qa-run" } },
+]) {
+  const surface = new JSDOM(renderToStaticMarkup(createElement(ConversationMessage, { ...cardProps, message }))).window.document.querySelector('[data-slot="threaded-message"]');
+  assert.equal(surface.className, ordinary.className, "all Thread-bearing messages share one surface");
+  assert.equal(surface.lastElementChild.className, collapsedQuestion.className, "human and review Thread entries cannot fork their appearance");
+  assert.equal(surface.querySelectorAll('button[aria-expanded]').length, 1);
+}
+assert.equal(actions, 0);
+console.log("PASS: one author group retains individual messages and a single attached Thread footer without mutations.");
