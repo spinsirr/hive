@@ -3,6 +3,7 @@ export type DashboardTask = {
   title: string;
   repositoryName: string | null;
   updatedAt: number;
+  archivedAt?: number | null;
 };
 
 export function dashboardTasks(tasks: DashboardTask[]) {

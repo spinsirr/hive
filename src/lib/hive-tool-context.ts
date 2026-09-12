@@ -3,12 +3,13 @@ import type { HiveToolScope } from "./hive-tool-token.ts";
 import { checkedMemoryText } from "./hive-memory.ts";
 
 export type HiveToolContext = Pick<TaskSessionState, "sessionId" | "title" | "version" | "stage" | "repository" | "messages" | "steeringQueue" | "activeSteer"> & {
+  archived?: TaskSessionState["archived"];
   workspace: Pick<TaskSessionState["workspace"], "status" | "restore" | "lastRestore"> & { liveReply?: { id: string }; runtime?: import("./task-session.ts").CodingRuntime };
   members: TeamMember[];
 };
 
 export function assertHiveToolRun(context: HiveToolContext, scope: HiveToolScope) {
-  if (context.sessionId !== scope.sessionId || context.stage !== "running" ||
+  if (context.archived || context.sessionId !== scope.sessionId || context.stage !== "running" ||
     context.workspace.liveReply?.id !== scope.runId || context.workspace.restore ||
     !context.members.some((member) => member.id === scope.memberId)) {
     throw new Error("This agent run no longer has access to the task.");

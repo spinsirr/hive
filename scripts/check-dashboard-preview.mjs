@@ -34,6 +34,7 @@ registerHooks({
 
 const { createElement: h } = await import("react");
 const { cleanup, fireEvent, render, screen, within } = await import("@testing-library/react");
+const { waitFor } = await import("@testing-library/react");
 const { DashboardDemo } = await import("../src/app/demo/dashboard-demo.tsx");
 const { TaskDashboard } = await import("../src/components/hive/task-dashboard.tsx");
 const { HiveSignIn } = await import("../src/components/hive/hive-sign-in.tsx");
@@ -41,7 +42,7 @@ const { demoLoadedAt, demoTasks, demoTaskHref, newDemoTask } = await import("../
 
 render(h(DashboardDemo));
 assert.ok(screen.getByRole("heading", { name: "Sample tasks" }));
-assert.equal(screen.queryByRole("group", { name: "Task status" }), null);
+assert.ok(screen.getByRole("group", { name: "Task status" }));
 assert.equal(within(screen.getByRole("region", { name: "Task list" })).getAllByRole("listitem").length, 4);
 assert.equal(screen.getByRole("link", { name: "Open Hive" }).getAttribute("href"), "/");
 assert.equal(screen.queryByRole("region", { name: "One agent. Your whole team." }), null);
@@ -56,6 +57,19 @@ for (const task of demoTasks) {
 assert.equal(document.querySelector('a[href^="/sessions/"]'), null);
 assert.equal(screen.queryByRole("button", { name: /Preview sample task/ }), null);
 assert.equal(screen.queryByRole("dialog"), null);
+fireEvent.click(screen.getByRole("button", { name: "Archive task: Polish the settings menu" }));
+assert.ok(screen.getByRole("dialog", { name: "Archive this task for everyone?" }));
+fireEvent.click(screen.getByRole("button", { name: "Archive task", exact: true }));
+await waitFor(() => assert.equal(screen.queryByRole("dialog"), null));
+assert.equal(screen.getAllByRole("link", { name: /^Open sample task:/ }).length, 3);
+assert.equal(document.activeElement, screen.getByRole("button", { name: "Active 3" }), "focus survives archiving a row");
+fireEvent.click(screen.getByRole("button", { name: "Archived 1" }));
+assert.equal(screen.getByRole("link", { name: "Open sample task: Polish the settings menu" }).getAttribute("href"), "/demo/tasks/demo-menu?archived=1");
+fireEvent.click(screen.getByRole("button", { name: "Restore task: Polish the settings menu" }));
+fireEvent.click(screen.getByRole("button", { name: "Restore task", exact: true }));
+await waitFor(() => assert.ok(screen.getByText("No archived tasks")));
+fireEvent.click(screen.getByRole("button", { name: "Active 4" }));
+console.log("PASS: team archive, Archived list, read-only task link, restore and keyboard focus; zero network requests.");
 fireEvent.click(screen.getByRole("button", { name: "Empty state" }));
 assert.ok(screen.getByText("Start your first shared task"));
 fireEvent.click(screen.getByRole("button", { name: "Reset demo" }));
@@ -80,7 +94,7 @@ render(h(TaskDashboard, {
 assert.ok(screen.getByRole("heading", { name: "Tasks" }));
 assert.equal(screen.getByRole("link", { name: /Polish the settings menu/ }).getAttribute("href"), "/sessions/real-task");
 assert.equal(screen.queryByText("Preview"), null);
-assert.equal(screen.queryByRole("group", { name: "Task status" }), null);
+assert.ok(screen.getByRole("group", { name: "Task status" }));
 assert.equal(screen.getByRole("link", { name: "Explore demo" }).getAttribute("href"), "/demo");
 cleanup();
 render(h(TaskDashboard, {
@@ -90,7 +104,7 @@ render(h(TaskDashboard, {
 assert.ok(screen.getByText("Start your first shared task"));
 assert.ok(screen.getByRole("button", { name: "New task" }));
 assert.equal(screen.getByRole("link", { name: "Explore demo" }).getAttribute("href"), "/demo");
-assert.equal(screen.queryByRole("button", { name: /Completed|Active/ }), null);
+assert.ok(screen.getByRole("button", { name: "Active 0" }));
 cleanup();
 render(h(HiveSignIn, { returnTo: "/" }));
 assert.equal(screen.getByRole("link", { name: "Explore demo" }).getAttribute("href"), "/demo");
@@ -110,6 +124,6 @@ cleanup();
 await assert.rejects(Home({ searchParams: Promise.resolve({}) }), /must not import the database/, "A session cookie must still be verified against the database; no authentication bypass.");
 delete globalThis.__demoTestCookie;
 dom.window.close();
-console.log("PASS: the dashboard keeps real task links and an honest empty state without manual status filters.");
+console.log("PASS: the dashboard keeps real task links, team archive filters and an honest empty state.");
 console.log("PASS: signed-out, signed-in, and empty dashboards link to the demo index, including newly created local demo tasks.");
 console.log("PASS: actual signed-out/retry home pages render without a database; session-bearing requests still require verification.");

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { isHiveRunActive, timeLabel, type TaskSessionState, type TeamMember } from "./task-session.ts";
+import { ARCHIVED_TASK_MESSAGE, isHiveRunActive, timeLabel, type TaskSessionState, type TeamMember } from "./task-session.ts";
 
 export const restoreWorkspaceRequest = z.object({
   id: z.uuid(), snapshotId: z.string().min(1).max(200), version: z.number().int().nonnegative(),
@@ -12,12 +12,14 @@ export class WorkspaceRestoreError extends Error {
 }
 
 export function workspaceRestoreBlockReason(session: TaskSessionState) {
+  if (session.archived) return ARCHIVED_TASK_MESSAGE;
   if (session.workspace.restore) return session.workspace.restore.status === "unconfirmed" ? "Restore needs confirmation. Retry the same checkpoint before continuing." : "Restoring workspace…";
   if (isHiveRunActive(session) || session.activeSteer) return "Wait for Hive to finish before restoring a checkpoint.";
   return null;
 }
 
 export function beginWorkspaceRestore(session: TaskSessionState, request: RestoreWorkspaceRequest, member: TeamMember, now = Date.now()): TaskSessionState {
+  if (session.archived) throw new WorkspaceRestoreError(409, ARCHIVED_TASK_MESSAGE);
   if (session.workspace.lastRestore?.id === request.id && session.workspace.lastRestore.snapshotId === request.snapshotId) return session;
   const pending = session.workspace.restore;
   if (pending) {

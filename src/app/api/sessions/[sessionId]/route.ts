@@ -82,6 +82,8 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
   }
 
   if (
+    payload.type !== "archive-task" &&
+    payload.type !== "restore-task" &&
     payload.type !== "send-message" &&
     payload.type !== "answer-question" &&
     payload.type !== "resolve-peer-review" &&

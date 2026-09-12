@@ -41,6 +41,10 @@ export function DashboardDemo() {
         loadedAt={demoLoadedAt}
         memberInitials="AL"
         memberName="Alex · Demo team"
+        onArchiveTask={async (id, archived) => {
+          setTasks((current) => current.map((task) => task.id === id ? { ...task, archivedAt: archived ? demoLoadedAt : null, updatedAt: demoLoadedAt } : task));
+          setNotice(archived ? "Task archived for the sample team." : "Sample task restored.");
+        }}
         previewTaskHref={demoTaskHref}
         tasks={tasks}
       />

@@ -52,6 +52,7 @@ export default async function Home({
         title: session.title,
         repositoryName: session.repository?.name ?? null,
         updatedAt: session.updatedAt,
+        archivedAt: session.archived?.at ?? null,
       }))}
     />
   );

@@ -4,6 +4,7 @@ import { History, LoaderCircle, RotateCcw, RotateCw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { useHiveClient } from "@/components/hive/hive-client";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { workspaceCheckpointsResponse, type WorkspaceCheckpointsResponse } from "@/lib/workspace-files";
 import type { TaskSessionSnapshot } from "@/lib/task-session-store";
@@ -12,6 +13,7 @@ import type { RestoreWorkspaceRequest } from "@/lib/workspace-restore-state";
 const dateLabel = (date: number) => new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
 
 export function WorkspaceCheckpoints({ sessionId, revision, onRestored }: { sessionId: string; revision: number; onRestored: (snapshot: TaskSessionSnapshot) => void }) {
+  const client = useHiveClient();
   const [refresh, setRefresh] = useState(0);
   const key = `${sessionId}:${revision}:${refresh}`;
   const [state, setState] = useState<{ key: string; data?: WorkspaceCheckpointsResponse; error?: string }>();
@@ -24,7 +26,7 @@ export function WorkspaceCheckpoints({ sessionId, revision, onRestored }: { sess
     const controller = new AbortController();
     async function load() {
       try {
-        const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/checkpoints`, { cache: "no-store", signal: controller.signal });
+        const response = await client.request(`/api/sessions/${encodeURIComponent(sessionId)}/checkpoints`, { cache: "no-store", signal: controller.signal });
         const body = await response.json();
         if (!response.ok) throw new Error(body.error || "Checkpoints could not be loaded.");
         const data = workspaceCheckpointsResponse.parse(body);
@@ -35,21 +37,25 @@ export function WorkspaceCheckpoints({ sessionId, revision, onRestored }: { sess
     }
     void load();
     return () => controller.abort();
-  }, [key, sessionId]);
+  }, [key, sessionId, client]);
   const current = state?.key === key ? state : undefined;
   const recovery = current?.data?.restore;
   const retryKey = recovery ? `${recovery.id}:${recovery.retryAfter}` : "";
+  // A teammate can archive or advance the task while this dialog is open.
+  const confirmDisabled = restoring || !current?.data || (recovery
+    ? readyRetry !== retryKey
+    : Boolean(current.data.blockedReason) || confirm?.request.version !== current.data.version);
   useEffect(() => {
     if (!recovery) return;
     const timer = setTimeout(() => setReadyRetry(retryKey), Math.max(0, recovery.retryAfter - Date.now()));
     return () => clearTimeout(timer);
   }, [recovery, retryKey]);
   const restore = async () => {
-    if (!confirm || restoring) return;
+    if (!confirm || confirmDisabled) return;
     setRestoring(true);
     setRestoreError("");
     try {
-      const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/checkpoints`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(confirm.request) });
+      const response = await client.request(`/api/sessions/${encodeURIComponent(sessionId)}/checkpoints`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(confirm.request) });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || "Restore could not be confirmed. Refresh Checkpoints before retrying.");
       onRestored(body);
@@ -87,9 +93,10 @@ export function WorkspaceCheckpoints({ sessionId, revision, onRestored }: { sess
             <DialogTitle>Restore this checkpoint?</DialogTitle>
             <DialogDescription>{confirm?.createdAt ? `Restore files and Codex context to ${dateLabel(confirm.createdAt)}. ` : "Retry restoring the selected files and Codex context. "}Team discussion and queued steers will stay; nothing will run automatically. GitHub commits and pull requests are not changed.</DialogDescription>
           </DialogHeader>
+          {current?.data?.blockedReason && !recovery ? <p className="text-xs text-muted-foreground" role="status">{current.data.blockedReason}</p> : null}
           <DialogFooter>
             <Button disabled={restoring} onClick={() => setConfirm(undefined)} ref={cancelButton} variant="outline">Cancel</Button>
-            <Button disabled={restoring} onClick={() => void restore()}>{restoring ? <LoaderCircle className="size-3.5 animate-spin" /> : <RotateCcw className="size-3.5" />}{restoring ? "Restoring…" : "Restore checkpoint"}</Button>
+            <Button disabled={confirmDisabled} onClick={() => void restore()}>{restoring ? <LoaderCircle className="size-3.5 animate-spin" /> : <RotateCcw className="size-3.5" />}{restoring ? "Restoring…" : "Restore checkpoint"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -37,6 +37,7 @@ export function MessageThread({ sessionId, message, members, currentMember, disa
   const question = message.interaction?.kind === "question" ? message.interaction : undefined;
   const review = message.interaction?.kind === "review" ? message.interaction : undefined;
   const answering = Boolean(question && !question.answer && onAnswerQuestion && (!question.targetMemberId || question.targetMemberId === currentMember));
+  const waitingFor = question && !question.answer && question.targetMemberId && question.targetMemberId !== currentMember ? resolveMember(question.targetMemberId, members).shortName : null;
   const deliveredIds = useMemo(() => new Set((replies ?? []).filter((reply) => reply.authorId === currentMember && reply.clientId).map((reply) => reply.clientId!)), [currentMember, replies]);
   const send = useCallback((submission: MessageSubmission) => answering && onAnswerQuestion ? onAnswerQuestion(message.id, submission) : onReply(message.id, submission), [answering, message.id, onAnswerQuestion, onReply]);
   // Keep existing annotation drafts when upgrading the presentation to threads.
@@ -94,7 +95,7 @@ export function MessageThread({ sessionId, message, members, currentMember, disa
               </div>
             </div> : null}
           </article>
-          {(replies?.length ?? 0) === 0 ? <p className="text-xs text-[#737373]">{answering ? "Choose an option or write an answer below." : "Start a discussion about this message."}</p> : replies?.map((reply) => <ThreadReply disabled={disabled} key={reply.id} members={members} onSteer={() => onSteerReply(message.id, reply.id)} queueing={queueing} reply={reply} showTimestamp />)}
+          {(replies?.length ?? 0) === 0 ? <p className="text-xs text-[#737373]">{answering ? "Choose an option or write an answer below." : waitingFor ? `Waiting for ${waitingFor} to answer. You can add to the discussion.` : "Start a discussion about this message."}</p> : replies?.map((reply) => <ThreadReply disabled={disabled} key={reply.id} members={members} onSteer={() => onSteerReply(message.id, reply.id)} queueing={queueing} reply={reply} showTimestamp />)}
         </ConversationContent>
         <ConversationScrollButton />
       </Conversation>
@@ -112,7 +113,7 @@ export function MessageThread({ sessionId, message, members, currentMember, disa
             <Button aria-label={sending ? "Sending reply" : draft?.status === "unconfirmed" ? "Retry reply" : answering ? "Send answer" : "Send reply"} className="size-8 shrink-0 rounded-full shadow-none" disabled={disabled || !draft?.body.trim() || sending} onClick={() => void submit()} size="icon">{sending ? <LoaderCircle className="size-3.5 animate-spin" /> : <ArrowUp className="size-4.5" />}</Button>
           </div>
         </div>
-        <p className="mt-2 px-1 text-xs text-[#737373]" role="status">{draft?.status === "unconfirmed" ? "Delivery unconfirmed. Your reply is saved; retry when connected." : answering ? "The first answer continues Hive. While busy, it waits in the queue." : "Replies stay in the thread until you steer Hive."}</p>
+        <p className="mt-2 px-1 text-xs text-[#737373]" role="status">{draft?.status === "unconfirmed" ? "Delivery unconfirmed. Your reply is saved; retry when connected." : answering ? "The first answer continues Hive. While busy, it waits in the queue." : waitingFor ? `Waiting for ${waitingFor}. Your reply is discussion, not an answer.` : "Replies stay in the thread until you steer Hive."}</p>
       </footer>
     </section>
   );

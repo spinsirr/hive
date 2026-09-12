@@ -2,9 +2,11 @@
 
 import { ArrowRight, FolderGit2, Plus, Users } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { CreateSessionButton } from "@/components/hive/create-session-button";
+import { TaskArchiveControl } from "@/components/hive/task-archive-control";
+import { useHiveClient } from "@/components/hive/hive-client";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { dashboardTasks, taskUpdatedLabel, type DashboardTask } from "@/lib/task-dashboard";
@@ -57,7 +59,7 @@ function NewTask({ createAction }: { createAction: (formData: FormData) => Promi
   );
 }
 
-export function TaskDashboard({ tasks, memberName, memberInitials, loadedAt, createAction, homeHref = "/", previewTaskHref }: {
+export function TaskDashboard({ tasks, memberName, memberInitials, loadedAt, createAction, homeHref = "/", previewTaskHref, onArchiveTask }: {
   tasks: DashboardTask[];
   memberName: string;
   memberInitials: string;
@@ -65,8 +67,33 @@ export function TaskDashboard({ tasks, memberName, memberInitials, loadedAt, cre
   createAction: (formData: FormData) => Promise<void>;
   homeHref?: string;
   previewTaskHref?: (task: DashboardTask) => string;
+  onArchiveTask?: (id: string, archived: boolean) => Promise<void>;
 }) {
-  const visible = dashboardTasks(tasks);
+  const client = useHiveClient();
+  const [showArchived, setShowArchived] = useState(false);
+  const [updates, setUpdates] = useState<Record<string, Pick<DashboardTask, "archivedAt" | "updatedAt">>>({});
+  const [notice, setNotice] = useState("");
+  const filterRef = useRef<HTMLButtonElement>(null);
+  const all = dashboardTasks(tasks.map((task) => task.id in updates ? { ...task, ...updates[task.id] } : task));
+  const archivedCount = all.filter((task) => Boolean(task.archivedAt)).length;
+  const visible = all.filter((task) => Boolean(task.archivedAt) === showArchived);
+  async function changeArchive(task: DashboardTask, archived: boolean) {
+    let update = { archivedAt: archived ? loadedAt : null, updatedAt: loadedAt };
+    if (onArchiveTask) await onArchiveTask(task.id, archived);
+    else {
+      const response = await client.request(`/api/sessions/${encodeURIComponent(task.id)}`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: archived ? "archive-task" : "restore-task" }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Could not update this task. Try again.");
+      if (Boolean(payload.session?.archived) !== archived) throw new Error("The task could not be updated. Refresh and try again.");
+      update = { archivedAt: payload.session.archived?.at ?? null, updatedAt: payload.session.updatedAt };
+    }
+    setUpdates((current) => ({ ...current, [task.id]: update }));
+    setNotice(`${task.title} ${archived ? "archived for everyone" : "restored"}.`);
+    filterRef.current?.focus();
+  }
 
   return (
     <main className="min-h-dvh bg-[#fafafa] text-[#171717]">
@@ -101,8 +128,14 @@ export function TaskDashboard({ tasks, memberName, memberInitials, loadedAt, cre
           </div>
         </div>
 
+        <div aria-label="Task status" className="mb-4 flex items-center gap-2" role="group">
+          {[false, true].map((archived) => <Button key={String(archived)} ref={archived === showArchived ? filterRef : undefined} aria-pressed={archived === showArchived} className="gap-2 text-xs" onClick={() => setShowArchived(archived)} variant={archived === showArchived ? "secondary" : "ghost"}>
+            {archived ? "Archived" : "Active"}{" "}<span className="text-muted-foreground">{archived ? archivedCount : all.length - archivedCount}</span>
+          </Button>)}
+        </div>
+        <p className="sr-only" role="status">{notice}</p>
         <section aria-label="Task list" className="overflow-hidden rounded-lg border border-[#e1e1e1] bg-white">
-          <div aria-hidden="true" className="grid grid-cols-[minmax(0,1fr)_70px] gap-4 border-b border-[#ebebeb] bg-[#fcfcfc] px-5 py-3 text-xs text-[#888] sm:grid-cols-[minmax(0,1fr)_minmax(0,0.6fr)_80px_16px]">
+          <div aria-hidden="true" className="grid grid-cols-[minmax(0,1fr)_60px_40px] gap-2 border-b border-[#ebebeb] bg-[#fcfcfc] px-4 py-3 text-xs text-[#888] sm:grid-cols-[minmax(0,1fr)_minmax(0,0.6fr)_80px_16px_90px] sm:gap-4 sm:px-5">
             <span>Task</span>
             <span className="hidden sm:block">Repository</span>
             <span>Updated</span>
@@ -110,7 +143,7 @@ export function TaskDashboard({ tasks, memberName, memberInitials, loadedAt, cre
           {visible.length > 0 ? (
             <ul className="divide-y divide-[#eeeeee]">
               {visible.map((task) => {
-                const rowClassName = "group grid min-h-20 w-full grid-cols-[minmax(0,1fr)_70px] items-center gap-4 px-5 py-4 text-left transition-colors hover:bg-[#fafafa] focus-visible:bg-[#fafafa] focus-visible:outline-2 focus-visible:outline-offset-[-2px] sm:grid-cols-[minmax(0,1fr)_minmax(0,0.6fr)_80px_16px]";
+                const rowClassName = "group grid min-h-20 min-w-0 flex-1 grid-cols-[minmax(0,1fr)_60px] items-center gap-2 py-4 pl-4 text-left transition-colors hover:bg-[#fafafa] focus-visible:bg-[#fafafa] focus-visible:outline-2 focus-visible:outline-offset-[-2px] sm:grid-cols-[minmax(0,1fr)_minmax(0,0.6fr)_80px_16px] sm:gap-4 sm:pl-5";
                 const content = (
                   <>
                     <div className="min-w-0">
@@ -129,8 +162,9 @@ export function TaskDashboard({ tasks, memberName, memberInitials, loadedAt, cre
                   </>
                 );
                 return (
-                  <li key={task.id}>
+                  <li className="flex items-center gap-2 pr-4 sm:gap-4 sm:pr-5" key={task.id}>
                     <Link aria-label={previewTaskHref ? `Open sample task: ${task.title}` : undefined} className={rowClassName} href={previewTaskHref ? previewTaskHref(task) : `/sessions/${task.id}`} prefetch={previewTaskHref ? false : undefined}>{content}</Link>
+                    <div className="flex w-10 shrink-0 justify-end sm:w-[90px]"><TaskArchiveControl title={task.title} archived={Boolean(task.archivedAt)} onChange={(archived) => changeArchive(task, archived)} /></div>
                   </li>
                 );
               })}
@@ -138,8 +172,8 @@ export function TaskDashboard({ tasks, memberName, memberInitials, loadedAt, cre
           ) : (
             <div className="grid min-h-60 place-items-center px-6 py-10 text-center">
               <div>
-                <p className="text-sm font-medium">Start your first shared task</p>
-                <p className="mt-2 max-w-xs text-xs leading-5 text-[#888]">Create a task, then invite a teammate to work with Hive.</p>
+                <p className="text-sm font-medium">{showArchived ? "No archived tasks" : "Start your first shared task"}</p>
+                <p className="mt-2 max-w-xs text-xs leading-5 text-[#888]">{showArchived ? "Archived tasks stay here for the whole team. Restore one whenever you’re ready to continue." : "Create a task, then invite a teammate to work with Hive."}</p>
               </div>
             </div>
           )}

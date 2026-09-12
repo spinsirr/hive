@@ -34,7 +34,7 @@ export type PeerInteraction = PeerRequestIdentity & ({
 export function requestPeerInput(state: TaskSessionState, scope: HiveToolScope, input: PeerRequest, members: TeamMember[], now: number) {
   const request = peerRequestSchema.parse(input);
   const kind = request.kind ?? "question";
-  if (state.sessionId !== scope.sessionId || state.workspace.liveReply?.id !== scope.runId || state.stage !== "running" || state.workspace.restore || !members.some((m) => m.id === scope.memberId)) throw new Error("Run no longer active.");
+  if (state.archived || state.sessionId !== scope.sessionId || state.workspace.liveReply?.id !== scope.runId || state.stage !== "running" || state.workspace.restore || !members.some((m) => m.id === scope.memberId)) throw new Error("Run no longer active.");
   if (request.targetMemberId && !members.some((m) => m.id === request.targetMemberId)) throw new Error("Choose a task member.");
   const messageId = `peer-${scope.runId}-${request.key}`;
   const previous = state.messages.find((message) => message.id === messageId);
@@ -55,7 +55,7 @@ export function requestPeerInput(state: TaskSessionState, scope: HiveToolScope, 
 
 export function canResolvePeerReview(state: TaskSessionState, message: ChatMessage, actor: string, revision: string) {
   const review = message.interaction;
-  if (review?.kind !== "review" || review.status !== "open" || review.resolved || !revision || review.revision !== revision || state.workspace.reviewRevision !== revision ||
+  if (state.archived || review?.kind !== "review" || review.status !== "open" || review.resolved || !revision || review.revision !== revision || state.workspace.reviewRevision !== revision ||
     state.workspace.restore || state.workspace.status === "error" || state.activeSteer || state.steeringQueue.length ||
     (state.stage === "running" && state.workspace.completedAt === undefined) ||
     (review.targetMemberId && review.targetMemberId !== actor)) return false;

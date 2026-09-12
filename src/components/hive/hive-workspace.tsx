@@ -19,7 +19,9 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useHiveClient } from "@/components/hive/hive-client";
+import { TaskArchiveControl } from "@/components/hive/task-archive-control";
 
 import {
   Conversation,
@@ -54,6 +56,7 @@ import {
   type ChatMessage,
   canApplyNextSteer,
   canApproveChanges,
+  canArchiveTask,
   canSelectHarness,
   canSetCodingEffort,
   type CodingRuntime,
@@ -134,6 +137,12 @@ function ProductHeader({
   onCopyInvite,
   onSignOut,
   onReset,
+  homeHref,
+  connectionLabel,
+  accountActionsDisabled,
+  archived,
+  archiveDisabled,
+  onArchiveChange,
 }: {
   activeMembers: MemberId[];
   copied: boolean;
@@ -147,11 +156,17 @@ function ProductHeader({
   onCopyInvite: () => void;
   onSignOut: () => void;
   onReset: () => void;
+  homeHref: string;
+  connectionLabel: string;
+  accountActionsDisabled: boolean;
+  archived: boolean;
+  archiveDisabled: boolean;
+  onArchiveChange: (archived: boolean) => Promise<void>;
 }) {
   return (
     <header className="flex h-13 shrink-0 items-center justify-between gap-3 border-b border-[#e8e8e8] bg-white px-3 sm:px-4">
       <div className="flex min-w-0 flex-1 items-center gap-2.5">
-        <Link className="flex shrink-0 items-center gap-2.5" href="/">
+        <Link className="flex shrink-0 items-center gap-2.5" href={homeHref}>
           <HiveMark className="size-7" />
           <span className="hidden text-sm font-semibold tracking-[-0.025em] sm:inline">Hive</span>
         </Link>
@@ -164,6 +179,7 @@ function ProductHeader({
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+        <TaskArchiveControl title={sessionTitle} archived={archived} disabled={archiveDisabled} onChange={onArchiveChange} />
         <div className="hidden items-center gap-1.5 text-xs text-[#777] sm:flex">
           {syncError ? (
             <WifiOff className="size-3" />
@@ -175,10 +191,11 @@ function ProductHeader({
               )}
             />
           )}
-          {syncError ? "Offline" : syncing ? "Syncing" : "Live"}
+          {syncError ? "Offline" : syncing ? "Syncing" : connectionLabel}
         </div>
         <Button
           aria-label={copied ? "Invite link copied" : "Invite teammate"}
+          disabled={accountActionsDisabled}
           className="h-8 rounded-md bg-white px-2 text-xs text-[#333] sm:px-2.5"
           onClick={onCopyInvite}
           size="sm"
@@ -191,6 +208,7 @@ function ProductHeader({
         <Button
           className="h-8 rounded-md bg-white px-2 text-xs text-[#333]"
           onClick={onSignOut}
+          disabled={accountActionsDisabled}
           size="sm"
           title={`Sign out @${currentMember.githubLogin ?? currentMember.shortName}`}
           variant="outline"
@@ -425,7 +443,8 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
   );
 }
 
-function RepositorySetup({ sessionId }: { sessionId: string }) {
+function RepositorySetup({ sessionId, disabled }: { sessionId: string; disabled: boolean }) {
+  const client = useHiveClient();
   const [repositories, setRepositories] = useState<RepositoryOption[] | null>(null);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
@@ -442,15 +461,16 @@ function RepositorySetup({ sessionId }: { sessionId: string }) {
   }, [query, repositories]);
 
   const loadRepositories = useCallback(async () => {
+    if (disabled) return;
     setLoading(true);
     setError("");
     try {
-      const response = await fetch(
+      const response = await client.request(
         `/api/github/repositories?session_id=${encodeURIComponent(sessionId)}`,
         { cache: "no-store" },
       );
       if (response.status === 401) {
-        window.location.reload();
+        client.reload();
         return;
       }
       const payload = (await response.json()) as {
@@ -478,13 +498,14 @@ function RepositorySetup({ sessionId }: { sessionId: string }) {
     } finally {
       setLoading(false);
     }
-  }, [sessionId]);
+  }, [sessionId, client, disabled]);
 
   const connectRepository = useCallback(async (repositoryId: number) => {
+    if (disabled) return;
     setConnectingId(repositoryId);
     setError("");
     try {
-      const response = await fetch(
+      const response = await client.request(
         `/api/github/repositories?session_id=${encodeURIComponent(sessionId)}`,
         {
           method: "POST",
@@ -493,7 +514,7 @@ function RepositorySetup({ sessionId }: { sessionId: string }) {
         },
       );
       if (response.status === 401) {
-        window.location.reload();
+        client.reload();
         return;
       }
       const payload = (await response.json()) as { error?: string; needsAuthorization?: boolean };
@@ -514,16 +535,16 @@ function RepositorySetup({ sessionId }: { sessionId: string }) {
           : "Repository connection failed.",
       );
     }
-  }, [sessionId]);
+  }, [sessionId, client, disabled]);
 
   return (
-    <div className="hairline-grid flex h-full min-h-[420px] items-center justify-center bg-[#fafafa] p-8">
+    <fieldset disabled={disabled} className="hairline-grid flex h-full min-h-[420px] items-center justify-center bg-[#fafafa] p-8">
       <div className="w-full max-w-lg rounded-xl border border-[#dcdcdc] bg-white p-6 shadow-[0_10px_40px_rgba(0,0,0,0.05)]">
         <FolderGit2 className="size-7" />
         <h3 className="mt-5 text-lg font-semibold tracking-[-0.03em]">Attach a repository</h3>
-        <p className="mt-2 text-sm leading-6 text-[#737373]">Choose a repository you can access on GitHub. Everyone invited to this task can work on its shared copy.</p>
+        <p className="mt-2 text-sm leading-6 text-[#737373]">{disabled ? "Restore this archived task before attaching a repository." : "Choose a repository you can access on GitHub. Everyone invited to this task can work on its shared copy."}</p>
 
-        {needsAuthorization ? (
+        {disabled ? null : needsAuthorization ? (
           <a className="mt-5 inline-flex h-10 items-center gap-2 rounded-md bg-[#171717] px-4 text-sm font-medium text-white transition hover:bg-black" href={`/api/github/login?return_to=${encodeURIComponent(`/sessions/${sessionId}`)}`}>
             <FolderGit2 className="size-4" /> Reconnect GitHub
           </a>
@@ -581,7 +602,7 @@ function RepositorySetup({ sessionId }: { sessionId: string }) {
         {error ? <p className="mt-3 text-xs leading-5 text-[#777]">{error}</p> : null}
         <p className="mt-3 text-xs leading-5 text-[#888]">Other tasks and repositories stay private.</p>
       </div>
-    </div>
+    </fieldset>
   );
 }
 
@@ -593,7 +614,7 @@ function Workspace({ repository, sessionId, tab, workspace, onTabChange, fileCol
   if (!repository) {
     return (
       <section className="h-full min-h-0 bg-white">
-        <RepositorySetup sessionId={sessionId} />
+        <RepositorySetup sessionId={sessionId} disabled={fileCollaboration.disabled} />
       </section>
     );
   }
@@ -650,19 +671,37 @@ type SharedProps = Parameters<typeof SharedSession>[0] & {
   onTabChange: (tab: WorkspaceTab) => void;
 };
 
-export function HiveWorkspace({
-  currentMember,
-  initialSnapshot,
-  inviteToken,
-  sessionId,
-  sessionTitle,
-}: {
+type HiveWorkspaceProps = {
   currentMember: TeamMember;
   initialSnapshot: TaskSessionSnapshot;
   inviteToken: string;
   sessionId: string;
   sessionTitle: string;
+};
+
+export function HiveWorkspace(props: HiveWorkspaceProps) {
+  const connection = useSharedSession(props.sessionId, props.initialSnapshot);
+  return <HiveWorkspaceView {...props} connection={connection} />;
+}
+
+export function HiveWorkspaceView({
+  currentMember,
+  inviteToken,
+  sessionId,
+  sessionTitle,
+  connection,
+  homeHref = "/",
+  connectionLabel = "Live",
+  accountActionsDisabled = false,
+  notice,
+}: Omit<HiveWorkspaceProps, "initialSnapshot"> & {
+  connection: ReturnType<typeof useSharedSession>;
+  homeHref?: string;
+  connectionLabel?: string;
+  accountActionsDisabled?: boolean;
+  notice?: ReactNode;
 }) {
+  const client = useHiveClient();
   const [pane, setPane] = useState<"chat" | "workspace">("chat");
   const [tab, setTab] = useState<WorkspaceTab>("diff");
   const [copied, setCopied] = useState(false);
@@ -670,7 +709,7 @@ export function HiveWorkspace({
   const [threadTrigger, setThreadTrigger] = useState<HTMLElement | null>(null);
   const [resetOpen, setResetOpen] = useState(false);
   const [harnessSaving, setHarnessSaving] = useState(false);
-  const { dispatch, setTyping, snapshot, syncing, syncError, receiveSnapshot } = useSharedSession(sessionId, initialSnapshot);
+  const { dispatch, setTyping, snapshot, syncing, syncError, receiveSnapshot } = connection;
   const { session, activeMembers, members, typingMembers } = snapshot;
   const teamMembers = useMemo(
     () => [currentMember, ...members.filter((member) => member.id !== currentMember.id)],
@@ -692,7 +731,12 @@ export function HiveWorkspace({
   }, [threadTrigger]);
   const runActive = isHiveRunActive(session);
   const runStalled = useStalledRun(session);
-  const workspaceLocked = Boolean(workspace.restore);
+  const archived = Boolean(session.archived);
+  const workspaceLocked = Boolean(workspace.restore) || archived;
+  const changeArchive = useCallback(async (archive: boolean) => {
+    const next = await dispatch({ type: archive ? "archive-task" : "restore-task" });
+    if (!next || Boolean(next.session.archived) !== archive) throw new Error("Could not update the task. Check the connection and finish any pending work before retrying.");
+  }, [dispatch]);
   const harnessLocked = !canSelectHarness(session);
   const effortLocked = !canSetCodingEffort(session);
   // Reset is irreversible for every member; require an idle task and a confirmation.
@@ -725,10 +769,10 @@ export function HiveWorkspace({
     });
   }, [inviteToken]);
   const signOut = useCallback(() => {
-    void fetch("/api/auth/logout", { method: "POST" }).then(() => {
-      window.location.reload();
+    void client.request("/api/auth/logout", { method: "POST" }).then(() => {
+      client.reload();
     });
-  }, []);
+  }, [client]);
   const annotate = useCallback(async (messageId: string, { body, clientId }: MessageSubmission) => {
     const nextSnapshot = await dispatch({ type: "annotate-message", messageId, body, clientId });
     return nextSnapshot?.session.messages.find((message) => message.id === messageId)?.annotations?.some(
@@ -852,7 +896,9 @@ export function HiveWorkspace({
 
   return (
     <main className="flex h-dvh min-h-0 flex-col overflow-hidden bg-[#fafafa] text-[#171717]">
-      <ProductHeader activeMembers={activeMembers} copied={copied} currentMember={currentMember} members={teamMembers} onCopyInvite={copyInvite} onSignOut={signOut} onReset={openReset} repository={repository} sessionTitle={sessionTitle} resetDisabled={resetDisabled} syncing={syncing} syncError={syncError} />
+      <ProductHeader activeMembers={activeMembers} copied={copied} currentMember={currentMember} members={teamMembers} onCopyInvite={copyInvite} onSignOut={signOut} onReset={openReset} repository={repository} sessionTitle={sessionTitle} resetDisabled={resetDisabled} syncing={syncing} syncError={syncError} homeHref={homeHref} connectionLabel={connectionLabel} accountActionsDisabled={accountActionsDisabled} archived={archived} archiveDisabled={syncing || syncError || (!archived && !canArchiveTask(session))} onArchiveChange={changeArchive} />
+      {notice}
+      {session.archived ? <div className="shrink-0 border-b border-border bg-muted px-4 py-2 text-xs text-muted-foreground" role="status">Archived by {resolveMember(session.archived.by, teamMembers).shortName} · Read-only for everyone. Restore this task to continue.</div> : null}
       <Dialog onOpenChange={setResetOpen} open={resetOpen}>
         <DialogContent>
           <DialogHeader>

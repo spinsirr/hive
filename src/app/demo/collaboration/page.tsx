@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { CollaborationDemo } from "./collaboration-demo";
+import { DemoWorkspace } from "../demo-workspace";
+import { demoTasks } from "@/lib/ui-demo";
 
 export const metadata: Metadata = {
   title: "Hive — Peer programming preview",
@@ -8,5 +9,5 @@ export const metadata: Metadata = {
 };
 
 export default function CollaborationPreview() {
-  return <CollaborationDemo />;
+  return <DemoWorkspace task={demoTasks[0]} />;
 }

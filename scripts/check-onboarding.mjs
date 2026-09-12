@@ -274,6 +274,36 @@ try {
   assert.deepEqual((await afterInvite.json()).repositories.map(({ id }) => id), [702]);
   console.log("PASS: only a valid task invitation admits a teammate; joining still does not inherit the inviter's GitHub permissions.");
 
+  const sharedUrl = `https://hive.test/api/sessions/${privateTask.sessionId}`;
+  const sharedAction = (signedIn, payload) => action(new NextRequest(sharedUrl, {
+    method: "POST", headers: { cookie: browserCookie(signedIn), origin: "https://hive.test", "Content-Type": "application/json" }, body: JSON.stringify(payload),
+  }), foreignContext);
+  const archiveResponse = await sharedAction(owner, { type: "archive-task", actor: newcomer.member.id });
+  assert.equal(archiveResponse.status, 200);
+  const archiveSnapshot = (await archiveResponse.json()).session;
+  assert.equal(archiveSnapshot.archived.by, owner.member.id, "archive attribution comes from auth, not payload");
+  const readonly = await snapshot(new NextRequest(sharedUrl, { headers: { cookie: browserCookie(newcomer) } }), foreignContext);
+  assert.equal(readonly.status, 200);
+  assert.deepEqual((await readonly.json()).session.archived, archiveSnapshot.archived);
+  for (const signedIn of [owner, newcomer]) {
+    for (const payload of [{ type: "reset" }, { type: "send-message", body: "Late send", clientId: randomUUID() }, { type: "annotate-message", messageId: archiveSnapshot.messages[0].id, body: "Late discussion", clientId: randomUUID() }]) {
+      const rejected = await sharedAction(signedIn, payload);
+      assert.equal(rejected.status, 409);
+      assert.match((await rejected.json()).error, /archived/);
+    }
+    const rejectedRepo = await attachRequest(signedIn, signedIn === owner ? 701 : 702, privateTask.sessionId);
+    assert.equal(rejectedRepo.status, 409);
+    assert.match((await rejectedRepo.json()).error, /archived/);
+    const rejectedRollback = await restore(new NextRequest(`${sharedUrl}/checkpoints`, { method: "POST", headers: { cookie: browserCookie(signedIn), origin: "https://hive.test", "Content-Type": "application/json" }, body: JSON.stringify({ id: randomUUID(), snapshotId: "old", version: archiveSnapshot.version }) }), foreignContext);
+    assert.equal(rejectedRollback.status, 409);
+  }
+  assert.equal((await sharedAction(newcomer, { type: "restore-task" })).status, 200);
+  const unarchived = await store.getPublicTaskSessionSnapshot(privateTask.sessionId);
+  assert.equal(unarchived.session.archived, undefined);
+  assert.deepEqual(unarchived.session.workspace, archiveSnapshot.workspace);
+  assert.deepEqual(unarchived.session.messages, archiveSnapshot.messages);
+  console.log("PASS: authenticated archive API, shared read access, HTTP 409 for archived writes/repository attach/rollback, and teammate restore without execution.");
+
   const repositoryUrl = `https://hive.test/api/github/repositories?session_id=${ownTasks[0].id}`;
   const repositoryCookie = newcomer.response.cookies.get("hive_github_user");
   assert.ok(repositoryCookie.httpOnly);
