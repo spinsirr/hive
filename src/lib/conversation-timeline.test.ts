@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { conversationTimelineMessages } from "./conversation-timeline.ts";
+import { conversationTimelineMessages, conversationTimelineTurns } from "./conversation-timeline.ts";
 import type { ChatMessage } from "./task-session.ts";
 
 function question(runId: string, extra: Partial<ChatMessage> = {}): ChatMessage {
@@ -33,4 +33,34 @@ test("never hide replies, answers, steers, live work, or different decisions", (
     question("two", { interaction: { kind: "review", runId: "two", options: [], status: "open", revision: "two" } }),
   ];
   for (const different of variants) assert.deepEqual(conversationTimelineMessages([original, different]), [original, different]);
+});
+
+const turn = (id: string): ChatMessage => ({ id, role: "agent", name: "Hive", initials: "H", time: "", body: "Let's agree on the behavior." });
+
+test("a tool-created question stays with its run even when the final text arrives later", () => {
+  const card = question("run", { annotations: [{ id: "reply", authorId: "casey", body: "Yes", createdAt: 1, status: "open" }] });
+  const root = turn("run");
+  for (const messages of [[card, root], [root, card], [card, { ...root, status: "streaming" as const }]]) {
+    const before = structuredClone(messages);
+    const [group] = conversationTimelineTurns(messages);
+    assert.equal(group.message.id, "run");
+    assert.deepEqual(group.requests, [card]);
+    assert.deepEqual(messages, before, "presentation never rewrites history or reply IDs");
+  }
+});
+
+test("grouping never crosses human contributions or combines unrelated agent runs", () => {
+  const card = question("run");
+  const root = turn("run");
+  const human: ChatMessage = { id: "human", role: "human", name: "Casey", initials: "CA", time: "", body: "Keep focus visible." };
+  for (const messages of [[card], [card, human, root], [card, turn("other")], [card, { ...root, status: "error" as const }]]) {
+    assert.deepEqual(conversationTimelineTurns(messages), messages.map((message) => ({ message, requests: [] })));
+  }
+});
+
+test("multiple requests retain their individual Thread identities inside one turn", () => {
+  const root = turn("run");
+  const first = question("run");
+  const second = question("run", { id: "peer-run-other", body: "What about focus?" });
+  assert.deepEqual(conversationTimelineTurns([first, second, root]), [{ message: root, requests: [first, second] }]);
 });

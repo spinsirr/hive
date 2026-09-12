@@ -1,6 +1,7 @@
 "use client";
 
-import { MessageSquare } from "lucide-react";
+import { ChevronRight, MessageSquare } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { resolveMember, type ChatMessage, type TeamMember } from "@/lib/task-session";
 import { cn } from "@/lib/utils";
 
@@ -20,13 +21,14 @@ export function MessageThreadPreview({ message, members, expanded = false, onOpe
   const preview = characters.slice(0, 180).join("") + (characters.length > 180 ? "…" : "");
 
   return (
-    <button aria-expanded={expanded} aria-label={latest ? `Open thread with ${replies.length} ${replies.length === 1 ? "reply" : "replies"}` : "Open collaboration thread"} className={cn("mt-1 min-w-0 max-w-full self-start rounded-lg px-2 py-1.5 text-left text-xs text-[#737373] hover:bg-[#f5f5f5] hover:text-[#171717] focus-visible:outline-2", !latest && "border border-[#dedede] px-3")} onClick={onOpen} type="button">
-      <span className="flex items-center gap-2">
+    <Button aria-expanded={expanded} aria-label={latest ? `Open thread with ${replies.length} ${replies.length === 1 ? "reply" : "replies"}` : "Open collaboration thread"} className={cn("h-auto min-w-0 max-w-full flex-col items-stretch gap-1.5 whitespace-normal text-left text-xs font-normal text-muted-foreground focus-visible:ring-2 focus-visible:ring-inset active:not-aria-[haspopup]:translate-y-0", message.interaction ? "w-full rounded-none border-0 border-t border-border bg-muted/30 px-4 py-3" : "ml-3 self-stretch rounded-none rounded-r-lg border-0 border-l-2 border-border px-3 py-2", expanded && "bg-muted/50")} onClick={onOpen} type="button" variant="ghost">
+      <span className="flex min-w-0 items-center gap-2">
         <MessageSquare aria-hidden="true" className="size-3.5 shrink-0" />
-        {latest ? <span>{replies.length} {replies.length === 1 ? "reply" : "replies"}</span> : null}
-        <span className="font-medium text-[#525252]">{!latest ? "Open collaboration thread" : expanded ? "Thread open" : "Open thread"}</span>
+        <span className="font-medium text-foreground/80">{latest ? `${replies.length} ${replies.length === 1 ? "reply" : "replies"}` : message.interaction?.kind === "question" ? "Answer in thread" : "Open review"}</span>
+        <span className="ml-auto">{expanded ? "Thread open" : latest ? "View thread" : null}</span>
+        <ChevronRight aria-hidden="true" className="size-3.5 shrink-0" />
       </span>
-      {!expanded && latest ? <span className="mt-1 line-clamp-2 break-words text-sm leading-6 [overflow-wrap:anywhere]"><span className="font-medium">{author}: </span>{preview || (latest.deliveryStatus === "streaming" ? "Replying…" : "Reply")}</span> : null}
-    </button>
+      {!expanded && latest ? <span className="line-clamp-2 break-words text-sm leading-6 [overflow-wrap:anywhere]"><span className="font-medium text-foreground/80">{author}: </span>{preview || (latest.deliveryStatus === "streaming" ? "Replying…" : "Reply")}</span> : null}
+    </Button>
   );
 }
