@@ -1,7 +1,7 @@
-import type { ChatMessage } from "./task-session.ts";
+import { isWorkspaceEvent, type ChatMessage } from "./task-session.ts";
 import { peerRequestKey } from "./peer-collaboration.ts";
 
-/** Suppress only redundant, empty question cards, never discussion or evidence.
+/** Project chat without operation receipts or redundant empty question cards.
  * This is a timeline projection: the source messages and their IDs stay intact
  * for the Thread, queued work, and agent context.
  */
@@ -9,6 +9,8 @@ export function conversationTimelineMessages(messages: ChatMessage[]): ChatMessa
   const questions = new Set<string>();
   const messageIds = new Set(messages.map((message) => message.id));
   return messages.filter((message) => {
+    // Keep any historical discussion attached to a receipt accessible.
+    if (isWorkspaceEvent(message) && !message.annotations?.length) return false;
     if (message.threadId && messageIds.has(message.threadId)) return false;
     const question = message.interaction;
     const key = peerRequestKey(message);

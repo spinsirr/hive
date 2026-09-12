@@ -278,6 +278,14 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
         throw new HiveAgentError("Reconnect the Codex subscription.", new Error("Platform credential unavailable."));
       }
     }
+    const toolSecret = process.env.HIVE_INVITE_SECRET?.trim();
+    const callbackUrl = process.env.GITHUB_APP_CALLBACK_URL?.trim();
+    const toolConnection = toolSecret && callbackUrl ? {
+      url: hiveToolEndpoint(sessionId, callbackUrl),
+      token: createHiveToolToken({ sessionId, memberId: member.id, runId: replyId }, toolSecret),
+      controlCapability: subagentCapability(sessionId, replyId, toolSecret),
+      runId: replyId,
+    } : undefined;
     if (!snapshot.session.repository) {
       const reply = await runHiveConversation(
         snapshot.session,
@@ -286,6 +294,7 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
         writer.push,
         steer,
         codexSubscription,
+        toolConnection,
       );
       await writer.close();
       return sessionResponse(
@@ -299,14 +308,6 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
       );
     }
 
-    const toolSecret = process.env.HIVE_INVITE_SECRET?.trim();
-    const callbackUrl = process.env.GITHUB_APP_CALLBACK_URL?.trim();
-    const toolConnection = toolSecret && callbackUrl ? {
-      url: hiveToolEndpoint(sessionId, callbackUrl),
-      token: createHiveToolToken({ sessionId, memberId: member.id, runId: replyId }, toolSecret),
-      controlCapability: subagentCapability(sessionId, replyId, toolSecret),
-      runId: replyId,
-    } : undefined;
     const runResult = await runHiveCodingTask(snapshot.session, runActor, steer, {
       codexSubscription,
       actorName,

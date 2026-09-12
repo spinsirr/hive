@@ -892,7 +892,7 @@ export function HiveWorkspaceView({
         </DialogContent>
       </Dialog>
       {workspace.restore ? <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[#e8e8e8] px-4 py-2 text-xs text-[#737373]" role="status">
-        <span>{workspace.restore.status === "unconfirmed" ? "Restore needs confirmation. The workspace is paused." : "Restoring workspace and agent context…"}</span>
+        <span>{workspace.restore.status === "unconfirmed" ? recoveryStatus.notice || "Still confirming recovery. You can keep reading." : "Restoring workspace and agent context… You can keep reading."}</span>
         <button className="shrink-0 underline underline-offset-4" onClick={() => { setThreadId(null); setTab("checkpoints"); setPane("workspace"); }} type="button">View checkpoints</button>
       </div> : null}
       <div className="flex h-10 shrink-0 items-center gap-1 border-b border-[#e8e8e8] bg-[#fafafa] p-1 min-[960px]:hidden">

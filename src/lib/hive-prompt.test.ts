@@ -4,6 +4,18 @@ import test from "node:test";
 import { buildHivePrompt, buildHiveRunInput } from "./hive-prompt.ts";
 import { appendHiveReply, createInitialTaskSessionState, reduceTaskSession, type TeamMember } from "./task-session.ts";
 
+test("workspace events inform the agent without becoming the latest user request", () => {
+  const session = createInitialTaskSessionState(1);
+  session.messages = [
+    { id: "human", role: "human", memberId: "spencer", name: "Spencer", initials: "SP", body: "Check the label", time: "" },
+    { id: "restore-operation", event: "workspace-restored", role: "human", memberId: "spencer", name: "Spencer", initials: "SP", body: "Restored checkpoint", time: "" },
+  ];
+  const prompt = buildHivePrompt(session, "spencer");
+  assert.match(prompt, /Workspace event, context only.*Restored checkpoint/);
+  assert.ok(prompt.endsWith("[Spencer]: Check the label"));
+  assert.match(prompt, /silently use any required skills/);
+});
+
 test("Codex receives attributed team context and an attributed active task", () => {
   const session = reduceTaskSession(
     appendHiveReply(reduceTaskSession(

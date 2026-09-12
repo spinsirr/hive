@@ -503,7 +503,7 @@ export async function runHiveCodingTask(
           publicReply.trim() ||
           (artifacts.changedFiles.length > 0
             ? `Changed ${artifacts.changedFiles.join(", ")}. Review the real diff in the shared workspace.`
-            : "I inspected the repository and did not make a code change."),
+            : ""),
         ...artifacts,
       };
     } catch (error) {

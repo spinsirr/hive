@@ -93,6 +93,7 @@ test("selecting Claude before repository attachment does not reset discussion or
   assert.equal(selected.stage, "waiting");
   const action = { type: "connect-repository" as const, actor: "spencer", repositoryUrl: "https://github.com/example/repo", repositoryName: "example/repo", repositoryId: 1, repositoryBranch: "main", installationId: 2, visibility: "private" as const, githubUserId: 3, githubLogin: "spencer" };
   const connected = reduceTaskSession(selected, action, 3);
+  assert.equal(connected.messages.at(-1)?.event, "repository-connected", "connection is an agent-readable operation receipt, not ordinary chat");
   assert.equal(connected.workspace.agentSession?.runtime, "claude-code");
   assert.equal(connected.workspace.agentSession?.id, selected.workspace.agentSession?.id);
   assert.equal(reduceTaskSession(connected, { type: "select-harness", actor: "spencer", runtime: "claude-code" }, 4), connected);

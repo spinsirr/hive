@@ -129,9 +129,21 @@ try {
   assert.equal((await post({ ...input, version: session.version })).status, 503);
   assert.equal(session.workspace.restore.sourceSessionId, "original-session");
   const checkRequest = { ...input, mode: "check" };
+  // UX regression: a completed VM must not leave the composer disabled merely
+  // because the 90-second *write retry* fence has not expired. Checking is read-only.
+  status = "running"; sourceSnapshotId = "snap-old"; providerSessionId = "late-resumed-session";
+  const writesBeforeEarlyCheck = calls.filter((call) => call !== "metadata").length;
+  assert.ok(session.workspace.restore.retryAfter > Date.now());
+  assert.equal((await post(checkRequest)).status, 200, "confirm a completed restore before the write-retry delay expires");
+  assert.equal(session.workspace.restore, undefined, "confirmation releases the composer");
+  assert.equal(calls.filter((call) => call !== "metadata").length, writesBeforeEarlyCheck);
+  console.log("PASS: early read-only confirmation releases the composer without repeating a restore");
+
+  fresh(); pointerFailure = true;
+  assert.equal((await post({ ...input, version: session.version })).status, 503);
   const beforeCheck = calls.length;
-  assert.equal((await post(checkRequest)).status, 202, "status checks wait for the live worker's lease before probing");
-  assert.equal(calls.length, beforeCheck);
+  assert.equal((await post(checkRequest)).status, 202, "an unfinished restore remains paused during an early status check");
+  assert.deepEqual(calls.slice(beforeCheck), ["metadata"], "an early check never repeats stop, repoint or resume");
   assert.equal((await post({ ...checkRequest, id: "e8a7d291-c9db-44cb-9d1c-2e974dc92671" })).status, 409);
   session.workspace.restore.retryAfter = 0;
   status = "running"; sourceSnapshotId = "snap-old"; // Original VM, possibly edited after startup.

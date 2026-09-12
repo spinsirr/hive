@@ -3,6 +3,15 @@ import test from "node:test";
 import { conversationTimelineMessages, conversationTimelineTurns } from "./conversation-timeline.ts";
 import type { ChatMessage } from "./task-session.ts";
 
+test("workspace receipts stay in stored context without masquerading as chat replies", () => {
+  const connected: ChatMessage = { id: "connected", event: "repository-connected", role: "agent", name: "Hive", initials: "H", time: "", body: "Ada connected the repository." };
+  const restored: ChatMessage = { ...connected, id: "restore-operation", event: "workspace-restored", role: "human", memberId: "ada" };
+  const human: ChatMessage = { ...connected, id: "human", event: undefined, role: "human", body: "Please restore the workspace." };
+  const messages = [connected, restored, human];
+  assert.deepEqual(conversationTimelineMessages(messages), [human]);
+  assert.equal(messages.length, 3, "audit/context records are retained");
+});
+
 function question(runId: string, extra: Partial<ChatMessage> = {}): ChatMessage {
   return { id: `peer-${runId}-close_tab`, role: "agent", name: "Hive", initials: "H", time: "", body: "Should we close the tab?",
     interaction: { kind: "question", runId, targetMemberId: "casey", options: ["Yes", "No"] }, ...extra };

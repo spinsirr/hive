@@ -338,7 +338,7 @@ try {
       return Response.json(confirmed);
     }
     restoreCalls++;
-    recoveryData = { ...baseCheckpointData, blockedReason: "Restore needs confirmation. Retry the same checkpoint before continuing.", restore: { id: request.id, snapshotId: request.snapshotId, status: "unconfirmed", retryAfter: Date.now() + 400 } };
+    recoveryData = { ...baseCheckpointData, blockedReason: "Still confirming the restored workspace…", restore: { id: request.id, snapshotId: request.snapshotId, status: "unconfirmed", retryAfter: Date.now() + 400 } };
     recoverySnapshot = structuredClone(recoverySnapshot);
     recoverySnapshot.session.version++;
     recoverySnapshot.session.workspace.restore = { ...recoveryData.restore, startedAt: Date.now(), sourceSessionId: "original-vm", by: recoverySnapshot.members[0] };
@@ -362,8 +362,10 @@ try {
   assert.ok(!screen.queryByRole("dialog"));
   assert.equal(restoreCalls, 1);
   await act(async () => releaseRestore());
-  await waitFor(() => assert.match(document.body.textContent, /Checking safely in \d+s/));
-  assert.ok(button("Retry restore").disabled, "the lease countdown is explicit and prevents a concurrent retry");
+  await waitFor(() => assert.match(document.body.textContent, /Checking automatically/));
+  assert.doesNotMatch(document.body.textContent, /Checking safely in \d+s/, "a write retry fence must not look like an idle wait before status can be checked");
+  assert.ok(!button("Check status").disabled, "read-only status is available before the retry lease expires");
+  assert.ok(button("Retry restore").disabled, "only another write remains delayed");
   fireEvent.click(button("Diff"));
   assert.equal(screen.queryByRole("button", { name: "Refresh checkpoints" }), null);
   await waitFor(() => assert.ok(deliveredRecovery), { timeout: 1500 });
@@ -401,7 +403,8 @@ try {
   await waitFor(() => assert.equal(screen.getByRole("textbox", { name: "Ask Hive or mention a teammate" }).disabled, false), { timeout: 1500 });
   assert.equal(diffChecks, 1);
   assert.equal(screen.queryByText("Restore needs confirmation. The workspace is paused."), null);
-  assert.ok(screen.getByText("Restored while viewing Diff; nothing was rerun."));
+  assert.equal(screen.queryByText("Restored while viewing Diff; nothing was rerun."), null, "restore receipts no longer appear as user chat bubbles");
+  assert.ok(diffSnapshot.session.messages.some((message) => message.id === "restore-while-on-diff"), "the receipt remains in stored context");
   assert.equal(requests, 0);
   console.log("PASS: a viewer staying on Diff confirms recovery and unlocks the composer without opening Checkpoints, replaying the restore or running an agent.");
   cleanup();
@@ -433,21 +436,21 @@ try {
   const boundedRequests = [];
   const boundedClient = { ...diffDemo.client, request: async (_path, init) => { boundedRequests.push(JSON.parse(init.body)); return Response.json({ pending: true }, { status: 202 }); } };
   const bounded = renderHook(({ version }) => useWorkspaceRecovery("demo-task", version, { ...operation }, () => { throw new Error("202 must not unlock the task"); }), { wrapper: ({ children }) => h(HiveClientContext, { value: boundedClient }, children), initialProps: { version: 1 } });
-  for (let attempt = 1; attempt <= 12; attempt++) {
+  for (let attempt = 1; attempt <= 18; attempt++) {
     bounded.rerender({ version: attempt });
     await act(async () => mock.timers.tick(attempt === 1 ? 0 : 10_000));
     assert.equal(boundedRequests.length, attempt);
     assert.equal(boundedRequests.at(-1).version, attempt, "checks use the current revision without resetting their budget");
     assert.equal(boundedRequests.at(-1).mode, "check");
   }
-  bounded.rerender({ version: 13 });
+  bounded.rerender({ version: 19 });
   await act(async () => mock.timers.tick(60_000));
-  assert.equal(boundedRequests.length, 12, "task updates cannot turn bounded checks into a permanent heartbeat");
-  assert.match(bounded.result.current.notice, /Not confirmed yet/);
+  assert.equal(boundedRequests.length, 18, "task updates cannot turn bounded checks into a permanent heartbeat");
+  assert.match(bounded.result.current.notice, /taking longer than usual/);
   act(() => bounded.result.current.check());
   await act(async () => mock.timers.tick(0));
-  assert.equal(boundedRequests.length, 13, "explicit Check status can retry the same metadata check");
+  assert.equal(boundedRequests.length, 19, "explicit Check status can retry the same metadata check");
   bounded.unmount();
   mock.timers.reset();
-  console.log("PASS: recovery ignores stale attempts, survives task revisions, stops after 12 pending checks, and leaves no idle heartbeat.");
+  console.log("PASS: recovery ignores stale attempts, survives task revisions, stops after 18 pending checks, and leaves no idle heartbeat.");
 } finally { cleanup(); mock.timers.reset(); dom.window.close(); }
