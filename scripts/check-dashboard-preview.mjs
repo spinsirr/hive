@@ -1,4 +1,4 @@
-// Exercise the real dashboard and sample-task dialog without a database or account.
+// Exercise home/demo navigation without a database or account.
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { registerHooks } from "node:module";
@@ -17,42 +17,60 @@ globalThis.fetch = () => { throw new Error("Dashboard preview must not access a 
 registerHooks({
   resolve(specifier, context, next) {
     if (specifier === "next/link") return next("next/link.js", context);
+    if (specifier === "next/headers") return next("next/headers.js", context);
+    if (specifier === "server-only") return next("next/dist/compiled/server-only/empty.js", context);
+    if (specifier === "@/db") throw new Error("Public home must not import the database without a session.");
     if (!specifier.startsWith("@/")) return next(specifier, context);
     const base = new URL(`../src/${specifier.slice(2)}`, import.meta.url);
     const target = [".ts", ".tsx"].map((extension) => new URL(`${base.href}${extension}`)).find((url) => existsSync(url));
     return next(target?.href ?? specifier, context);
   },
   load(url, context, next) {
+    if (url.endsWith("/next/headers.js")) return { format: "module", shortCircuit: true, source: "export async function cookies() { return { get() { return globalThis.__demoTestCookie; } }; }" };
     if (!url.endsWith(".tsx")) return next(url, context);
     return { format: "module", shortCircuit: true, source: transpileModule(readFileSync(new URL(url), "utf8"), { compilerOptions: { jsx: JsxEmit.ReactJSX, module: ModuleKind.ESNext } }).outputText };
   },
 });
 
 const { createElement: h } = await import("react");
-const { cleanup, fireEvent, render, screen, waitFor, within } = await import("@testing-library/react");
+const { cleanup, fireEvent, render, screen, within } = await import("@testing-library/react");
 const { DashboardDemo } = await import("../src/app/demo/dashboard-demo.tsx");
 const { TaskDashboard } = await import("../src/components/hive/task-dashboard.tsx");
-const { demoLoadedAt, demoTasks } = await import("../src/lib/ui-demo.ts");
+const { HiveSignIn } = await import("../src/components/hive/hive-sign-in.tsx");
+const { demoLoadedAt, demoTasks, demoTaskHref, newDemoTask } = await import("../src/lib/ui-demo.ts");
 
 render(h(DashboardDemo));
 assert.ok(screen.getByRole("heading", { name: "Sample tasks" }));
 assert.equal(screen.queryByRole("group", { name: "Task status" }), null);
 assert.equal(within(screen.getByRole("region", { name: "Task list" })).getAllByRole("listitem").length, 4);
 assert.equal(screen.getByRole("link", { name: "Open Hive" }).getAttribute("href"), "/");
-const sample = screen.getByRole("button", { name: "Preview sample task: Work through the onboarding flow" });
-assert.ok(within(sample).getByText("Preview"));
+assert.equal(screen.queryByRole("region", { name: "One agent. Your whole team." }), null);
+assert.equal(screen.queryByRole("link", { name: "Try collaboration demo" }), null);
+for (const task of demoTasks) {
+  const sample = screen.getByRole("link", { name: `Open sample task: ${task.title}` });
+  assert.equal(sample.getAttribute("href"), `/demo/tasks/${task.id}`);
+  assert.ok(within(sample).getByText("Demo"));
+  sample.focus();
+  assert.equal(document.activeElement, sample);
+}
 assert.equal(document.querySelector('a[href^="/sessions/"]'), null);
-sample.focus();
-fireEvent.click(sample);
-const preview = await screen.findByRole("dialog");
-assert.ok(within(preview).getByRole("heading", { name: "Work through the onboarding flow" }));
-assert.equal(within(preview).getByRole("link", { name: "Open Hive" }).getAttribute("href"), "/");
-assert.match(preview.textContent, /not a live task/);
-fireEvent.click(within(preview).getByRole("button", { name: "Back to sample tasks" }));
-await waitFor(() => assert.equal(screen.queryByRole("dialog"), null));
-await waitFor(() => assert.equal(document.activeElement, sample));
+assert.equal(screen.queryByRole("button", { name: /Preview sample task/ }), null);
+assert.equal(screen.queryByRole("dialog"), null);
+fireEvent.click(screen.getByRole("button", { name: "Empty state" }));
+assert.ok(screen.getByText("Start your first shared task"));
+fireEvent.click(screen.getByRole("button", { name: "Reset demo" }));
+assert.equal(screen.getAllByRole("link", { name: /^Open sample task:/ }).length, 4);
 cleanup();
-console.log("PASS: sample rows clearly preview, open an honest dialog with a real-app link, and return keyboard focus without backend calls.");
+console.log("PASS: all four sample rows have real, keyboard-accessible demo links; no placeholder dialogs or live task links.");
+
+const customTask = newDemoTask("Try team onboarding", "custom");
+render(h(TaskDashboard, {
+  tasks: [customTask], memberName: "Alex", memberInitials: "AL", loadedAt: demoLoadedAt,
+  createAction: async () => { throw new Error("This check must not create a live task."); },
+  previewTaskHref: demoTaskHref,
+}));
+assert.equal(screen.getByRole("link", { name: "Open sample task: Try team onboarding" }).getAttribute("href"), "/demo/tasks/new?title=Try%20team%20onboarding");
+cleanup();
 
 render(h(TaskDashboard, {
   tasks: [{ ...demoTasks[0], id: "real-task" }],
@@ -63,6 +81,7 @@ assert.ok(screen.getByRole("heading", { name: "Tasks" }));
 assert.equal(screen.getByRole("link", { name: /Polish the settings menu/ }).getAttribute("href"), "/sessions/real-task");
 assert.equal(screen.queryByText("Preview"), null);
 assert.equal(screen.queryByRole("group", { name: "Task status" }), null);
+assert.equal(screen.getByRole("link", { name: "Explore demo" }).getAttribute("href"), "/demo");
 cleanup();
 render(h(TaskDashboard, {
   tasks: [], memberName: "Alex", memberInitials: "AL", loadedAt: demoLoadedAt,
@@ -70,7 +89,27 @@ render(h(TaskDashboard, {
 }));
 assert.ok(screen.getByText("Start your first shared task"));
 assert.ok(screen.getByRole("button", { name: "New task" }));
+assert.equal(screen.getByRole("link", { name: "Explore demo" }).getAttribute("href"), "/demo");
 assert.equal(screen.queryByRole("button", { name: /Completed|Active/ }), null);
 cleanup();
+render(h(HiveSignIn, { returnTo: "/" }));
+assert.equal(screen.getByRole("link", { name: "Explore demo" }).getAttribute("href"), "/demo");
+assert.equal(screen.getByRole("link", { name: "Continue with GitHub" }).getAttribute("href"), "/api/github/login?return_to=%2F");
+assert.ok(screen.getByText("No sign-in required. Sample data only."));
+cleanup();
+const { default: Home } = await import("../src/app/page.tsx");
+render(await Home({ searchParams: Promise.resolve({}) }));
+assert.ok(screen.getByRole("heading", { name: "Build together with Hive" }));
+assert.equal(screen.getByRole("link", { name: "Explore demo" }).getAttribute("href"), "/demo");
+cleanup();
+globalThis.__demoTestCookie = { value: "invalid-fixture-session" };
+render(await Home({ searchParams: Promise.resolve({ signin: "retry" }) }));
+assert.ok(screen.getByRole("heading", { name: "Let’s try signing in again" }));
+assert.equal(screen.getByRole("link", { name: "Explore demo" }).getAttribute("href"), "/demo");
+cleanup();
+await assert.rejects(Home({ searchParams: Promise.resolve({}) }), /must not import the database/, "A session cookie must still be verified against the database; no authentication bypass.");
+delete globalThis.__demoTestCookie;
 dom.window.close();
 console.log("PASS: the dashboard keeps real task links and an honest empty state without manual status filters.");
+console.log("PASS: signed-out, signed-in, and empty dashboards link to the demo index, including newly created local demo tasks.");
+console.log("PASS: actual signed-out/retry home pages render without a database; session-bearing requests still require verification.");

@@ -4,16 +4,12 @@ import { useState } from "react";
 import Link from "next/link";
 import { TaskDashboard } from "@/components/hive/task-dashboard";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import type { DashboardTask } from "@/lib/task-dashboard";
-import { demoLoadedAt, demoTasks, newDemoTask } from "@/lib/ui-demo";
+import { demoLoadedAt, demoTaskHref, demoTasks, newDemoTask } from "@/lib/ui-demo";
 
 export function DashboardDemo() {
   const [tasks, setTasks] = useState(demoTasks);
-  const [selectedTask, setSelectedTask] = useState<DashboardTask | null>(null);
   const [notice, setNotice] = useState("");
   const [revision, setRevision] = useState(0);
-  const [taskTrigger, setTaskTrigger] = useState<HTMLElement | null>(null);
 
   async function createAction(formData: FormData) {
     const task = newDemoTask(String(formData.get("title") ?? ""), crypto.randomUUID());
@@ -45,29 +41,10 @@ export function DashboardDemo() {
         loadedAt={demoLoadedAt}
         memberInitials="AL"
         memberName="Alex · Demo team"
-        onPreviewTask={(task) => {
-          setTaskTrigger(document.activeElement instanceof HTMLElement ? document.activeElement : null);
-          setSelectedTask(task);
-        }}
+        previewTaskHref={demoTaskHref}
         tasks={tasks}
       />
       <p className="sr-only" role="status">{notice}</p>
-      <Dialog onOpenChange={(open) => { if (!open) setSelectedTask(null); }} open={selectedTask !== null}>
-        <DialogContent finalFocus={() => taskTrigger}>
-          <DialogHeader>
-            <DialogTitle>{selectedTask?.title}</DialogTitle>
-            <DialogDescription>Sample task · Dashboard preview</DialogDescription>
-          </DialogHeader>
-          <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-3 py-2 text-xs">
-            <dt className="text-[#737373]">Repository</dt><dd>{selectedTask?.repositoryName ?? "Not attached"}</dd>
-          </dl>
-          <p className="text-xs leading-5 text-[#737373]">This is a dashboard preview, not a live task. Open Hive to access your real conversations and workspaces. Sample changes reset on refresh.</p>
-          <DialogFooter>
-            <DialogClose render={<Button variant="outline" />}>Back to sample tasks</DialogClose>
-            <Link className={buttonVariants()} href="/" prefetch={false}>Open Hive</Link>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </>
   );
 }

@@ -9,6 +9,7 @@ import { type CodingModelOption } from "./coding-models.ts";
 import { platformCodingModels } from "./platform-models.ts";
 import { assertHiveToolRun, hiveThreadReply, type HiveToolContext } from "@/lib/hive-tool-context";
 import type { HiveToolScope } from "@/lib/hive-tool-token";
+import { requestPeerInput, type PeerRequest } from "./peer-collaboration.ts";
 import { subagentUpdateSchema, type HiveSubagent, type SubagentSession } from "./hive-subagents.ts";
 import { beginWorkspaceRestore, completeWorkspaceRestore, failWorkspaceRestore, WorkspaceRestoreError, type RestoreWorkspaceRequest } from "@/lib/workspace-restore-state";
 import {
@@ -188,6 +189,24 @@ export async function createTaskSession(
   return initialSession;
 }
 
+export async function createHivePeerRequest(scope: HiveToolScope, request: PeerRequest) {
+  return db.transaction(async (transaction) => {
+    const [row] = await transaction.select(getTableColumns(taskSessions)).from(taskSessions)
+      .innerJoin(taskSessionMembers, and(eq(taskSessionMembers.sessionId, taskSessions.id), eq(taskSessionMembers.memberId, scope.memberId)))
+      .where(eq(taskSessions.id, scope.sessionId)).for("update");
+    if (!row) throw new TaskSessionAccessError();
+    const membership = await transaction.select({ id: taskSessionMembers.memberId }).from(taskSessionMembers)
+      .where(eq(taskSessionMembers.sessionId, scope.sessionId)).for("share");
+    const state = sessionState(row);
+    const published = requestPeerInput(state, scope, request, membership.map(({ id }) => resolveMember(id)), Date.now());
+    if (published.session !== state) {
+      await transaction.update(taskSessions).set(sessionValues(published.session)).where(eq(taskSessions.id, scope.sessionId));
+      await transaction.execute(sessionNotification(scope.sessionId));
+    }
+    return { messageId: published.messageId };
+  });
+}
+
 export async function isTaskSessionMember(sessionId: string, memberId: MemberId) {
   const membership = await db.query.taskSessionMembers.findFirst({
     where: and(
@@ -279,16 +298,19 @@ export async function applyTaskSessionAction(
       members,
       changingModel ? platformCodingModels(process.env) : undefined,
     );
-    if (changingModel && nextSession === previousSession) {
+    if (nextSession === previousSession) {
       // Return the current shared state on a no-op or stale selection. Do not
       // broadcast a fabricated version or overwrite a teammate's newer model.
       return { session: previousSession, startedRun: false };
     }
     const startedRun = didStartHiveRun(previousSession, nextSession);
     if (startedRun) {
+      const source = nextSession.activeSteer?.source;
+      const threadId = source && "messageId" in source && nextSession.messages.some((message) => message.id === source.messageId && message.interaction)
+        ? source.messageId : action.type === "steer-message-annotation" && nextSession.messages.some((message) => message.id === action.messageId && message.interaction) ? action.messageId : undefined;
       nextSession.workspace = {
         ...nextSession.workspace,
-        liveReply: { id: `agent-${randomUUID()}`, body: "", sequence: 0, startedAt: now },
+        liveReply: { id: `agent-${randomUUID()}`, threadId, body: "", sequence: 0, startedAt: now },
       };
     }
     await transaction

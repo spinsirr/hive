@@ -1,6 +1,6 @@
 # Hive — Scope and release status
 
-Hive focuses on one shared coding task: teammates discuss requirements, explicitly steer one agent, and review real workspace changes together.
+Hive supports agentic peer programming around one shared coding task. Teammates can join work in progress, contribute context, answer the agent’s questions and review changes together.
 
 ## Current scope
 
@@ -18,6 +18,12 @@ Vercel Workflow integration remains deferred. Postgres owns collaboration state 
 - Research/review subagents share the current task's model, tools, skills and permissions. Controlled checks passed, but the recorded live attempt stopped on Gateway 429 before an observed child start. See [subagent evidence](SUBAGENTS.md).
 - Message editing and compact queue actions are a separate [PR #5 release candidate](https://github.com/spinsirr/hive/pull/5), not evidence of production two-account editing.
 
+## Peer collaboration update — September 11, 2026
+
+Structured agent questions and review requests are implemented through the existing task queue and Threads. Answers resume the original task; steered review feedback streams back to its source Thread. Human verification is tied to a completed code revision. Busy-answer continuation requires a connected client and does not establish durable background execution.
+
+Controlled UI checks and a real disposable local Postgres/MCP check passed, including concurrent answers, one execution grant, task membership, stale-run rejection and revision-bound review. Model completions in that check were fixtures. Real-model acceptance with two authenticated accounts remains pending. The public demo has four separate sample tasks and simulated output, accessible without login.
+
 ## Verification status
 
 The following summarizes dated checks, not a claim that all scenarios passed in one uninterrupted run. See the [development log](DEVELOPMENT.md#evidence-log) and [post-review verification](POST_REVIEW_VERIFICATION.md) for revisions, dates and limitations.
@@ -32,6 +38,7 @@ The following summarizes dated checks, not a claim that all scenarios passed in 
 - [x] Verify one live Mem0 save and same-repository cross-task recall, followed by a correct source-task citation retest.
 - [x] Deploy timestamp hydration fixes and check a fresh production page.
 - [x] Verify anonymous access to the public GitHub repository on September 10 Pacific.
+- [ ] Accept the new structured question → answer → continuation and review → revision → verification paths with real models and two production accounts.
 - [ ] Complete a genuinely new GitHub account's first-signup production walkthrough.
 - [ ] Recheck the final release with the second account, including authenticated cross-task and repository isolation.
 - [ ] Complete live child-start, Stop and result acceptance for subagents.

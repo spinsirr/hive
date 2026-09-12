@@ -19,7 +19,7 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   Conversation,
@@ -48,6 +48,7 @@ import type { CodingEffort } from "@/lib/coding-effort";
 import type { CodingModelOption } from "@/lib/coding-models";
 import { displayHiveErrorMessage } from "@/lib/hive-error-copy";
 import { workspaceReadRevision } from "@/lib/workspace-files";
+import { canResolvePeerReview } from "@/lib/peer-collaboration";
 import {
   type ActiveSteer,
   type ChatMessage,
@@ -697,6 +698,16 @@ export function HiveWorkspace({
   // Reset is irreversible for every member; require an idle task and a confirmation.
   const resetDisabled = workspaceLocked || runActive || Boolean(activeSteer) || steeringQueue.length > 0;
   const canApplySteer = canApplyNextSteer(session);
+  const attemptedAnswer = useRef<string | null>(null);
+  const nextAnswer = canApplySteer && workspace.status !== "error" && steeringQueue[0]?.source.kind === "peer-response" &&
+    (!workspace.lastRestore || steeringQueue[0].queuedAt > workspace.lastRestore.at) ? steeringQueue[0].id : null;
+  useEffect(() => {
+    if (!nextAnswer || syncing || syncError || attemptedAnswer.current === nextAnswer) return;
+    attemptedAnswer.current = nextAnswer;
+    // Every connected teammate may observe readiness. The server checks this
+    // exact queue item under its task lock and grants execution only once.
+    void dispatch({ type: "continue-peer-response", steerId: nextAnswer });
+  }, [nextAnswer, syncing, syncError, dispatch]);
   const steered = annotation.status === "steered";
   const queued = annotation.status === "queued";
   const queuePosition = steeringQueue.findIndex(
@@ -729,6 +740,15 @@ export function HiveWorkspace({
     const delivered = nextSnapshot?.session.messages.some((message) => message.memberId === currentMember.id && message.clientId === clientId && message.annotations?.some((annotation) => annotation.body === body)) ?? false;
     if (delivered) setPane("chat");
     return delivered;
+  }, [currentMember.id, dispatch]);
+  const answerQuestion = useCallback(async (messageId: string, submission: MessageSubmission) => {
+    const next = await dispatch({ type: "answer-question", messageId, ...submission });
+    return next?.session.messages.find((message) => message.id === messageId)?.annotations?.some((reply) => reply.authorId === currentMember.id && reply.clientId === submission.clientId) ?? false;
+  }, [currentMember.id, dispatch]);
+  const resolveReview = useCallback(async (messageId: string, revision: string) => {
+    const next = await dispatch({ type: "resolve-peer-review", messageId, revision });
+    const review = next?.session.messages.find((message) => message.id === messageId)?.interaction;
+    return review?.kind === "review" && review.revision === revision && review.resolved?.by === currentMember.id;
   }, [currentMember.id, dispatch]);
   const steer = useCallback(() => { void dispatch({ type: "steer-agent" }); }, [dispatch]);
   const steerMessageAnnotation = useCallback((messageId: string, annotationId: string) => {
@@ -887,7 +907,10 @@ export function HiveWorkspace({
               <Workspace active={!threadMessage} repository={repository} sessionId={sessionId} tab={shared.tab} workspace={workspace} checkpointRevision={session.version} onRestored={receiveSnapshot} onTabChange={shared.onTabChange} fileCollaboration={{ memberId: currentMember.id, deliveredIds: codeAnnotationIds, disabled: workspaceLocked, onAnnotate: annotateCode }} />
             </div>
             {!threadMessage && canApproveChanges(session) ? <ApprovalBar onApprove={shared.onAdvance} /> : null}
-            {threadMessage ? <MessageThread currentMember={currentMember.id} disabled={workspaceLocked} key={threadMessage.id} members={teamMembers} message={threadMessage} onClose={closeThread} onReply={annotate} onSteerReply={steerMessageAnnotation} onSteerThread={steerThread} queue={steeringQueue} runActive={runActive} sessionId={sessionId} /> : null}
+            {threadMessage ? <MessageThread currentMember={currentMember.id} disabled={workspaceLocked} key={threadMessage.id} members={teamMembers} message={threadMessage} onClose={closeThread} onReply={annotate} onAnswerQuestion={answerQuestion} onSteerReply={steerMessageAnnotation} onSteerThread={steerThread} queue={steeringQueue} runActive={runActive} sessionId={sessionId}
+              reviewReady={canResolvePeerReview(session, threadMessage, currentMember.id, threadMessage.interaction?.revision ?? "")}
+              reviewCurrent={!runActive && !workspaceLocked && Boolean(workspace.reviewRevision && workspace.reviewRevision === threadMessage.interaction?.revision)}
+              onResolveReview={resolveReview} onViewChanges={() => { closeThread(); setPane("workspace"); setTab("diff"); }} /> : null}
           </>
         }
       />

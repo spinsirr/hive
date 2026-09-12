@@ -16,3 +16,14 @@ export function newDemoTask(title: string, id: string): DashboardTask | null {
   if (!name || name.length > 120) return null;
   return { id: `demo-${id}`, title: name, repositoryName: null, updatedAt: demoLoadedAt };
 }
+
+export function demoTaskHref(task: DashboardTask): string {
+  return demoTasks.some((sample) => sample.id === task.id)
+    ? `/demo/tasks/${task.id}`
+    : `/demo/tasks/new?title=${encodeURIComponent(task.title)}`;
+}
+
+export function findDemoTask(taskId: string, title?: string): DashboardTask | null {
+  if (taskId === "new") return newDemoTask(title ?? "", "new");
+  return demoTasks.find((task) => task.id === taskId) ?? null;
+}

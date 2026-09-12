@@ -1,6 +1,6 @@
 import { handleHiveMcp } from "@/lib/hive-mcp";
 import { verifyHiveToolToken } from "@/lib/hive-tool-token";
-import { appendHiveToolReply, readHiveToolContext, withTaskSubagentControl } from "@/lib/task-session-store";
+import { appendHiveToolReply, createHivePeerRequest, readHiveToolContext, withTaskSubagentControl } from "@/lib/task-session-store";
 import { controlSubagent } from "@/lib/subagent-control";
 
 export const dynamic = "force-dynamic";
@@ -29,7 +29,7 @@ export async function POST(request: Request, context: { params: Promise<{ sessio
   } finally { reader.releaseLock(); }
   const bounded = new Request(request.url, { method: "POST", headers: request.headers, body: Buffer.concat(chunks), signal: request.signal });
   return handleHiveMcp(bounded, scope, {
-    read: readHiveToolContext, reply: appendHiveToolReply,
+    read: readHiveToolContext, reply: appendHiveToolReply, request: createHivePeerRequest,
     control: (scope, input, signal) => withTaskSubagentControl(sessionId, (session) => controlSubagent(session, scope.runId, input, AbortSignal.any([signal, AbortSignal.timeout(20_000)]))),
   });
 }
