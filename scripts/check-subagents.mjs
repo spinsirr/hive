@@ -71,7 +71,9 @@ test("MCP retries of one delegation reuse its child despite different transport 
   const f = fixture();
   const scope = { sessionId: "delegation-replay", memberId: "spencer", runId: "run-one" };
   const initial = createInitialTaskSessionState(1, scope.sessionId);
-  const context = { ...initial, stage: "running", members: [memberDirectory.spencer], workspace: { ...initial.workspace, liveReply: { id: scope.runId } } };
+  const context = { ...initial, stage: "running", members: [memberDirectory.spencer],
+    repository: { provider: "github-app", id: 42, installationId: 1, url: "https://github.com/example/fixture", name: "example/fixture", branch: "main", visibility: "public", connectedBy: "spencer", connectedAt: 1, authorizedByGitHub: { id: 1, login: "spencer" } },
+    workspace: { ...initial.workspace, liveReply: { id: scope.runId } } };
   const client = new Client({ name: "replayed-delegation", version: "1" });
   await client.connect(new StreamableHTTPClientTransport(new URL("https://hive.test/tools"), {
     fetch: (input, init) => handleHiveMcp(new Request(input, init), scope, {

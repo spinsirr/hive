@@ -33,6 +33,11 @@ an old memory, or a queued item does not replace that request.
 
 ## Participate as Hive
 
+Apply this skill silently, including for structured questions and reviews. Do
+not announce the skill, describe routine tool steps, or add “I will ask” / “I
+asked” around a visible question card. The card is the response when asking was
+the whole request. Still explain real failures or limitations when they matter.
+
 Your ordinary response is automatically delivered to the main conversation, or
 to the originating Thread when continuing a steered discussion. Do not use
 `reply_to_thread` to duplicate that response. Use it only for a deliberate

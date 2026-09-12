@@ -111,8 +111,25 @@ for (const message of [
 ]) {
   const surface = new JSDOM(renderToStaticMarkup(createElement(ConversationMessage, { ...cardProps, message }))).window.document.querySelector('[data-slot="threaded-message"]');
   assert.equal(surface.className, ordinary.className, "all Thread-bearing messages share one surface");
-  assert.equal(surface.lastElementChild.className, collapsedQuestion.className, "human and review Thread entries cannot fork their appearance");
+  const withoutAlignment = (classes) => classes.replace(/self-(start|end)/g, "");
+  assert.equal(withoutAlignment(surface.lastElementChild.className), withoutAlignment(collapsedQuestion.className), "human and review Thread entries share styling; only author alignment differs");
   assert.equal(surface.querySelectorAll('button[aria-expanded]').length, 1);
 }
 assert.equal(actions, 0);
 console.log("PASS: one author group retains individual messages and a single attached Thread footer without mutations.");
+
+// A first reply may add a footer, never transform the parent's presentation.
+for (const message of [
+  { ...props.message, memberId: "demo-alex" },
+  { ...props.message, memberId: "demo-casey" },
+  { ...question, annotations: [], interaction: undefined },
+  { ...question, annotations: [] },
+  { ...question, annotations: [], interaction: { kind: "review", runId: "qa-run", status: "open", revision: "qa-run" } },
+]) {
+  const documents = [[], [reply("new", "Keep the parent presentation stable")]].map((annotations) => new JSDOM(renderToStaticMarkup(createElement(ConversationMessage, { ...cardProps, message: { ...message, annotations } }))).window.document);
+  const [before, after] = documents.map((doc) => doc.querySelector('[data-slot="message-content"]'));
+  assert.equal(before.outerHTML, after.outerHTML, "first reply does not change body classes, content, bubble, padding or width");
+  assert.equal(before.parentElement.className, after.parentElement.className, "first reply does not add an outer card");
+  assert.equal(documents[0].querySelector('[data-message-id]').firstElementChild.className, documents[1].querySelector('[data-message-id]').firstElementChild.className, "author alignment stays stable");
+}
+console.log("PASS: human/Agent/question/review parent body and author styles are identical with zero or one reply.");

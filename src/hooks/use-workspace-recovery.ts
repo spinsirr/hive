@@ -40,17 +40,22 @@ export function useWorkspaceRecovery(sessionId: string, revision: number, restor
         if (response.status !== 202) throw new Error(body.error || "Restore status could not be checked. Try checking again.");
         // Bounded metadata checks, never another restore or an idle heartbeat.
         // Ordinary task revisions do not reset this operation's retry budget.
-        if (++attempts < 12) {
-          setState({ key, checking: false, notice: "Waiting for Sandbox confirmation. Checking status does not restore files again." });
+        if (++attempts < 18) {
+          setState({ key, checking: false, notice: "Checking automatically. You can keep reading; editing will return when recovery is confirmed." });
           timer = setTimeout(() => void confirm(), 10_000);
-        } else setState({ key, checking: false, notice: "Not confirmed yet. Check status again, or retry the same checkpoint." });
+        } else setState({ key, checking: false, notice: "This is taking longer than usual. Check status again before retrying the same checkpoint." });
       } catch (error) {
-        if (!controller.signal.aborted) setState({ key, checking: false, notice: error instanceof Error ? error.message : "Restore status could not be checked. Try checking again." });
+        if (controller.signal.aborted) return;
+        if (++attempts < 18) {
+          setState({ key, checking: false, notice: "Confirmation is taking longer than usual. Checking again automatically; you can keep reading." });
+          timer = setTimeout(() => void confirm(), 10_000);
+        } else setState({ key, checking: false, notice: error instanceof Error && error.name !== "TimeoutError" ? error.message : "Status is temporarily unavailable. Check again to confirm recovery." });
       }
     }
-    timer = setTimeout(() => void confirm(), Math.max(0, retryAfter - Date.now()));
+    // Read-only confirmation must not wait for the destructive retry lease.
+    timer = setTimeout(() => void confirm(), checkRequest ? 0 : Math.min(3_000, Math.max(0, retryAfter - Date.now())));
     return () => { controller.abort(); clearTimeout(timer); };
-  }, [client, sessionId, id, snapshotId, retryAfter, key]);
+  }, [client, sessionId, id, snapshotId, retryAfter, key, checkRequest]);
 
   return { checking: state?.key === key && state.checking, notice: state?.key === key ? state.notice : "", check };
 }

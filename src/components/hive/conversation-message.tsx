@@ -53,7 +53,6 @@ export function ConversationMessage({ message, currentMember, members, sessionId
   const discussion = question ? { ...message, annotations: message.annotations?.filter((reply) => reply.id !== question.answer?.replyId) } : message;
   const hasReplies = Boolean(discussion.annotations?.length);
   const hasThread = !message.threadId && (hasReplies || message.interaction?.kind === "review");
-  const hasCard = hasThread || Boolean(message.interaction);
   const canStartThread = !disabled && !hasThread && !message.threadId;
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
   const [showHistory, setShowHistory] = useState(false);
@@ -84,18 +83,17 @@ export function ConversationMessage({ message, currentMember, members, sessionId
     </div>
   ) : null;
   const body = isEditing && editing && onSaveEdit && onCancelEdit ? <MessageEditComposer key={`${message.id}:${currentMember}`} {...editing} disabled={disabled} onSave={onSaveEdit} onCancel={onCancelEdit} /> : message.body ? (
-    <MessageContent className={cn(
+    <MessageContent data-slot="message-content" className={cn(
       "max-w-full text-sm leading-6 shadow-none",
       isAgent ? "w-full overflow-visible bg-transparent px-0.5 py-1 text-[#333]" : "w-fit whitespace-pre-wrap rounded-[18px] bg-[#f4f4f4] px-4 py-3 text-[#333] group-[.is-user]:rounded-[18px] group-[.is-user]:bg-[#f4f4f4] sm:max-w-[94%]",
-      hasCard && "w-full rounded-none bg-transparent px-0.5 py-1 group-[.is-user]:rounded-none group-[.is-user]:bg-transparent group-[.is-user]:px-0.5 group-[.is-user]:py-1 sm:max-w-full",
     )}>
       {isAgent ? <AgentResponse streaming={message.status === "streaming"}>{message.body}</AgentResponse> : message.codeReference ? <div><p className="break-all text-xs text-[#737373]">{codeReferenceLabel(message.codeReference)}</p><pre className="mt-2 max-h-40 overflow-auto whitespace-pre font-mono text-xs leading-5">{message.codeReference.quote}</pre></div> : message.body}
     </MessageContent>
   ) : null;
-  const thread = <MessageThreadPreview expanded={selected} members={members} message={discussion} onOpen={() => onOpenThread(message.id)} />;
+  const thread = <MessageThreadPreview className={isOwn ? "self-end" : "self-start"} expanded={selected} members={members} message={discussion} onOpen={() => onOpenThread(message.id)} />;
 
   return (
-    <Message className={cn("min-w-0 max-w-full gap-2.5 rounded-xl", selected && !hasThread && "outline-1 outline-offset-4 outline-border")} data-message-id={message.id} from={isOwn ? "user" : "assistant"}>
+    <Message className={cn("min-w-0 max-w-full gap-2.5 rounded-xl focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring", selected && "outline-1 outline-offset-4 outline-border")} tabIndex={-1} data-message-id={message.id} from={isOwn ? "user" : "assistant"}>
       {!hideAuthor ? <div className={cn("flex min-w-0 items-center gap-2 px-0.5", isOwn && "justify-end")}>
         {isAgent ? <HiveMark className="size-6 rounded-full border border-[#dedede]" light /> : <span className="grid size-6 shrink-0 place-items-center rounded-full bg-[#f1f1f1] text-xs font-semibold text-[#555]">{message.initials}</span>}
         <span className="min-w-0 truncate text-xs font-medium text-[#444]">{message.name}</span>
@@ -104,17 +102,15 @@ export function ConversationMessage({ message, currentMember, members, sessionId
         {!message.interaction ? actions : null}
       </div> : null}
       {message.subagents?.length ? <SubagentActivity live={message.status === "streaming" && runActive && !disabled} sessionId={sessionId} tasks={message.subagents} /> : null}
-      {hasCard ? <div className={cn("w-full overflow-hidden rounded-xl border border-border bg-background", selected && "border-foreground/30")} data-slot={hasThread ? "threaded-message" : "question-message"}>
-        <div className="flex min-w-0 flex-col gap-2 px-4 py-3">
+      <div className="flex w-full min-w-0 flex-col gap-2" data-slot={hasThread ? "threaded-message" : question ? "question-message" : "message-body"}>
           {message.interaction ? <div className="flex min-w-0 items-center gap-2">
             <PeerRequestSummary className="mb-0" message={message} members={members} />
             {actions}
           </div> : null}
           {body}
           {question && onAnswerQuestion && !selected ? <QuestionAnswer currentMember={currentMember} disabled={disabled} members={members} message={message} onAnswer={onAnswerQuestion} replyThreadId={message.threadId} sessionId={sessionId} /> : null}
-        </div>
         {hasThread ? thread : null}
-      </div> : body}
+      </div>
       {showHistory && message.edits?.length ? <section aria-label={`Edit history for ${message.name}'s message`} className="w-full rounded-xl border border-border bg-muted/30 p-3 text-xs">
         <div className="mb-3 flex items-center gap-2 text-muted-foreground"><History aria-hidden="true" className="size-3.5" /><span className="flex-1">Previous versions</span><Button onClick={() => setShowHistory(false)} size="xs" variant="ghost">Hide history</Button></div>
         <div className="max-h-60 space-y-3 overflow-y-auto">{message.edits.map((edit, index) => <div className="border-l-2 border-border pl-3" key={index}><p className="mb-1 flex flex-wrap gap-1.5 text-muted-foreground">Version {index + 1} · replaced <MessageTime message={{ createdAt: edit.replacedAt, time: "" }} /></p><p className="whitespace-pre-wrap break-words text-sm leading-6">{edit.body}</p></div>)}</div>

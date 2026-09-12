@@ -44,8 +44,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ se
       }
       const pending = session.workspace.restore;
       if (!pending || pending.id !== parsed.data.id || pending.snapshotId !== parsed.data.snapshotId) throw new WorkspaceRestoreError(409, "The restore changed. Refresh Checkpoints to see its status.");
-      // Another worker may still be finishing. This path never starts a restore.
-      if (Date.now() < pending.retryAfter || !await confirmSandboxCheckpoint(session, AbortSignal.timeout(8_000))) {
+      // The lease fences another WRITE, not a metadata read. A new VM booted
+      // from the selected checkpoint is proof even before the retry window.
+      if (!await confirmSandboxCheckpoint(session, AbortSignal.timeout(8_000))) {
         return NextResponse.json({ pending: true }, { status: 202, headers });
       }
       const snapshot = await finishTaskWorkspaceRestore(sessionId, pending.id, true, pending.startedAt);
@@ -68,6 +69,10 @@ export async function POST(request: NextRequest, context: { params: Promise<{ se
       // read budget before reporting uncertainty; never reuse the aborted signal.
       try {
         const { session } = await getTaskSessionSnapshot(sessionId);
+        // A viewer's read-only check may have confirmed this worker already.
+        if (!session.workspace.restore && session.workspace.lastRestore?.id === parsed.data.id && session.workspace.lastRestore.snapshotId === parsed.data.snapshotId) {
+          return NextResponse.json(publicTaskSessionSnapshot(await getPublicTaskSessionSnapshot(sessionId)), { headers });
+        }
         if (session.workspace.restore?.id === parsed.data.id && session.workspace.restore.startedAt === startedAt && await confirmSandboxCheckpoint(session, AbortSignal.timeout(5_000))) {
           const snapshot = await finishTaskWorkspaceRestore(sessionId, parsed.data.id, true, startedAt);
           return NextResponse.json(publicTaskSessionSnapshot(snapshot), { headers });
@@ -78,6 +83,6 @@ export async function POST(request: NextRequest, context: { params: Promise<{ se
     }
     if (error instanceof TaskSessionAccessError) return NextResponse.json({ error: error.message }, { status: 403, headers });
     const known = error instanceof WorkspaceRestoreError || error instanceof WorkspaceReadError;
-    return NextResponse.json({ error: known ? error.message : "Restore could not be confirmed. Refresh Checkpoints and retry the same restore before continuing." }, { status: known ? error.status : 503, headers });
+    return NextResponse.json({ error: known ? error.message : "Still confirming the restored workspace. You can keep reading; editing will return once recovery is confirmed." }, { status: known ? error.status : 503, headers });
   }
 }

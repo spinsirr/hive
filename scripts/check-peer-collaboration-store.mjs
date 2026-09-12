@@ -105,6 +105,12 @@ try {
   assert.equal(finished.session.messages.find((m) => m.id === continuationId).body, "Applied the team answer");
   assert.equal(finished.session.steeringQueue.length, 0);
   await assert.rejects(store.createHivePeerRequest(scope, { key: "late", prompt: "Stale run" }));
+  // Questions work before attachment. Reviewing files, unlike asking a
+  // question, requires a connected repository (fixture only; no GitHub calls).
+  await store.applyTaskSessionAction(task.sessionId, {
+    type: "connect-repository", actor: members[0].id, repositoryUrl: "https://github.com/example/fixture", repositoryId: 42,
+    repositoryName: "example/fixture", repositoryBranch: "main", visibility: "public", installationId: 1, githubUserId: 100, githubLogin: members[0].id,
+  }, members[0]);
   const reviewRun = await store.applyTaskSessionAction(task.sessionId, { type: "send-message", actor: members[0].id, body: "Prepare a review", clientId: randomUUID() }, members[0]);
   const reviewScope = { ...scope, runId: reviewRun.snapshot.session.workspace.liveReply.id };
   await client.close();

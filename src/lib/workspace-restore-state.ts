@@ -14,7 +14,7 @@ export class WorkspaceRestoreError extends Error {
 
 export function workspaceRestoreBlockReason(session: TaskSessionState) {
   if (session.archived) return ARCHIVED_TASK_MESSAGE;
-  if (session.workspace.restore) return session.workspace.restore.status === "unconfirmed" ? "Restore needs confirmation. The workspace stays paused while its status is checked." : "Restoring workspace…";
+  if (session.workspace.restore) return session.workspace.restore.status === "unconfirmed" ? "Still confirming the restored workspace…" : "Restoring workspace…";
   if (isHiveRunActive(session) || session.activeSteer) return "Wait for Hive to finish before restoring a checkpoint.";
   return null;
 }
@@ -73,6 +73,7 @@ export function completeWorkspaceRestore(session: TaskSessionState, operationId:
     // Team discussion and pending steers are never rewound or auto-executed.
     messages: [...session.messages, {
       id: `restore-${operation.id}`, memberId: operation.by.id, name: operation.by.name, initials: operation.by.initials, role: "human",
+      event: "workspace-restored",
       body: `Restored workspace and agent context to checkpoint ${checkpoint.id}. Team discussion and queued steers were kept; nothing was rerun.`,
       time: timeLabel(now),
       createdAt: now,

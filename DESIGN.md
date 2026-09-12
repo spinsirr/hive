@@ -119,11 +119,13 @@ contribution. A question without its source turn remains a standalone message.
 The turn's explanation precedes its attached requests; source records, message
 IDs, individual copy actions and Thread destinations stay unchanged.
 
-Every message with a Thread shares one bordered body-and-footer surface, whether
-it is a human message, agent response, question or review. `MessageThreadPreview`
-owns the same full-width footer, reply count, excerpt and open state for all of
-them; tool metadata belongs in the content area, never in a second Thread skin.
-Messages without a Thread retain their normal conversation presentation.
+Messages retain the same body surface, width, padding and author alignment before
+and after the first reply. A reply must not turn an ordinary message into a card
+or remove a human message's bubble. `MessageThreadPreview` owns one lightweight,
+bounded footer with a reply count, excerpt and open state for ordinary messages,
+questions and reviews. Its subtle left rule connects the discussion to its parent;
+it does not wrap or restyle that parent. Question/review metadata and answer controls
+compose inside the same message layout, not an additional outer card.
 Copy and Reply actions sit in the message header instead of reserving an empty
 row between content and discussion. Copy retains its copy icon and briefly says
 `Copied`; a persistent checkmark must not resemble review approval.
@@ -192,3 +194,30 @@ Guard self-tests must reject a deliberately duplicated demo and direct network
 access. The dedicated CI step runs alongside type, lint and component checks.
 Browser checks cover sample tasks, Thread replies/questions, resizable panes,
 Files, Runs, Checkpoints and narrow-screen navigation using production components.
+
+### Happy-path attention and motion (2026-09-12)
+
+Reading position, the selected workspace tab and unsent drafts belong to the
+person using the page. Sending, queuing or finishing a run must not switch Diff,
+Files, Runs or Checkpoints. Explicit navigation and review links may switch views.
+Follow incremental output only while the reader is at the bottom; scrolling up
+opts out. Back to latest is a named, visible action and returns keyboard focus to
+the reading surface, not the disappearing button or the mobile composer.
+
+Thread-originated work shows a scoped waiting status before its first text delta;
+an unrelated run must not make every Thread appear busy. New deltas do not refocus
+inputs. Streaming uses actual received text, never a synthetic typing delay.
+Pending questions show one quiet header entry for eligible members, including
+when the question belongs to a Thread or the reader is viewing Files. It points
+to the existing widget only after a click; arrival never navigates or moves focus.
+Answered questions disappear from this actionable count. It is not an unread
+counter, and is suppressed while the task is archived or recovering.
+JavaScript scroll animation respects reduced motion as well as CSS. Shared buttons
+transition only their visual feedback properties, not dimensions or layout.
+Do not add ornamental entrance animation to each token/message. Judge motion by
+continuity, interruption and focus preservation, not by the amount of animation.
+
+The continuous production journeys and evidence rules in
+`docs/HAPPY_PATH_ACCEPTANCE.md` supplement functional regression checks. A passing
+mock or final screenshot cannot certify stream smoothness, first-token timing,
+mobile keyboard behavior or attention management.

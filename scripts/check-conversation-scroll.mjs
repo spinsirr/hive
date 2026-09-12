@@ -12,6 +12,9 @@ for (const name of ["window", "document", "navigator", "HTMLElement", "Element",
   Object.defineProperty(globalThis, name, { configurable: true, value: name === "window" ? dom.window : dom.window[name] });
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+let reducedMotion = false;
+const mediaListeners = new Set();
+window.matchMedia = () => ({ get matches() { return reducedMotion; }, addEventListener: (_event, listener) => mediaListeners.add(listener), removeEventListener: (_event, listener) => mediaListeners.delete(listener) });
 let clock = 0;
 let frameId = 0;
 const frames = new Map();
@@ -112,9 +115,12 @@ try {
   chat.resize(20_600);
   for (let index = 0; index < 6; index += 1) await frame();
   assert.equal(chat.scroll.scrollTop, 1000, "New messages must not pull someone away from reading earlier history");
-  fireEvent.click(chat.view.getByRole("button"));
+  const latest = chat.view.getByRole("button", { name: "Back to latest messages" });
+  latest.focus();
+  fireEvent.click(latest);
   for (let index = 0; index < 150; index += 1) await frame();
   assert.ok(Math.abs(chat.scroll.scrollTop - chat.bottom()) <= 1, "The explicit return-to-latest button must still work");
+  assert.equal(document.activeElement, chat.scroll.firstElementChild, "focus stays in the reading surface after the button disappears");
   console.log("PASS: reading older history pauses follow; return-to-latest resumes it.");
 
   chat.view.unmount();
@@ -123,6 +129,22 @@ try {
   await frame();
   assert.equal(reopened.scroll.scrollTop, reopened.bottom(), "A newly mounted task or thread must also start at the latest message");
   console.log("PASS: reopening a task or thread starts at the bottom without the opening animation.");
+  for (let index = 0; index < 6; index += 1) await frame();
+  await act(async () => { reducedMotion = true; for (const listener of mediaListeners) listener(); });
+  reopened.resize(20_600);
+  await frame();
+  assert.equal(reopened.scroll.scrollTop, reopened.bottom(), "reduced motion updates follow position without spring animation");
+  fireEvent.wheel(reopened.scroll, { deltaY: -100 });
+  reopened.scroll.scrollTop = 1000;
+  fireEvent.scroll(reopened.scroll);
+  await frame();
+  reopened.resize(21_000);
+  await frame();
+  assert.equal(reopened.scroll.scrollTop, 1000, "reduced motion must not override the reader's opt-out");
+  fireEvent.click(reopened.view.getByRole("button", { name: "Back to latest messages" }));
+  await frame();
+  assert.equal(reopened.scroll.scrollTop, reopened.bottom(), "explicit return respects reduced motion too");
+  console.log("PASS: live reduced-motion changes affect automatic and explicit scrolling without stealing reading position.");
 } finally {
   cleanup();
   mock.restoreAll();

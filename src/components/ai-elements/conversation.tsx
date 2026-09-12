@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import type { UIMessage } from "ai";
 import { ArrowDownIcon, DownloadIcon } from "lucide-react";
 import type { ComponentProps } from "react";
@@ -10,15 +11,16 @@ import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 
 export type ConversationProps = ComponentProps<typeof StickToBottom>;
 
-export const Conversation = ({ className, ...props }: ConversationProps) => (
-  <StickToBottom
+export const Conversation = ({ className, initial = "instant", resize = "smooth", ...props }: ConversationProps) => {
+  const reducedMotion = useReducedMotion();
+  return <StickToBottom
     className={cn("relative flex-1 overflow-y-hidden", className)}
-    initial="instant"
-    resize="smooth"
+    initial={reducedMotion && initial !== false ? "instant" : initial}
+    resize={reducedMotion ? "instant" : resize}
     role="log"
     {...props}
-  />
-);
+  />;
+};
 
 export type ConversationContentProps = ComponentProps<
   typeof StickToBottom.Content
@@ -26,10 +28,13 @@ export type ConversationContentProps = ComponentProps<
 
 export const ConversationContent = ({
   className,
+  scrollClassName,
   ...props
 }: ConversationContentProps) => (
   <StickToBottom.Content
-    className={cn("flex flex-col gap-8 p-4", className)}
+    className={cn("flex flex-col gap-8 p-4 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring", className)}
+    scrollClassName={cn("overscroll-contain", scrollClassName)}
+    tabIndex={-1}
     {...props}
   />
 );
@@ -75,26 +80,32 @@ export const ConversationScrollButton = ({
   className,
   ...props
 }: ConversationScrollButtonProps) => {
-  const { isAtBottom, scrollToBottom } = useStickToBottomContext();
+  const { isAtBottom, scrollToBottom, contentRef } = useStickToBottomContext();
+  const reducedMotion = useReducedMotion();
 
   const handleScrollToBottom = useCallback(() => {
-    scrollToBottom();
-  }, [scrollToBottom]);
+    // The button disappears at the bottom. Keep keyboard focus in the reading
+    // surface, not on body or the composer (which would open a mobile keyboard).
+    contentRef.current?.focus({ preventScroll: true });
+    void scrollToBottom({ animation: reducedMotion ? "instant" : "smooth" });
+  }, [contentRef, reducedMotion, scrollToBottom]);
 
   return (
     !isAtBottom && (
       <Button
+        aria-label="Back to latest messages"
         className={cn(
           "absolute bottom-4 left-[50%] translate-x-[-50%] rounded-full dark:bg-background dark:hover:bg-muted",
           className
         )}
         onClick={handleScrollToBottom}
-        size="icon"
+        size="sm"
         type="button"
         variant="outline"
         {...props}
       >
-        <ArrowDownIcon className="size-4" />
+        <ArrowDownIcon aria-hidden="true" className="size-4" />
+        Back to latest
       </Button>
     )
   );

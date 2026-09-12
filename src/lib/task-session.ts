@@ -93,6 +93,8 @@ export type MessageAnnotation = {
 };
 
 export type ChatMessage = {
+  /** Server-authored operation receipt: retained for agent context, not a chat bubble. */
+  event?: "repository-connected" | "workspace-restored";
   /** Tool-created question belongs to this existing Thread, not the main timeline. */
   threadId?: string;
   interaction?: PeerInteraction;
@@ -126,7 +128,11 @@ export type MessageEdit = {
 
 /** Restore receipts are server-authored evidence even though they carry a member's name. */
 export function canEditMessage(message: ChatMessage, memberId: MemberId) {
-  return message.role === "human" && message.memberId === memberId && !message.codeReference && !message.interaction && !message.id.startsWith("restore-");
+  return message.role === "human" && message.memberId === memberId && !message.codeReference && !message.interaction && !isWorkspaceEvent(message);
+}
+
+export function isWorkspaceEvent(message: ChatMessage) {
+  return Boolean(message.event || message.id.startsWith("restore-"));
 }
 
 export class MessageEditError extends Error {
@@ -374,7 +380,7 @@ export function timeLabel(now: number) {
   }).format(now);
 }
 
-function appendAgentMessage(state: TaskSessionState, body: string, now: number): ChatMessage[] {
+function appendAgentMessage(state: TaskSessionState, body: string, now: number, event?: ChatMessage["event"]): ChatMessage[] {
   return [
     ...state.messages,
     {
@@ -382,6 +388,7 @@ function appendAgentMessage(state: TaskSessionState, body: string, now: number):
       name: "Hive",
       initials: "AI",
       body,
+      ...(event ? { event } : {}),
       role: "agent",
       time: timeLabel(now),
       createdAt: now,
@@ -412,6 +419,9 @@ export function isHiveRunStalled(state: TaskSessionState, now = Date.now()): boo
 function finishAgentReply(state: TaskSessionState, body: string, now: number, final = true): ChatMessage[] {
   const liveReply = state.workspace.liveReply;
   if (!liveReply) return appendAgentMessage(state, body, now);
+  // A tool-only question/review is already a visible response. Do not append
+  // an empty assistant bubble or manufacture an acknowledgement beside it.
+  if (final && !body.trim() && !liveReply.body.trim() && !liveReply.subagents?.length && state.messages.some((message) => message.interaction?.runId === liveReply.id)) return state.messages;
   if (liveReply.threadId && state.messages.some((message) => message.id === liveReply.threadId)) {
     return state.messages.map((message) => message.id === liveReply.threadId ? {
       ...message, annotations: [...(message.annotations ?? []), {
@@ -459,11 +469,11 @@ export function didStartHiveRun(previous: TaskSessionState, next: TaskSessionSta
  * Immediate single-reply steers use the action; queued/whole-thread work keeps
  * its source in activeSteer. A queued main message is not a thread reply.
  */
-export function hiveReplyThreadId(state: TaskSessionState, action: TaskSessionAction): string | undefined {
+export function hiveReplyThreadId(state: TaskSessionState, action?: TaskSessionAction): string | undefined {
   const source = state.activeSteer?.source;
   const messageId = source?.kind === "peer-response" ? source.replyThreadId : source && (source.kind === "message-annotation" || source.kind === "message-thread")
     ? source.messageId
-    : action.type === "steer-message-annotation" ? action.messageId : undefined;
+    : action?.type === "steer-message-annotation" ? action.messageId : undefined;
   return messageId && state.messages.some((message) => message.id === messageId) ? messageId : undefined;
 }
 
@@ -682,6 +692,7 @@ export function reduceTaskSession(
         state,
         `${actor.shortName} connected ${repository.name}. Hive can now inspect and execute against the repository.`,
         now,
+        "repository-connected",
       ),
       updatedAt: now,
     };

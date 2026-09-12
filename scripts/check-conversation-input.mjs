@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { registerHooks } from "node:module";
 import { mock } from "node:test";
-import { APICallError } from "ai";
+import { APICallError, dynamicTool, jsonSchema, hasToolCall, stepCountIs } from "ai";
 
 registerHooks({
   resolve(specifier, context, nextResolve) {
@@ -20,6 +20,7 @@ registerHooks({
 let modelInput;
 mock.module("ai", { namedExports: {
   APICallError,
+  dynamicTool, jsonSchema, hasToolCall, stepCountIs,
   streamText(input) {
     modelInput = input;
     return {

@@ -17,6 +17,7 @@ globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} 
 window.ResizeObserver = globalThis.ResizeObserver;
 globalThis.DOMRect = window.DOMRect;
 window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
+window.HTMLElement.prototype.scrollIntoView = function () {};
 let requests = 0;
 globalThis.fetch = async () => { requests++; throw new Error("Demo attempted an HTTP request"); };
 globalThis.WebSocket = class { constructor() { requests++; throw new Error("Demo mounted live transport"); } };
@@ -76,10 +77,15 @@ try {
   assert.ok(screen.getByLabelText("Resize conversation and workspace"));
   for (const name of ["Diff", "Files", "Runs", "Checkpoints"]) assert.ok(button(name));
   assert.ok(button("Invite teammate").disabled);
+  assert.ok(button("1 question needs your answer"));
   assert.equal(screen.getByRole("link", { name: /Hive/ }).getAttribute("href"), "/demo");
   fireEvent.click(screen.getByRole("button", { name: /^Workspace/ }));
   fireEvent.click(button("Files"));
   await waitFor(() => assert.match(screen.getByLabelText("Sample file: src/components/settings-nav.tsx").textContent, /SettingsNav/));
+  fireEvent.click(button("1 question needs your answer"));
+  await waitFor(() => assert.equal(document.activeElement?.dataset.messageId, screen.getByRole("textbox", { name: "Answer Hive" }).closest("[data-message-id]").dataset.messageId));
+  assert.equal(screen.getByRole("button", { name: "Conversation", exact: true }).getAttribute("aria-pressed"), "true", "attention navigates only after an explicit click");
+  assert.equal(button("Files").getAttribute("aria-pressed"), "true", "attention navigation retains the workspace tab");
   fireEvent.click(button("Checkpoints"));
   await waitFor(() => assert.ok(screen.getByRole("button", { name: /^Restore checkpoint from/ })));
   fireEvent.click(screen.getByRole("button", { name: /^Restore checkpoint from/ }));
@@ -93,6 +99,7 @@ try {
   fireEvent.click(discussionEntry);
   await waitFor(() => assert.ok(screen.getByRole("textbox", { name: "Answer Hive" })));
   fireEvent.click(within(screen.getByLabelText("Demo controls")).getByRole("button", { name: "Casey", exact: true }));
+  assert.equal(screen.queryByRole("button", { name: "1 question needs your answer" }), null, "a question for Alex must not summon Casey");
   await waitFor(() => assert.equal(screen.getByRole("textbox", { name: "Reply in thread" }).disabled, false));
   assert.equal(screen.queryByRole("button", { name: "Send answer", exact: true }), null, "Casey cannot formally answer a question assigned to Alex");
   assert.equal(screen.queryByRole("button", { name: "Keep it open", exact: true }), null, "answer options are only shown to the addressee");
@@ -203,6 +210,53 @@ try {
   const { requestPeerInput } = await import("../src/lib/peer-collaboration.ts");
   const { HiveWorkspaceView } = await import("../src/components/hive/hive-workspace.tsx");
   const { HiveClientContext } = await import("../src/components/hive/hive-client.tsx");
+  // Pending send and completed server responses must not override navigation.
+  const navigationDemo = createDemoWorkspace(demoTasks[0]);
+  const navigationSnapshot = structuredClone(navigationDemo.getSnapshot());
+  let finishSend;
+  render(h(HiveClientContext, { value: navigationDemo.client }, h(HiveWorkspaceView, {
+    currentMember: demoMembers[0], sessionId: navigationSnapshot.session.sessionId, inviteToken: "",
+    connection: { snapshot: navigationSnapshot, dispatch: (action) => new Promise((resolve) => { finishSend = () => {
+      const complete = structuredClone(navigationSnapshot);
+      complete.session.stage = "review";
+      complete.session.messages.push({ id: "accepted-ux-message", memberId: demoMembers[0].id, clientId: action.clientId, body: action.body, role: "human", name: "Alex", initials: "AL", time: "12:00 PM" });
+      resolve(complete);
+    }; }), receiveSnapshot() {}, setTyping() {}, syncing: false, syncError: false },
+  })));
+  fireEvent.click(button("Files"));
+  fireEvent.change(screen.getByRole("textbox", { name: "Ask Hive or mention a teammate" }), { target: { value: "Navigation ownership test" } });
+  fireEvent.click(button("Send message"));
+  assert.equal(button("Files").getAttribute("aria-pressed"), "true", "sending does not switch to Runs");
+  fireEvent.click(button("Runs"));
+  await act(async () => finishSend());
+  assert.equal(button("Runs").getAttribute("aria-pressed"), "true", "completion does not switch to Diff");
+  cleanup();
+  console.log("PASS: pending and completed sends preserve the reader's latest evidence-tab choice.");
+  const attentionSnapshot = structuredClone(navigationSnapshot);
+  const attentionParent = { id: "attention-parent", role: "human", name: "Alex", initials: "AL", body: "Discuss the navigation", time: "12:00 PM", memberId: demoMembers[0].id };
+  const attentionQuestion = { id: "attention-child", threadId: attentionParent.id, role: "agent", name: "Hive", initials: "H", body: "Should the menu stay open?", time: "12:01 PM", interaction: { kind: "question", runId: "attention-run", targetMemberId: demoMembers[0].id, options: ["Yes", "No"] } };
+  attentionSnapshot.session.messages = [attentionParent, attentionQuestion];
+  render(h(HiveClientContext, { value: navigationDemo.client }, h(HiveWorkspaceView, {
+    currentMember: demoMembers[0], sessionId: "ux-child-attention", inviteToken: "",
+    connection: { snapshot: attentionSnapshot, dispatch: async () => { throw new Error("Opening a question must not dispatch"); }, receiveSnapshot() {}, setTyping() {}, syncing: false, syncError: false },
+  })));
+  fireEvent.click(button("1 question needs your answer"));
+  await waitFor(() => assert.equal(screen.getByRole("textbox", { name: "Reply in thread" }).disabled, false));
+  await waitFor(() => assert.equal(document.activeElement?.dataset.messageId, attentionQuestion.id, "attention focuses the child question, not the Thread composer"));
+  assert.ok(within(screen.getByLabelText("Message thread")).getByText(attentionQuestion.body));
+  cleanup();
+  console.log("PASS: Thread question attention opens and focuses the original question without dispatching work.");
+  // The actual thread view shows pending feedback only for its active run.
+  const { MessageThread } = await import("../src/components/hive/message-thread.tsx");
+  const threadWaitingProps = { sessionId: "ux-wait", message: { id: "ux-parent", name: "Alex", initials: "AL", role: "human", body: "Discuss this", time: "12:00 PM" }, members: demoMembers, currentMember: demoMembers[0].id, disabled: false, runActive: true, queue: [], onClose() {}, onReply: async () => true, onSteerThread: async () => true };
+  const waitingThread = render(h(MessageThread, { ...threadWaitingProps, replying: true }));
+  assert.ok(screen.getByText("Hive is replying in this thread…"));
+  waitingThread.rerender(h(MessageThread, { ...threadWaitingProps, replying: false }));
+  assert.equal(screen.queryByText("Hive is replying in this thread…"), null, "an unrelated run cannot make this Thread appear busy");
+  waitingThread.rerender(h(MessageThread, { ...threadWaitingProps, replying: true, message: { ...threadWaitingProps.message, annotations: [{ id: "live-reply", role: "agent", authorId: "hive-agent", body: "Incremental text", deliveryStatus: "streaming", createdAt: Date.now(), status: "open" }] } }));
+  assert.equal(screen.queryByText("Hive is replying in this thread…"), null, "first text replaces the pending placeholder");
+  cleanup();
+  console.log("PASS: first-token waiting feedback belongs to the running Thread and settles when text arrives.");
   // Reproduce the reported shape: one long discussion plus a repeated empty
   // question from another run. Use the production view and original IDs.
   const threadDemo = createDemoWorkspace(demoTasks[0]);
@@ -338,7 +392,7 @@ try {
       return Response.json(confirmed);
     }
     restoreCalls++;
-    recoveryData = { ...baseCheckpointData, blockedReason: "Restore needs confirmation. Retry the same checkpoint before continuing.", restore: { id: request.id, snapshotId: request.snapshotId, status: "unconfirmed", retryAfter: Date.now() + 400 } };
+    recoveryData = { ...baseCheckpointData, blockedReason: "Still confirming the restored workspace…", restore: { id: request.id, snapshotId: request.snapshotId, status: "unconfirmed", retryAfter: Date.now() + 400 } };
     recoverySnapshot = structuredClone(recoverySnapshot);
     recoverySnapshot.session.version++;
     recoverySnapshot.session.workspace.restore = { ...recoveryData.restore, startedAt: Date.now(), sourceSessionId: "original-vm", by: recoverySnapshot.members[0] };
@@ -362,8 +416,10 @@ try {
   assert.ok(!screen.queryByRole("dialog"));
   assert.equal(restoreCalls, 1);
   await act(async () => releaseRestore());
-  await waitFor(() => assert.match(document.body.textContent, /Checking safely in \d+s/));
-  assert.ok(button("Retry restore").disabled, "the lease countdown is explicit and prevents a concurrent retry");
+  await waitFor(() => assert.match(document.body.textContent, /Checking automatically/));
+  assert.doesNotMatch(document.body.textContent, /Checking safely in \d+s/, "a write retry fence must not look like an idle wait before status can be checked");
+  assert.ok(!button("Check status").disabled, "read-only status is available before the retry lease expires");
+  assert.ok(button("Retry restore").disabled, "only another write remains delayed");
   fireEvent.click(button("Diff"));
   assert.equal(screen.queryByRole("button", { name: "Refresh checkpoints" }), null);
   await waitFor(() => assert.ok(deliveredRecovery), { timeout: 1500 });
@@ -401,7 +457,8 @@ try {
   await waitFor(() => assert.equal(screen.getByRole("textbox", { name: "Ask Hive or mention a teammate" }).disabled, false), { timeout: 1500 });
   assert.equal(diffChecks, 1);
   assert.equal(screen.queryByText("Restore needs confirmation. The workspace is paused."), null);
-  assert.ok(screen.getByText("Restored while viewing Diff; nothing was rerun."));
+  assert.equal(screen.queryByText("Restored while viewing Diff; nothing was rerun."), null, "restore receipts no longer appear as user chat bubbles");
+  assert.ok(diffSnapshot.session.messages.some((message) => message.id === "restore-while-on-diff"), "the receipt remains in stored context");
   assert.equal(requests, 0);
   console.log("PASS: a viewer staying on Diff confirms recovery and unlocks the composer without opening Checkpoints, replaying the restore or running an agent.");
   cleanup();
@@ -433,21 +490,21 @@ try {
   const boundedRequests = [];
   const boundedClient = { ...diffDemo.client, request: async (_path, init) => { boundedRequests.push(JSON.parse(init.body)); return Response.json({ pending: true }, { status: 202 }); } };
   const bounded = renderHook(({ version }) => useWorkspaceRecovery("demo-task", version, { ...operation }, () => { throw new Error("202 must not unlock the task"); }), { wrapper: ({ children }) => h(HiveClientContext, { value: boundedClient }, children), initialProps: { version: 1 } });
-  for (let attempt = 1; attempt <= 12; attempt++) {
+  for (let attempt = 1; attempt <= 18; attempt++) {
     bounded.rerender({ version: attempt });
     await act(async () => mock.timers.tick(attempt === 1 ? 0 : 10_000));
     assert.equal(boundedRequests.length, attempt);
     assert.equal(boundedRequests.at(-1).version, attempt, "checks use the current revision without resetting their budget");
     assert.equal(boundedRequests.at(-1).mode, "check");
   }
-  bounded.rerender({ version: 13 });
+  bounded.rerender({ version: 19 });
   await act(async () => mock.timers.tick(60_000));
-  assert.equal(boundedRequests.length, 12, "task updates cannot turn bounded checks into a permanent heartbeat");
-  assert.match(bounded.result.current.notice, /Not confirmed yet/);
+  assert.equal(boundedRequests.length, 18, "task updates cannot turn bounded checks into a permanent heartbeat");
+  assert.match(bounded.result.current.notice, /taking longer than usual/);
   act(() => bounded.result.current.check());
   await act(async () => mock.timers.tick(0));
-  assert.equal(boundedRequests.length, 13, "explicit Check status can retry the same metadata check");
+  assert.equal(boundedRequests.length, 19, "explicit Check status can retry the same metadata check");
   bounded.unmount();
   mock.timers.reset();
-  console.log("PASS: recovery ignores stale attempts, survives task revisions, stops after 12 pending checks, and leaves no idle heartbeat.");
+  console.log("PASS: recovery ignores stale attempts, survives task revisions, stops after 18 pending checks, and leaves no idle heartbeat.");
 } finally { cleanup(); mock.timers.reset(); dom.window.close(); }

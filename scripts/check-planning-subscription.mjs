@@ -2,31 +2,37 @@ import assert from "node:assert/strict";
 import { mock } from "node:test";
 import { registerHooks } from "node:module";
 import { HarnessAgent as RealHarnessAgent } from "@ai-sdk/harness/agent";
+import { createClaudeCode as realClaudeCode } from "@ai-sdk/harness-claude-code";
+import { createCodex as realCodex } from "@ai-sdk/harness-codex";
 registerHooks({ resolve(specifier, context, next) {
   if (specifier === "server-only") return next("next/dist/compiled/server-only/empty.js", context);
   if (specifier.startsWith("@/")) return next(new URL(`../src/${specifier.slice(2)}.ts`, import.meta.url).href, context);
   return next(specifier, context);
 } });
 let settings, stopped = 0, starts = 0, fail = false, native, runtime;
+const collaboration = { url: "https://hive.test/api/sessions/planning-fixture/agent-tools", token: "short-lived-tool-fixture" };
 mock.module("@vercel/sandbox", { namedExports: { Sandbox: { async create(options) {
   assert.equal(options.source, undefined); assert.equal(options.persistent, undefined);
   assert.equal(options.resources.vcpus, runtime === "claude-code" ? 2 : 1, "Claude's pinned native bootstrap requires 4 GiB; Codex keeps its existing size");
   starts++; return { async stop() { stopped++; } };
 } } } });
 mock.module("@ai-sdk/sandbox-vercel", { namedExports: { createVercelSandbox() { return {}; } } });
-mock.module("@ai-sdk/harness-codex", { namedExports: { createCodex(value) { native = value; return {}; } } });
-mock.module("@ai-sdk/harness-claude-code", { namedExports: { createClaudeCode(value) { native = value; return {}; } } });
+mock.module("@ai-sdk/harness-codex", { namedExports: { createCodex(value) { native = value; return realCodex(value); } } });
+mock.module("@ai-sdk/harness-claude-code", { namedExports: { createClaudeCode(value) { native = value; return realClaudeCode(value); } } });
 mock.module("@ai-sdk/harness/agent", { namedExports: { HarnessAgent: class {
   constructor(value) {
     // Exercise the real SDK's settings validation; replacing the whole agent
     // previously hid its relative-workDir requirement until production.
-    new RealHarnessAgent({ ...value, harness: { ...value.harness, builtinTools: {} } });
+    new RealHarnessAgent(value);
     settings = value;
     assert.equal(value.model, runtime === "codex" ? "gpt-5.6-luna" : "claude-opus-4-6");
     assert.equal(value.permissionMode, "allow-all", "Native Codex supports only this mode in its isolated VM");
-    assert.deepEqual(native.auth, {}); assert.equal(native.mcpServers, undefined);
+    assert.deepEqual(native.auth, {});
+    assert.equal(native.mcpServers?.hive.url, collaboration.url, "no-repository chat must expose the same inline question tool");
+    assert.equal((native.mcpServers.hive.headers ?? native.mcpServers.hive.http_headers).Authorization, `Bearer ${collaboration.token}`);
     assert.match(value.instructions, /does not have a repository/);
-    assert.match(value.instructions, /Do not use tools/);
+    assert.match(value.instructions, /request_input/);
+    assert.match(value.instructions, /Do not.*run commands/);
     assert.doesNotMatch(JSON.stringify(native), /REAL_CODEX_ACCESS|sk-ant-oat01-native-fixture/);
   }
   async createSession() {
@@ -53,11 +59,11 @@ for (runtime of ["codex", "claude-code"]) {
   state = reduceTaskSession(state, { type: "select-harness", actor: "person", runtime, modelId: runtime === "codex" ? "gpt-5.6-luna" : "claude-opus-4-6" }, 2, [], platformCodingModels(process.env));
   state = reduceTaskSession(state, { type: "send-message", actor: "person", body: "Clarify the acceptance criteria" }, 3);
   const publicText = [];
-  assert.equal(await runHiveConversation(state, "person", "Person", text => publicText.push(text), undefined, auth), "First reply.");
+  assert.equal(await runHiveConversation(state, "person", "Person", text => publicText.push(text), undefined, auth, collaboration), "First reply.");
   assert.deepEqual(publicText, ["First ", "First reply."]);
   assert.equal(settings.sandboxConfig.workDir, "planning");
   fail = true;
-  await assert.rejects(runHiveConversation(state, "person", "Person", () => {}, undefined, auth), /Subscription limit reached/);
+  await assert.rejects(runHiveConversation(state, "person", "Person", () => {}, undefined, auth, collaboration), /Subscription limit reached/);
   fail = false;
   const before = starts;
   if (runtime === "codex") await assert.rejects(runHiveConversation(state, "person"), /Reconnect the Codex subscription/);
