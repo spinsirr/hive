@@ -44,6 +44,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useSharedSession } from "@/hooks/use-shared-session";
+import { useWorkspaceRecovery, type WorkspaceRecoveryStatus } from "@/hooks/use-workspace-recovery";
 import { HiveMark } from "@/components/hive/hive-mark";
 import { useMessageDraft } from "@/hooks/use-message-draft";
 import { useStalledRun } from "@/hooks/use-stalled-run";
@@ -607,10 +608,10 @@ function RepositorySetup({ sessionId, disabled }: { sessionId: string; disabled:
   );
 }
 
-function Workspace({ repository, sessionId, tab, workspace, onTabChange, fileCollaboration, checkpointRevision, onRestored, active }: {
+function Workspace({ repository, sessionId, tab, workspace, onTabChange, fileCollaboration, checkpointRevision, onRestored, recoveryStatus, active }: {
   repository?: RepositoryState; sessionId: string; tab: WorkspaceTab; workspace: WorkspaceState; onTabChange: (tab: WorkspaceTab) => void;
   fileCollaboration: { memberId: string; deliveredIds: ReadonlySet<string>; disabled: boolean; onAnnotate: AnnotateCode };
-  checkpointRevision: number; onRestored: (snapshot: TaskSessionSnapshot) => void; active: boolean;
+  checkpointRevision: number; onRestored: (snapshot: TaskSessionSnapshot) => void; recoveryStatus: WorkspaceRecoveryStatus; active: boolean;
 }) {
   if (!repository) {
     return (
@@ -647,7 +648,7 @@ function Workspace({ repository, sessionId, tab, workspace, onTabChange, fileCol
         {tab === "diff" ? <DiffPane diff={workspace.diff} /> : null}
         <WorkspaceFiles key={JSON.stringify([sessionId, fileCollaboration.memberId])} sessionId={sessionId} initialPath={workspace.files[0]?.path} revision={workspaceReadRevision(workspace)} active={active && tab === "files"} locked={Boolean(workspace.restore)} {...fileCollaboration} />
         {tab === "runs" ? <RunsPane commands={workspace.commands} /> : null}
-        {active && tab === "checkpoints" ? <WorkspaceCheckpoints sessionId={sessionId} revision={checkpointRevision} onRestored={onRestored} /> : null}
+        {active && tab === "checkpoints" ? <WorkspaceCheckpoints key={`${sessionId}:${workspace.lastRestore?.id ?? ""}`} sessionId={sessionId} revision={checkpointRevision} onRestored={onRestored} recoveryStatus={recoveryStatus} /> : null}
       </div>
     </section>
   );
@@ -705,6 +706,7 @@ export function HiveWorkspaceView({
     [currentMember, members],
   );
   const { activeSteer, annotation, repository, stage, steeringQueue, workspace } = session;
+  const recoveryStatus = useWorkspaceRecovery(sessionId, session.version, workspace.restore, receiveSnapshot);
   const messages = useMemo(() => conversationMessages(session), [session]);
   const codeAnnotationIds = useMemo(() => new Set(messages.filter((message) => message.codeReference && message.memberId === currentMember.id && message.clientId).map((message) => message.clientId!)), [currentMember.id, messages]);
   const selectedThread = messages.find((message) => message.id === threadId);
@@ -965,7 +967,7 @@ export function HiveWorkspaceView({
                 {reviewContext && (!reviewContext.interaction?.revision || reviewContext.interaction.revision !== workspace.reviewRevision) ? <p className="mt-1 text-xs text-muted-foreground">This review does not match the current diff. Return to the thread for context.</p> : null}
               </section> : null}
               <div className="min-h-0 flex-1">
-                <Workspace active={!threadMessage} repository={repository} sessionId={sessionId} tab={shared.tab} workspace={workspace} checkpointRevision={session.version} onRestored={receiveSnapshot} onTabChange={shared.onTabChange} fileCollaboration={{ memberId: currentMember.id, deliveredIds: codeAnnotationIds, disabled: workspaceLocked, onAnnotate: annotateCode }} />
+                <Workspace active={!threadMessage} repository={repository} sessionId={sessionId} tab={shared.tab} workspace={workspace} checkpointRevision={session.version} onRestored={receiveSnapshot} recoveryStatus={recoveryStatus} onTabChange={shared.onTabChange} fileCollaboration={{ memberId: currentMember.id, deliveredIds: codeAnnotationIds, disabled: workspaceLocked, onAnnotate: annotateCode }} />
               </div>
             </div>
             {threadMessage ? <MessageThread currentMember={currentMember.id} disabled={workspaceLocked} key={threadMessage.id} members={teamMembers} message={threadMessage} onClose={closeThread} onReply={annotate} onAnswerQuestion={answerQuestion} onSteerReply={steerMessageAnnotation} onSteerThread={steerThread} queue={steeringQueue} runActive={runActive} sessionId={sessionId}
