@@ -10,6 +10,7 @@ for (const name of ["window", "self", "document", "navigator", "HTMLElement", "H
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
+window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
 registerHooks({
   resolve(specifier, context, next) {
     if (!specifier.startsWith("@/")) return next(specifier, context);

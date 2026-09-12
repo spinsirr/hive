@@ -4,6 +4,10 @@ Prepared September 12, 2026 against main `f1da1048b01c49ef73cddd9ed4dddc92bce6b9
 
 ## Current execution priority: user experience
 
+The release gate also requires the [continuous happy-path script](HAPPY_PATH_ACCEPTANCE.md):
+streaming, motion, focus, reading position, attention and stable message presentation.
+The feature rows below alone do not certify a polished experience.
+
 The current run prioritizes real user journeys, per the product owner's request: start a task, talk to Hive, discuss in a Thread, answer a question, inspect/review changes, restore work, and archive/restore a task. Judge discoverability, clarity, response placement, waiting feedback, draft preservation and the ability to continue working—not merely successful requests.
 
 Security-specific probes (anonymous/authenticated endpoint replay, tampered invitations, cross-repository attacks) are deferred, not release blockers for this UX run and not marked passed. Exercise ordinary invitations and designated-answer behavior as user-facing interactions. Exhaustive model/effort benchmarking, fault injection and infrastructure qualification remain separate from the core UX verdict. Document unavailable accounts or runtime credentials without stopping unrelated journeys.

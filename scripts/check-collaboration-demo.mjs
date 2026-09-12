@@ -17,6 +17,7 @@ globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} 
 window.ResizeObserver = globalThis.ResizeObserver;
 globalThis.DOMRect = window.DOMRect;
 window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
+window.HTMLElement.prototype.scrollIntoView = function () {};
 let requests = 0;
 globalThis.fetch = async () => { requests++; throw new Error("Demo attempted an HTTP request"); };
 globalThis.WebSocket = class { constructor() { requests++; throw new Error("Demo mounted live transport"); } };
@@ -76,10 +77,15 @@ try {
   assert.ok(screen.getByLabelText("Resize conversation and workspace"));
   for (const name of ["Diff", "Files", "Runs", "Checkpoints"]) assert.ok(button(name));
   assert.ok(button("Invite teammate").disabled);
+  assert.ok(button("1 question needs your answer"));
   assert.equal(screen.getByRole("link", { name: /Hive/ }).getAttribute("href"), "/demo");
   fireEvent.click(screen.getByRole("button", { name: /^Workspace/ }));
   fireEvent.click(button("Files"));
   await waitFor(() => assert.match(screen.getByLabelText("Sample file: src/components/settings-nav.tsx").textContent, /SettingsNav/));
+  fireEvent.click(button("1 question needs your answer"));
+  await waitFor(() => assert.equal(document.activeElement?.dataset.messageId, screen.getByRole("textbox", { name: "Answer Hive" }).closest("[data-message-id]").dataset.messageId));
+  assert.equal(screen.getByRole("button", { name: "Conversation", exact: true }).getAttribute("aria-pressed"), "true", "attention navigates only after an explicit click");
+  assert.equal(button("Files").getAttribute("aria-pressed"), "true", "attention navigation retains the workspace tab");
   fireEvent.click(button("Checkpoints"));
   await waitFor(() => assert.ok(screen.getByRole("button", { name: /^Restore checkpoint from/ })));
   fireEvent.click(screen.getByRole("button", { name: /^Restore checkpoint from/ }));
@@ -93,6 +99,7 @@ try {
   fireEvent.click(discussionEntry);
   await waitFor(() => assert.ok(screen.getByRole("textbox", { name: "Answer Hive" })));
   fireEvent.click(within(screen.getByLabelText("Demo controls")).getByRole("button", { name: "Casey", exact: true }));
+  assert.equal(screen.queryByRole("button", { name: "1 question needs your answer" }), null, "a question for Alex must not summon Casey");
   await waitFor(() => assert.equal(screen.getByRole("textbox", { name: "Reply in thread" }).disabled, false));
   assert.equal(screen.queryByRole("button", { name: "Send answer", exact: true }), null, "Casey cannot formally answer a question assigned to Alex");
   assert.equal(screen.queryByRole("button", { name: "Keep it open", exact: true }), null, "answer options are only shown to the addressee");
@@ -203,6 +210,53 @@ try {
   const { requestPeerInput } = await import("../src/lib/peer-collaboration.ts");
   const { HiveWorkspaceView } = await import("../src/components/hive/hive-workspace.tsx");
   const { HiveClientContext } = await import("../src/components/hive/hive-client.tsx");
+  // Pending send and completed server responses must not override navigation.
+  const navigationDemo = createDemoWorkspace(demoTasks[0]);
+  const navigationSnapshot = structuredClone(navigationDemo.getSnapshot());
+  let finishSend;
+  render(h(HiveClientContext, { value: navigationDemo.client }, h(HiveWorkspaceView, {
+    currentMember: demoMembers[0], sessionId: navigationSnapshot.session.sessionId, inviteToken: "",
+    connection: { snapshot: navigationSnapshot, dispatch: (action) => new Promise((resolve) => { finishSend = () => {
+      const complete = structuredClone(navigationSnapshot);
+      complete.session.stage = "review";
+      complete.session.messages.push({ id: "accepted-ux-message", memberId: demoMembers[0].id, clientId: action.clientId, body: action.body, role: "human", name: "Alex", initials: "AL", time: "12:00 PM" });
+      resolve(complete);
+    }; }), receiveSnapshot() {}, setTyping() {}, syncing: false, syncError: false },
+  })));
+  fireEvent.click(button("Files"));
+  fireEvent.change(screen.getByRole("textbox", { name: "Ask Hive or mention a teammate" }), { target: { value: "Navigation ownership test" } });
+  fireEvent.click(button("Send message"));
+  assert.equal(button("Files").getAttribute("aria-pressed"), "true", "sending does not switch to Runs");
+  fireEvent.click(button("Runs"));
+  await act(async () => finishSend());
+  assert.equal(button("Runs").getAttribute("aria-pressed"), "true", "completion does not switch to Diff");
+  cleanup();
+  console.log("PASS: pending and completed sends preserve the reader's latest evidence-tab choice.");
+  const attentionSnapshot = structuredClone(navigationSnapshot);
+  const attentionParent = { id: "attention-parent", role: "human", name: "Alex", initials: "AL", body: "Discuss the navigation", time: "12:00 PM", memberId: demoMembers[0].id };
+  const attentionQuestion = { id: "attention-child", threadId: attentionParent.id, role: "agent", name: "Hive", initials: "H", body: "Should the menu stay open?", time: "12:01 PM", interaction: { kind: "question", runId: "attention-run", targetMemberId: demoMembers[0].id, options: ["Yes", "No"] } };
+  attentionSnapshot.session.messages = [attentionParent, attentionQuestion];
+  render(h(HiveClientContext, { value: navigationDemo.client }, h(HiveWorkspaceView, {
+    currentMember: demoMembers[0], sessionId: "ux-child-attention", inviteToken: "",
+    connection: { snapshot: attentionSnapshot, dispatch: async () => { throw new Error("Opening a question must not dispatch"); }, receiveSnapshot() {}, setTyping() {}, syncing: false, syncError: false },
+  })));
+  fireEvent.click(button("1 question needs your answer"));
+  await waitFor(() => assert.equal(screen.getByRole("textbox", { name: "Reply in thread" }).disabled, false));
+  await waitFor(() => assert.equal(document.activeElement?.dataset.messageId, attentionQuestion.id, "attention focuses the child question, not the Thread composer"));
+  assert.ok(within(screen.getByLabelText("Message thread")).getByText(attentionQuestion.body));
+  cleanup();
+  console.log("PASS: Thread question attention opens and focuses the original question without dispatching work.");
+  // The actual thread view shows pending feedback only for its active run.
+  const { MessageThread } = await import("../src/components/hive/message-thread.tsx");
+  const threadWaitingProps = { sessionId: "ux-wait", message: { id: "ux-parent", name: "Alex", initials: "AL", role: "human", body: "Discuss this", time: "12:00 PM" }, members: demoMembers, currentMember: demoMembers[0].id, disabled: false, runActive: true, queue: [], onClose() {}, onReply: async () => true, onSteerThread: async () => true };
+  const waitingThread = render(h(MessageThread, { ...threadWaitingProps, replying: true }));
+  assert.ok(screen.getByText("Hive is replying in this thread…"));
+  waitingThread.rerender(h(MessageThread, { ...threadWaitingProps, replying: false }));
+  assert.equal(screen.queryByText("Hive is replying in this thread…"), null, "an unrelated run cannot make this Thread appear busy");
+  waitingThread.rerender(h(MessageThread, { ...threadWaitingProps, replying: true, message: { ...threadWaitingProps.message, annotations: [{ id: "live-reply", role: "agent", authorId: "hive-agent", body: "Incremental text", deliveryStatus: "streaming", createdAt: Date.now(), status: "open" }] } }));
+  assert.equal(screen.queryByText("Hive is replying in this thread…"), null, "first text replaces the pending placeholder");
+  cleanup();
+  console.log("PASS: first-token waiting feedback belongs to the running Thread and settles when text arrives.");
   // Reproduce the reported shape: one long discussion plus a repeated empty
   // question from another run. Use the production view and original IDs.
   const threadDemo = createDemoWorkspace(demoTasks[0]);

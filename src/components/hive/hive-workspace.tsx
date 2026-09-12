@@ -20,6 +20,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { useHiveClient } from "@/components/hive/hive-client";
 import { TaskArchiveControl } from "@/components/hive/task-archive-control";
 import { TaskTitleControl } from "@/components/hive/task-title-control";
+import { TaskAttention } from "@/components/hive/task-attention";
 import { taskTitleLabel } from "@/lib/task-title";
 
 import {
@@ -65,8 +66,8 @@ import {
   canSetCodingEffort,
   type CodingRuntime,
   isHiveRunActive,
+  hiveReplyThreadId,
   conversationMessages,
-  isDirectedAtTeammate,
   STALLED_RUN_AFTER_MS,
   type MemberId,
   type MessageEdit,
@@ -150,6 +151,7 @@ function ProductHeader({
   onArchiveChange,
   renameDisabled,
   onRename,
+  attention,
 }: {
   activeMembers: MemberId[];
   copied: boolean;
@@ -171,6 +173,7 @@ function ProductHeader({
   onArchiveChange: (archived: boolean) => Promise<void>;
   renameDisabled: boolean;
   onRename: (title: string) => Promise<void>;
+  attention?: ReactNode;
 }) {
   return (
     <header className="flex h-13 shrink-0 items-center justify-between gap-3 border-b border-[#e8e8e8] bg-white px-3 sm:px-4">
@@ -188,6 +191,7 @@ function ProductHeader({
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+        {attention}
         <TaskArchiveControl title={taskTitleLabel(sessionTitle)} archived={archived} disabled={archiveDisabled} onChange={onArchiveChange} />
         <div className="hidden items-center gap-1.5 text-xs text-[#777] sm:flex">
           {syncError ? (
@@ -604,6 +608,7 @@ function Workspace({ repository, sessionId, tab, workspace, onTabChange, fileCol
                   tab === item.key && "bg-[#f1f1f1] text-[#171717]",
                 )}
                 key={item.key}
+                aria-pressed={tab === item.key}
                 onClick={() => onTabChange(item.key)}
                 size="sm"
                 variant="ghost"
@@ -703,6 +708,15 @@ export function HiveWorkspaceView({
       trigger?.focus();
     });
   }, [threadTrigger, threadId]);
+  const openQuestion = useCallback((message: ChatMessage) => {
+    if (message.threadId) openThread(message.threadId);
+    else { setThreadId(null); setViewingReviewChanges(false); setPane("chat"); }
+    requestAnimationFrame(() => {
+      const target = Array.from(document.querySelectorAll<HTMLElement>("[data-message-id]")).find((element) => element.dataset.messageId === message.id);
+      target?.focus({ preventScroll: true });
+      target?.scrollIntoView({ block: "center", behavior: "instant" });
+    });
+  }, [openThread]);
   const runActive = isHiveRunActive(session);
   const runStalled = useStalledRun(session);
   const archived = Boolean(session.archived);
@@ -791,18 +805,11 @@ export function HiveWorkspaceView({
   }, [dispatch]);
   const send = useCallback(async ({ body, clientId }: MessageSubmission) => {
     if (harnessSaving) return false;
-    if (
-      repository &&
-      !isDirectedAtTeammate(body, currentMember.id, teamMembers)
-    ) {
-      setTab("runs");
-    }
     const nextSnapshot = await dispatch({ type: "send-message", body, clientId });
-    if (nextSnapshot?.session.stage === "review") setTab("diff");
     return nextSnapshot?.session.messages.some(
       (message) => message.memberId === currentMember.id && message.clientId === clientId && message.body === body,
     ) ?? false;
-  }, [currentMember.id, dispatch, repository, teamMembers, harnessSaving]);
+  }, [currentMember.id, dispatch, harnessSaving]);
   const selectHarness = useCallback(async (runtime: CodingRuntime, modelId: string) => {
     if (harnessSaving) return;
     setHarnessSaving(true);
@@ -817,9 +824,7 @@ export function HiveWorkspaceView({
   }, [dispatch, harnessSaving]);
   const applySteer = useCallback(() => {
     if (!canApplySteer) return;
-    void dispatch({ type: "apply-next-steer" }).then((nextSnapshot) => {
-      if (nextSnapshot?.session.stage === "review") setTab("diff");
-    });
+    void dispatch({ type: "apply-next-steer" });
   }, [canApplySteer, dispatch]);
   const openReset = useCallback(() => setResetOpen(true), []);
   const confirmReset = useCallback(() => {
@@ -876,7 +881,8 @@ export function HiveWorkspaceView({
 
   return (
     <main className="flex h-dvh min-h-0 flex-col overflow-hidden bg-[#fafafa] text-[#171717]">
-      <ProductHeader activeMembers={activeMembers} copied={copied} currentMember={currentMember} members={teamMembers} onCopyInvite={copyInvite} onSignOut={signOut} onReset={openReset} repository={repository} sessionTitle={session.title} resetDisabled={resetDisabled} syncing={syncing} syncError={syncError} homeHref={homeHref} connectionLabel={connectionLabel} accountActionsDisabled={accountActionsDisabled} archived={archived} archiveDisabled={syncing || syncError || (!archived && !canArchiveTask(session))} onArchiveChange={changeArchive} renameDisabled={syncing || syncError || workspaceLocked} onRename={renameTask} />
+      <ProductHeader activeMembers={activeMembers} copied={copied} currentMember={currentMember} members={teamMembers} onCopyInvite={copyInvite} onSignOut={signOut} onReset={openReset} repository={repository} sessionTitle={session.title} resetDisabled={resetDisabled} syncing={syncing} syncError={syncError} homeHref={homeHref} connectionLabel={connectionLabel} accountActionsDisabled={accountActionsDisabled} archived={archived} archiveDisabled={syncing || syncError || (!archived && !canArchiveTask(session))} onArchiveChange={changeArchive} renameDisabled={syncing || syncError || workspaceLocked} onRename={renameTask}
+        attention={<TaskAttention messages={messages} memberId={currentMember.id} paused={workspaceLocked} onOpen={openQuestion} />} />
       {notice}
       {session.archived ? <div className="shrink-0 border-b border-border bg-muted px-4 py-2 text-xs text-muted-foreground" role="status">Archived by {resolveMember(session.archived.by, teamMembers).shortName} · Read-only for everyone. Restore this task to continue.</div> : null}
       <Dialog onOpenChange={setResetOpen} open={resetOpen}>
@@ -951,6 +957,7 @@ export function HiveWorkspaceView({
               </div>
             </div>
             {threadMessage ? <MessageThread requests={messages.filter((message) => message.threadId === threadMessage.id)} currentMember={currentMember.id} disabled={workspaceLocked} key={threadMessage.id} members={teamMembers} message={threadMessage} onClose={closeThread} onReply={annotate} onAnswerQuestion={answerQuestion} onSteerThread={steerThread} queue={steeringQueue} runActive={runActive} sessionId={sessionId}
+              replying={runActive && (workspace.liveReply?.threadId ?? hiveReplyThreadId(session)) === threadMessage.id}
               reviewReady={canResolvePeerReview(session, threadMessage, currentMember.id, threadMessage.interaction?.revision ?? "")}
               reviewCurrent={!runActive && !workspace.restore && Boolean(workspace.reviewRevision && workspace.reviewRevision === threadMessage.interaction?.revision)}
               onResolveReview={resolveReview} onViewChanges={() => { setViewingReviewChanges(true); setPane("workspace"); setTab("diff"); }} /> : null}

@@ -469,11 +469,11 @@ export function didStartHiveRun(previous: TaskSessionState, next: TaskSessionSta
  * Immediate single-reply steers use the action; queued/whole-thread work keeps
  * its source in activeSteer. A queued main message is not a thread reply.
  */
-export function hiveReplyThreadId(state: TaskSessionState, action: TaskSessionAction): string | undefined {
+export function hiveReplyThreadId(state: TaskSessionState, action?: TaskSessionAction): string | undefined {
   const source = state.activeSteer?.source;
   const messageId = source?.kind === "peer-response" ? source.replyThreadId : source && (source.kind === "message-annotation" || source.kind === "message-thread")
     ? source.messageId
-    : action.type === "steer-message-annotation" ? action.messageId : undefined;
+    : action?.type === "steer-message-annotation" ? action.messageId : undefined;
   return messageId && state.messages.some((message) => message.id === messageId) ? messageId : undefined;
 }
 

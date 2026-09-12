@@ -17,7 +17,7 @@ import { codeReferenceLabel } from "@/lib/code-reference";
 import type { MessageSubmission } from "@/lib/message-draft";
 import { resolveMember, type ChatMessage, type SteeringQueueItem, type TeamMember } from "@/lib/task-session";
 
-export function MessageThread({ sessionId, message, requests = [], members, currentMember, disabled, runActive, queue, onClose, onReply, onAnswerQuestion, onSteerThread, reviewReady = false, reviewCurrent = false, onViewChanges, onResolveReview }: {
+export function MessageThread({ sessionId, message, requests = [], members, currentMember, disabled, runActive, replying = false, queue, onClose, onReply, onAnswerQuestion, onSteerThread, reviewReady = false, reviewCurrent = false, onViewChanges, onResolveReview }: {
   sessionId: string;
   message: ChatMessage;
   requests?: ChatMessage[];
@@ -25,6 +25,7 @@ export function MessageThread({ sessionId, message, requests = [], members, curr
   currentMember: string;
   disabled: boolean;
   runActive: boolean;
+  replying?: boolean;
   queue: SteeringQueueItem[];
   onClose: () => void;
   onReply: (messageId: string, submission: MessageSubmission) => Promise<boolean>;
@@ -104,6 +105,7 @@ export function MessageThread({ sessionId, message, requests = [], members, curr
             ...(replies ?? []).filter((reply) => reply.id !== question?.answer?.replyId).map((reply) => ({ id: reply.id, at: reply.createdAt, content: <ThreadReply members={members} reply={reply} showTimestamp /> })),
             ...requests.map((request) => ({ id: request.id, at: request.createdAt ?? 0, content: <ConversationMessage currentMember={currentMember} disabled={disabled} members={members} message={request} onAnswerQuestion={onAnswerQuestion} onOpenThread={() => {}} runActive={runActive} selected={false} sessionId={sessionId} /> })),
           ].sort((a, b) => a.at - b.at).map((entry) => <div key={entry.id}>{entry.content}</div>)}
+          {replying && !responseInProgress ? <p className="flex items-center gap-2 text-xs text-muted-foreground" role="status"><LoaderCircle aria-hidden="true" className="size-3 animate-spin motion-reduce:animate-none" /> Hive is replying in this thread…</p> : null}
         </ConversationContent>
         <ConversationScrollButton />
       </Conversation>
