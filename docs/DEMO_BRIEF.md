@@ -16,7 +16,7 @@ Hive supports agentic peer programming: start a task, invite a teammate into wor
 3. Add a later discussion reply and verify that it does not silently enter the already queued instruction. Apply remains unavailable while the current run is active.
 4. Inspect the actual Diff, unchanged as well as changed Files, and expanded command output in Runs. An exit code is process evidence, not an inferred test verdict.
 5. At the safe boundary, apply the queued input and inspect the attributed result. If execution finished before queuing, this is an immediate-steer case; do not rerun just to manufacture a queue window.
-6. Refresh the second browser and verify that discussion and workspace state persist. A finished run or approved diff leaves the conversation open.
+6. Open View changes from a review, inspect Diff or Runs, then use Back to review. Only the designated reviewer can Verify & resolve the current revision in its Thread. Refresh the second browser and verify that discussion and workspace state persist; a finished run or verified review leaves the conversation open.
 
 ## Questions and review in the same task
 

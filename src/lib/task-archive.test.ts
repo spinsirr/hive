@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canApplyNextSteer, canApproveChanges, canArchiveTask, canSelectHarness, canSetCodingEffort, createInitialTaskSessionState, didStartHiveRun, memberDirectory, reduceTaskSession, taskActionBlockReason, type TaskSessionAction } from "./task-session.ts";
+import { canApplyNextSteer, canArchiveTask, canSelectHarness, canSetCodingEffort, createInitialTaskSessionState, didStartHiveRun, memberDirectory, reduceTaskSession, taskActionBlockReason, type TaskSessionAction } from "./task-session.ts";
 import { beginWorkspaceRestore } from "./workspace-restore-state.ts";
 import { createDemoWorkspace, demoMembers } from "./demo-workspace.ts";
 import { demoTasks, demoTaskHref } from "./ui-demo.ts";
@@ -40,7 +40,7 @@ test("archives reject every task mutation and checkpoint rollback until restored
     "annotate-message": false, "answer-question": false, "resolve-peer-review": false,
     "steer-thread": false, "steer-message-annotation": false, "steer-agent": false,
     "apply-next-steer": false, "continue-peer-response": false, "remove-queued-steer": false,
-    "reorder-queued-steer": false, "advance-run": false,
+    "reorder-queued-steer": false,
   };
   for (const [type, allowed] of Object.entries(actions)) {
     // Blocked actions are rejected before their payload is inspected.
@@ -48,7 +48,7 @@ test("archives reject every task mutation and checkpoint rollback until restored
     assert.equal(Boolean(taskActionBlockReason(archived, action)), !allowed, type);
     if (!allowed) assert.equal(reduceTaskSession(archived, action, 3, members), archived, type);
   }
-  for (const allowed of [canApplyNextSteer, canApproveChanges, canArchiveTask, canSelectHarness, canSetCodingEffort]) assert.equal(allowed(archived), false);
+  for (const allowed of [canApplyNextSteer, canArchiveTask, canSelectHarness, canSetCodingEffort]) assert.equal(allowed(archived), false);
   assert.throws(() => beginWorkspaceRestore(archived, { id: crypto.randomUUID(), snapshotId: "old", version: archived.version }, members[0]), /archived/);
 });
 

@@ -229,7 +229,7 @@ try {
   assert.equal("lifecycle" in ownSnapshot.session, false);
   assert.equal("completedAt" in ownSnapshot.session, false);
   assert.ok((await store.listTaskSessions(newcomer.member.id)).some((task) => task.id === ownTasks[0].id));
-  for (const type of ["complete-session", "reopen-session"]) {
+  for (const type of ["complete-session", "reopen-session", "advance-run"]) {
     const retired = await action(new NextRequest(ownUrl, { method: "POST", headers: ownHeaders, body: JSON.stringify({ type }) }), ownContext);
     assert.equal(retired.status, 400, "Retired actions must not silently change the task");
   }
@@ -253,7 +253,7 @@ try {
   for (const [suffix, handler, method] of [["", snapshot, "GET"], ["", action, "POST"], ["/files?kind=directory", files, "GET"], ["/checkpoints", checkpoints, "GET"], ["/checkpoints", restore, "POST"], ["/live", live, "GET"]]) {
     const denied = await handler(new NextRequest(`https://hive.test/api/sessions/${privateTask.sessionId}${suffix}`, {
       method, headers: { cookie: browserCookie(newcomer), origin: "https://hive.test", "Content-Type": "application/json" },
-      ...(method === "POST" ? { body: JSON.stringify({ type: "advance-run", actor: owner.member.id }) } : {}),
+      ...(method === "POST" ? { body: JSON.stringify({ type: "reset", actor: owner.member.id }) } : {}),
     }), foreignContext);
     assert.ok([401, 403, 404].includes(denied.status), `${suffix || "/task"} must deny non-members`);
     assert.doesNotMatch(await denied.text(), /Owner's existing private task/);
@@ -303,6 +303,48 @@ try {
   assert.deepEqual(unarchived.session.workspace, archiveSnapshot.workspace);
   assert.deepEqual(unarchived.session.messages, archiveSnapshot.messages);
   console.log("PASS: authenticated archive API, shared read access, HTTP 409 for archived writes/repository attach/rollback, and teammate restore without execution.");
+
+  // Exercise the actual row locks and durable recovery journal, without a VM.
+  const { applyHiveRunResult } = await import("../src/lib/task-session.ts");
+  let recoveryState = unarchived.session;
+  for (const turn of [1, 2]) {
+    recoveryState = applyHiveRunResult(recoveryState, {
+      snapshot: { id: `restore-store-${turn}`, createdAt: turn }, sandboxName: "restore-store-sandbox",
+      agentSession: { id: "restore-store-agent", runtime: "codex", resumeFrom: { type: "resume-session", specificationVersion: "harness-v1", harnessId: "codex", data: { privateCheckpoint: turn } } },
+      summary: `Turn ${turn}`, diff: `+ turn ${turn}`, files: [{ path: "qa.txt", content: `turn ${turn}` }], commands: [], changedFiles: ["qa.txt"],
+    });
+  }
+  await pool.query("UPDATE task_sessions SET workspace = $2, version = $3, stage = $4 WHERE id = $1", [privateTask.sessionId, recoveryState.workspace, recoveryState.version, recoveryState.stage]);
+  const restoreRequest = { id: randomUUID(), snapshotId: "restore-store-1", version: recoveryState.version };
+  const starts = await Promise.allSettled([owner, newcomer].map(({ member }) => store.startTaskWorkspaceRestore(privateTask.sessionId, restoreRequest, member)));
+  assert.equal(starts.filter(({ status }) => status === "fulfilled").length, 1, "only one member can claim the restore");
+  const firstRestore = starts.find(({ status }) => status === "fulfilled").value.session.workspace.restore;
+  await store.recordTaskWorkspaceRestoreSource(privateTask.sessionId, restoreRequest.id, firstRestore.startedAt, "original-vm");
+  await store.finishTaskWorkspaceRestore(privateTask.sessionId, restoreRequest.id, false, firstRestore.startedAt);
+  assert.equal((await store.getTaskSessionSnapshot(privateTask.sessionId)).session.workspace.restore.sourceSessionId, "original-vm");
+  mock.timers.enable({ apis: ["Date"], now: firstRestore.retryAfter + 1 });
+  try {
+    const retry = await store.startTaskWorkspaceRestore(privateTask.sessionId, restoreRequest, newcomer.member);
+    const attempt = retry.session.workspace.restore;
+    assert.equal(attempt.sourceSessionId, "original-vm");
+    assert.equal(attempt.by.id, firstRestore.by.id, "a teammate retry preserves the original attribution");
+    await assert.rejects(store.recordTaskWorkspaceRestoreSource(privateTask.sessionId, restoreRequest.id, firstRestore.startedAt, "wrong-vm"), /attempt changed/);
+    for (const confirmed of [true, false]) {
+      await assert.rejects(store.finishTaskWorkspaceRestore(privateTask.sessionId, restoreRequest.id, confirmed, firstRestore.startedAt), /attempt changed/);
+    }
+    const [confirmed, duplicate] = await Promise.all([
+      store.finishTaskWorkspaceRestore(privateTask.sessionId, restoreRequest.id, true, attempt.startedAt),
+      store.finishTaskWorkspaceRestore(privateTask.sessionId, restoreRequest.id, true, attempt.startedAt),
+    ]);
+    for (const snapshot of [confirmed, duplicate]) {
+      assert.equal(snapshot.session.workspace.restore, undefined);
+      assert.equal(snapshot.session.workspace.diff, "+ turn 1");
+      assert.equal(snapshot.session.messages.filter(({ id }) => id === `restore-${restoreRequest.id}`).length, 1);
+      assert.doesNotMatch(JSON.stringify(snapshot), /privateCheckpoint/);
+    }
+    assert.equal((await store.getTaskSessionSnapshot(privateTask.sessionId)).session.workspace.agentSession.resumeFrom.data.privateCheckpoint, 1);
+  } finally { mock.timers.reset(); }
+  console.log("PASS: concurrent restore claims are serialized, VM evidence survives a retry, stale workers cannot finish it, and concurrent confirmations restore files/context exactly once.");
 
   const repositoryUrl = `https://hive.test/api/github/repositories?session_id=${ownTasks[0].id}`;
   const repositoryCookie = newcomer.response.cookies.get("hive_github_user");

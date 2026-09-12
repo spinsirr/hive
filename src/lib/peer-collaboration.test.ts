@@ -76,6 +76,10 @@ test("review is bound to the completed run, not agent-supplied versions, and onl
   assert.equal(reduceTaskSession(session, resolve, 4, members), session, "cannot approve a running workspace");
   const ready = applyHiveRunResult(session, { ...result(), diff: "+ private drafts", changedFiles: ["access.ts"] }, 5);
   assert.equal(ready.messages.find((m) => m.id === messageId)?.interaction?.revision, "run-one");
+  for (const actor of ["spencer", "maya"]) {
+    const retiredApproval = JSON.parse(JSON.stringify({ type: "advance-run", actor }));
+    assert.equal(reduceTaskSession(ready, retiredApproval, 6, members), ready, "neither reviewer nor teammate can bypass the review through global approval");
+  }
   assert.equal(reduceTaskSession(ready, { ...resolve, actor: "spencer" }, 6, members), ready);
   assert.equal(reduceTaskSession(ready, { ...resolve, revision: "stale" }, 6, members), ready);
   const resolved = reduceTaskSession(ready, resolve, 6, members);

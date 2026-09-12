@@ -72,6 +72,18 @@ out of scope; this change does not mandate an unrelated token migration.
 
 ## Enforcement and verification
 
+### Review navigation (2026-09-12)
+
+Viewing changes from a review Thread keeps its identity and shows Back to review
+above the workspace tabs. Direct Diff entry lists the reviews matching the current
+workspace revision, with the shared review status and Open review links. Archived
+tasks retain these read-only links and verification history. Older review Threads
+retain their own return link and explicitly warn when the current diff no longer
+matches. Diff, Files and Runs are evidence views, never approval
+surfaces. Verify & resolve lives only in the original Thread, gated by the current
+revision and reviewer. No global Approve changes button or action remains. Demo
+uses these same components. Historical task approval records are not rewritten.
+
 ### Team archive (2026-09-12)
 
 Archive is separate from run completion. The dashboard exposes Active/Archived

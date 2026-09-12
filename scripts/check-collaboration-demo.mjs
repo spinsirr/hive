@@ -36,7 +36,7 @@ registerHooks({
   },
 });
 const { createElement: h } = await import("react");
-const { render, screen, fireEvent, cleanup, waitFor, within } = await import("@testing-library/react");
+const { render, screen, fireEvent, cleanup, waitFor, within, act } = await import("@testing-library/react");
 const { DemoWorkspace } = await import("../src/app/demo/demo-workspace.tsx");
 const { demoTasks } = await import("../src/lib/ui-demo.ts");
 try {
@@ -107,9 +107,115 @@ try {
   assert.equal(requests, 0, "demo interactions never call HTTP or WebSocket");
   console.log("PASS: real workspace, files, checkpoint dialog, question continuation, teammate reply, and zero service calls.");
   cleanup();
-  const { createDemoWorkspace } = await import("../src/lib/demo-workspace.ts");
-  const { WorkspaceCheckpoints } = await import("../src/components/hive/workspace-checkpoints.tsx");
+  render(h(DemoWorkspace, { task: demoTasks[0] }));
+  const composer = screen.getByRole("textbox", { name: "Ask Hive or mention a teammate" });
+  await waitFor(() => assert.equal(composer.disabled, false));
+  fireEvent.change(composer, { target: { value: "Prepare the sample change for Casey to review" } });
+  fireEvent.click(button("Send message"));
+  await waitFor(() => assert.ok(screen.getByText("Review this sample change together. Does the keyboard focus behavior look right?")), { timeout: 2500 });
+  fireEvent.click(screen.getByRole("button", { name: /^Workspace/ }));
+  fireEvent.click(button("Diff"));
+  const directReviews = screen.getByRole("region", { name: "Workspace reviews" });
+  assert.match(directReviews.textContent, /Review for Casey/);
+  assert.match(directReviews.textContent, /Needs review/);
+  assert.ok(document.activeElement !== button("Open review"), "direct Diff entry does not steal focus");
+  fireEvent.click(button("Open review"));
+  assert.match(screen.getByLabelText("Message thread").textContent, /Review this sample change together/);
+  assert.ok(button("Verify & resolve").disabled, "Alex cannot verify Casey's review");
+  fireEvent.click(button("View changes"));
+  assert.ok(!screen.queryByRole("button", { name: "Approve changes", exact: true }), "viewing a review diff must not expose a separate task approval");
+  assert.ok(button("Back to review"));
+  assert.ok(document.activeElement === button("Back to review"), "keyboard focus lands on safe review navigation, not an approval action");
+  assert.equal(screen.queryByRole("button", { name: "Verify & resolve", exact: true }), null, "verification stays in its thread");
+  fireEvent.click(button("Runs"));
+  fireEvent.click(button("Back to review"));
+  assert.match(screen.getByLabelText("Message thread").textContent, /Review for Casey/);
+  assert.match(screen.getByLabelText("Message thread").textContent, /Needs review/);
+  assert.ok(button("Verify & resolve").disabled);
+  fireEvent.click(within(screen.getByLabelText("Demo controls")).getByRole("button", { name: "Casey", exact: true }));
+  await waitFor(() => assert.equal(button("Verify & resolve").disabled, false));
+  fireEvent.click(button("View changes"));
+  fireEvent.click(button("Back to review"));
+  assert.match(screen.getByLabelText("Message thread").textContent, /Needs review/, "navigation alone never verifies the revision");
+  fireEvent.click(button("Verify & resolve"));
+  await waitFor(() => assert.match(screen.getByLabelText("Message thread").textContent, /Verified by Casey/));
+  fireEvent.click(button("View changes"));
+  assert.ok(button("Back to review"));
+  assert.match(screen.getByRole("region", { name: "Workspace reviews" }).textContent, /Verified by Casey/);
+  assert.equal(screen.queryByRole("button", { name: "Approve changes", exact: true }), null);
+  fireEvent.click(button("Back to review"));
+  fireEvent.click(button("Close thread"));
+  fireEvent.click(screen.getByRole("button", { name: /^Workspace/ }));
+  fireEvent.click(button("Diff"));
+  fireEvent.click(button("Archive task: Polish the settings menu"));
+  fireEvent.click(button("Archive task"));
+  await waitFor(() => assert.match(screen.getByRole("region", { name: "Workspace reviews" }).textContent, /Archived · Read-only/));
+  assert.match(screen.getByRole("region", { name: "Workspace reviews" }).textContent, /Verified by Casey/);
+  assert.ok(!button("Open review").disabled, "archiving preserves direct review navigation");
+  fireEvent.click(button("Open review"));
+  assert.match(screen.getByLabelText("Message thread").textContent, /Verified by Casey/);
+  assert.ok(screen.getByRole("textbox", { name: "Reply in thread" }).disabled);
+  assert.ok(!screen.queryByRole("button", { name: "Verify & resolve", exact: true }));
+  fireEvent.click(button("View changes"));
+  assert.ok(!button("Back to review").disabled);
+  assert.equal(requests, 0);
+  console.log("PASS: direct Diff and review → Diff/Runs preserve status and thread navigation, including archived read-only reviews; only the designated reviewer can verify.");
+  cleanup();
+  const { createDemoWorkspace, demoMembers } = await import("../src/lib/demo-workspace.ts");
+  const { requestPeerInput } = await import("../src/lib/peer-collaboration.ts");
+  const { HiveWorkspaceView } = await import("../src/components/hive/hive-workspace.tsx");
   const { HiveClientContext } = await import("../src/components/hive/hive-client.tsx");
+  const reviewsDemo = createDemoWorkspace(demoTasks[0]);
+  await reviewsDemo.dispatch({ type: "send-message", body: "Prepare the first revision", clientId: "review-first" });
+  reviewsDemo.finishRun(reviewsDemo.getSnapshot().session.workspace.liveReply.id);
+  await reviewsDemo.dispatch({ type: "send-message", body: "Prepare a new revision", clientId: "review-next" });
+  const preparing = reviewsDemo.getSnapshot();
+  const secondRunId = preparing.session.workspace.liveReply.id;
+  reviewsDemo.receiveSnapshot({ ...preparing, session: requestPeerInput(preparing.session,
+    { sessionId: preparing.session.sessionId, runId: secondRunId, memberId: demoMembers[0].id },
+    { kind: "review", key: "second-reviewer", prompt: "Alex, check the current keyboard behavior", targetMemberId: demoMembers[0].id }, demoMembers, Date.now()).session });
+  reviewsDemo.finishRun(secondRunId);
+  let navigationWrites = 0;
+  const reviewView = () => h(HiveClientContext, { value: reviewsDemo.client }, h(HiveWorkspaceView, {
+    currentMember: demoMembers[0], sessionId: reviewsDemo.getSnapshot().session.sessionId,
+    sessionTitle: demoTasks[0].title, inviteToken: "", homeHref: "/demo", connectionLabel: "Demo", accountActionsDisabled: true,
+    connection: { snapshot: reviewsDemo.getSnapshot(), dispatch: (action) => { navigationWrites++; return reviewsDemo.dispatch(action); },
+      receiveSnapshot: reviewsDemo.receiveSnapshot, setTyping: reviewsDemo.setTyping, syncing: false, syncError: false },
+  }));
+  const reviewMount = render(reviewView());
+  fireEvent.click(screen.getByRole("button", { name: /^Workspace/ }));
+  assert.equal(within(screen.getByRole("region", { name: "Workspace reviews" })).getAllByRole("button", { name: "Open review" }).length, 2, "direct Diff lists every review of this revision, excluding the earlier revision");
+  fireEvent.click(screen.getAllByRole("button", { name: "Open review", exact: true })[0]);
+  assert.match(screen.getByLabelText("Message thread").textContent, /Alex, check the current keyboard behavior/);
+  fireEvent.click(button("View changes"));
+  assert.match(screen.getByRole("region", { name: "Workspace reviews" }).textContent, /Review for Alex/);
+  assert.doesNotMatch(screen.getByRole("region", { name: "Workspace reviews" }).textContent, /Review for Casey/);
+  fireEvent.click(button("Back to review"));
+  fireEvent.click(button("Close thread"));
+  // The conversation retains the initial question, then the old review, then both current reviews.
+  fireEvent.click(screen.getAllByRole("button", { name: "Open collaboration thread", exact: true })[1]);
+  assert.ok(button("Verify & resolve").disabled);
+  fireEvent.click(button("View changes"));
+  assert.match(screen.getByRole("region", { name: "Workspace reviews" }).textContent, /does not match the current diff/);
+  fireEvent.click(button("Back to review"));
+  fireEvent.click(button("Close thread"));
+  fireEvent.click(screen.getByRole("button", { name: /^Workspace/ }));
+  assert.equal(screen.getAllByRole("button", { name: "Open review", exact: true }).length, 2);
+  fireEvent.click(screen.getAllByRole("button", { name: "Open review", exact: true })[0]);
+  assert.ok(!button("Verify & resolve").disabled, "the current review is ready for Alex before archiving");
+  assert.equal(navigationWrites, 0, "opening and switching reviews never dispatches a task mutation");
+  await reviewsDemo.dispatch({ type: "archive-task" });
+  reviewMount.rerender(reviewView());
+  assert.ok(button("Verify & resolve").disabled);
+  assert.doesNotMatch(screen.getByLabelText("Message thread").textContent, /workspace has moved on/, "archiving is not a revision change");
+  fireEvent.click(button("View changes"));
+  assert.match(screen.getByRole("region", { name: "Workspace reviews" }).textContent, /Archived · Read-only/);
+  assert.ok(!button("Back to review").disabled);
+  assert.equal(navigationWrites, 0);
+  assert.equal(requests, 0);
+  console.log("PASS: direct Diff shows all current reviews, excludes old revisions, preserves the selected thread, and keeps archived unresolved reviews read-only.");
+  cleanup();
+  const { WorkspaceCheckpoints } = await import("../src/components/hive/workspace-checkpoints.tsx");
   const remote = createDemoWorkspace(demoTasks[0]);
   const checkpoints = () => h(HiveClientContext, { value: remote.client }, h(WorkspaceCheckpoints, { sessionId: remote.getSnapshot().session.sessionId, revision: remote.getSnapshot().session.version, onRestored: remote.receiveSnapshot }));
   const mounted = render(checkpoints());
@@ -122,4 +228,40 @@ try {
   await waitFor(() => assert.match(screen.getByRole("dialog").textContent, /archived/));
   assert.equal(requests, 0);
   console.log("PASS: a teammate archiving the task also disables an already-open checkpoint confirmation.");
+  cleanup();
+  // A delayed POST must not trap the user in a modal. After an uncertain result,
+  // status checks reconcile the existing operation instead of replaying it.
+  const recoveryDemo = createDemoWorkspace(demoTasks[0]);
+  const baseCheckpointData = await (await recoveryDemo.client.request(`/api/sessions/${recoveryDemo.getSnapshot().session.sessionId}/checkpoints`)).json();
+  let recoveryData = baseCheckpointData, releaseRestore, restoreCalls = 0, checkCalls = 0, deliveredRecovery;
+  const recoveryClient = { ...recoveryDemo.client, request: async (_path, init) => {
+    if (init?.method !== "POST") return Response.json(recoveryData);
+    const request = JSON.parse(init.body);
+    if (request.mode === "check") {
+      checkCalls++;
+      recoveryData = baseCheckpointData;
+      return Response.json(recoveryDemo.getSnapshot());
+    }
+    restoreCalls++;
+    recoveryData = { ...baseCheckpointData, blockedReason: "Restore needs confirmation. Retry the same checkpoint before continuing.", restore: { id: request.id, snapshotId: request.snapshotId, status: "unconfirmed", retryAfter: Date.now() + 400 } };
+    return new Promise((resolve) => { releaseRestore = () => resolve(Response.json({ error: "Restore response timed out." }, { status: 503 })); });
+  } };
+  render(h(HiveClientContext, { value: recoveryClient }, h(WorkspaceCheckpoints, { sessionId: recoveryDemo.getSnapshot().session.sessionId, revision: 1, onRestored: (snapshot) => { deliveredRecovery = snapshot; } })));
+  await waitFor(() => assert.ok(screen.getByRole("button", { name: /^Restore checkpoint from/ })));
+  fireEvent.click(screen.getByRole("button", { name: /^Restore checkpoint from/ }));
+  fireEvent.click(button("Restore checkpoint"));
+  assert.ok(button("Restoring…").disabled);
+  assert.ok(!button("Close dialog").disabled);
+  assert.match(screen.getByRole("dialog").textContent, /You can close this dialog/);
+  fireEvent.click(button("Close dialog"));
+  assert.ok(!screen.queryByRole("dialog"));
+  assert.equal(restoreCalls, 1);
+  await act(async () => releaseRestore());
+  await waitFor(() => assert.match(document.body.textContent, /Checking safely in \d+s/));
+  assert.ok(button("Retry restore").disabled, "the lease countdown is explicit and prevents a concurrent retry");
+  await waitFor(() => assert.ok(deliveredRecovery), { timeout: 1500 });
+  assert.equal(checkCalls, 1);
+  assert.equal(restoreCalls, 1, "automatic status confirmation never submits another destructive restore");
+  assert.equal(requests, 0);
+  console.log("PASS: the restoring dialog can close, the recovery countdown explains the wait, and metadata-only confirmation updates the workspace without another restore.");
 } finally { cleanup(); dom.window.close(); }

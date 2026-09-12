@@ -38,6 +38,7 @@ mock.module(new URL("../src/lib/task-session-store.ts", import.meta.url).href, {
   withTaskWorkspaceRead: async (_id, read) => read(session),
   startTaskWorkspaceRestore: async () => { throw new Error("Restore is outside this read-only check"); },
   finishTaskWorkspaceRestore: async () => { throw new Error("Restore is outside this read-only check"); },
+  recordTaskWorkspaceRestoreSource: async () => { throw new Error("Restore is outside this read-only check"); },
   isTaskSessionMember: async () => admitted,
   getTaskSessionSnapshot: async () => ({ session }),
   getPublicTaskSessionSnapshot: async () => ({ session }),
