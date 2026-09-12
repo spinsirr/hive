@@ -23,6 +23,8 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useHiveClient } from "@/components/hive/hive-client";
 import { TaskArchiveControl } from "@/components/hive/task-archive-control";
+import { TaskTitleControl } from "@/components/hive/task-title-control";
+import { taskTitleLabel } from "@/lib/task-title";
 
 import {
   Conversation,
@@ -54,6 +56,7 @@ import type { CodingModelOption } from "@/lib/coding-models";
 import { displayHiveErrorMessage } from "@/lib/hive-error-copy";
 import { workspaceReadRevision } from "@/lib/workspace-files";
 import { canResolvePeerReview } from "@/lib/peer-collaboration";
+import { conversationTimelineMessages } from "@/lib/conversation-timeline";
 import {
   type ActiveSteer,
   type ChatMessage,
@@ -145,6 +148,8 @@ function ProductHeader({
   archived,
   archiveDisabled,
   onArchiveChange,
+  renameDisabled,
+  onRename,
 }: {
   activeMembers: MemberId[];
   copied: boolean;
@@ -164,6 +169,8 @@ function ProductHeader({
   archived: boolean;
   archiveDisabled: boolean;
   onArchiveChange: (archived: boolean) => Promise<void>;
+  renameDisabled: boolean;
+  onRename: (title: string) => Promise<void>;
 }) {
   return (
     <header className="flex h-13 shrink-0 items-center justify-between gap-3 border-b border-[#e8e8e8] bg-white px-3 sm:px-4">
@@ -174,14 +181,14 @@ function ProductHeader({
         </Link>
         <span className="text-[#d4d4d4]">/</span>
         <div className="min-w-0">
-          <p className="truncate text-xs font-medium text-[#3d3d3d]">{sessionTitle}</p>
+          <TaskTitleControl title={sessionTitle} disabled={renameDisabled} onRename={onRename} />
           <p className="hidden truncate text-xs text-[#929292] md:block">
             {repository?.name ?? "Repository not attached"}
           </p>
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-1 sm:gap-2">
-        <TaskArchiveControl title={sessionTitle} archived={archived} disabled={archiveDisabled} onChange={onArchiveChange} />
+        <TaskArchiveControl title={taskTitleLabel(sessionTitle)} archived={archived} disabled={archiveDisabled} onChange={onArchiveChange} />
         <div className="hidden items-center gap-1.5 text-xs text-[#777] sm:flex">
           {syncError ? (
             <WifiOff className="size-3" />
@@ -324,7 +331,7 @@ function SteeringQueue({ activeSteer, canApply, items, members, onApply, onMove,
   );
 }
 
-function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, runActive, runStalled, onRecoverRun, queued, queuedBy, queuePosition, steered, steeredBy, steeringQueue, currentMember, disabled, members, messages, onApplySteer, onOpenThread, onSteerReply, selectedThreadId, onMoveSteer, onRemoveSteer, onSteer, onSend, onTyping, stage, typingMembers, workspaceAnnotation, codingRuntime, codingModel, codingModels, harnessLocked, harnessDisabled, onSelectHarness, effort, effortLocked, onEffortChange, compact = false }: {
+function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, runActive, runStalled, onRecoverRun, queued, queuedBy, queuePosition, steered, steeredBy, steeringQueue, currentMember, disabled, members, messages, onApplySteer, onOpenThread, selectedThreadId, onMoveSteer, onRemoveSteer, onSteer, onSend, onTyping, stage, typingMembers, workspaceAnnotation, codingRuntime, codingModel, codingModels, harnessLocked, harnessDisabled, onSelectHarness, effort, effortLocked, onEffortChange, compact = false }: {
   sessionId: string;
   activeMembers: MemberId[];
   activeSteer?: ActiveSteer;
@@ -344,7 +351,6 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
   messages: ChatMessage[];
   onApplySteer: () => void;
   onOpenThread: (messageId: string) => void;
-  onSteerReply: (messageId: string, replyId: string) => void;
   selectedThreadId: string | null;
   onMoveSteer: (steerId: string, direction: "up" | "down") => void;
   onRemoveSteer: (steerId: string) => void;
@@ -365,6 +371,7 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
   onEffortChange: (effort: CodingEffort, modelId?: string) => void;
   compact?: boolean;
 }) {
+  const timeline = useMemo(() => conversationTimelineMessages(messages), [messages]);
   const deliveredIds = useMemo(() => new Set(
     messages.filter((message) => message.memberId === currentMember && message.clientId).map((message) => message.clientId!),
   ), [currentMember, messages]);
@@ -391,7 +398,7 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
       <SteeringQueue activeSteer={activeSteer} canApply={canApplySteer} items={steeringQueue} members={members} onApply={onApplySteer} onMove={onMoveSteer} onRemove={onRemoveSteer} />
       <Conversation className="min-h-0 flex-1">
         <ConversationContent className={cn("gap-7 px-4 py-5 sm:px-6 sm:py-7", compact && "gap-5")}>
-          {messages.map((message) => {
+          {timeline.map((message) => {
             if (message.status === "error") {
               return (
                 <div
@@ -406,7 +413,7 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
               );
             }
             return (
-              <ConversationMessage key={message.id} message={message} currentMember={currentMember} members={members} sessionId={sessionId} disabled={disabled} runActive={runActive} queueing={runActive || steeringQueue.length > 0} selected={selectedThreadId === message.id} onOpenThread={onOpenThread} onSteerReply={onSteerReply} />
+              <ConversationMessage key={message.id} message={message} currentMember={currentMember} members={members} sessionId={sessionId} disabled={disabled} runActive={runActive} selected={selectedThreadId === message.id} onOpenThread={onOpenThread} />
             );
           })}
           {runActive && runStalled ? (
@@ -664,7 +671,6 @@ type HiveWorkspaceProps = {
   initialSnapshot: TaskSessionSnapshot;
   inviteToken: string;
   sessionId: string;
-  sessionTitle: string;
 };
 
 export function HiveWorkspace(props: HiveWorkspaceProps) {
@@ -676,7 +682,6 @@ export function HiveWorkspaceView({
   currentMember,
   inviteToken,
   sessionId,
-  sessionTitle,
   connection,
   homeHref = "/",
   connectionLabel = "Live",
@@ -738,6 +743,10 @@ export function HiveWorkspaceView({
   const changeArchive = useCallback(async (archive: boolean) => {
     const next = await dispatch({ type: archive ? "archive-task" : "restore-task" });
     if (!next || Boolean(next.session.archived) !== archive) throw new Error("Could not update the task. Check the connection and finish any pending work before retrying.");
+  }, [dispatch]);
+  const renameTask = useCallback(async (title: string) => {
+    const next = await dispatch({ type: "rename-task", title });
+    if (!next || next.session.title !== title) throw new Error("Could not rename this task. Check your connection and try again.");
   }, [dispatch]);
   const harnessLocked = !canSelectHarness(session);
   const effortLocked = !canSetCodingEffort(session);
@@ -883,7 +892,6 @@ export function HiveWorkspaceView({
     effortLocked,
     onEffortChange: setCodingEffort,
     onOpenThread: openThread,
-    onSteerReply: steerMessageAnnotation,
     selectedThreadId,
     onMoveSteer: moveSteer,
     onRemoveSteer: removeSteer,
@@ -892,11 +900,11 @@ export function HiveWorkspaceView({
     onTyping: setTyping,
     onApplySteer: applySteer,
     onTabChange: setTab,
-  }), [activeMembers, activeSteer, applySteer, openThread, steerMessageAnnotation, selectedThreadId, annotation.queuedBy, annotation.steeredBy, annotation.text, canApplySteer, currentMember.id, workspaceLocked, harnessSaving, messages, moveSteer, queuePosition, queued, recoverRun, removeSteer, runActive, runStalled, send, sessionId, setTyping, stage, steer, steered, steeringQueue, tab, teamMembers, typingMembers, workspace.agentSession?.runtime, workspace.codingModel, harnessLocked, syncing, syncError, selectHarness, workspace.codingEffort, effortLocked, setCodingEffort, snapshot.codingModels]);
+  }), [activeMembers, activeSteer, applySteer, openThread, selectedThreadId, annotation.queuedBy, annotation.steeredBy, annotation.text, canApplySteer, currentMember.id, workspaceLocked, harnessSaving, messages, moveSteer, queuePosition, queued, recoverRun, removeSteer, runActive, runStalled, send, sessionId, setTyping, stage, steer, steered, steeringQueue, tab, teamMembers, typingMembers, workspace.agentSession?.runtime, workspace.codingModel, harnessLocked, syncing, syncError, selectHarness, workspace.codingEffort, effortLocked, setCodingEffort, snapshot.codingModels]);
 
   return (
     <main className="flex h-dvh min-h-0 flex-col overflow-hidden bg-[#fafafa] text-[#171717]">
-      <ProductHeader activeMembers={activeMembers} copied={copied} currentMember={currentMember} members={teamMembers} onCopyInvite={copyInvite} onSignOut={signOut} onReset={openReset} repository={repository} sessionTitle={sessionTitle} resetDisabled={resetDisabled} syncing={syncing} syncError={syncError} homeHref={homeHref} connectionLabel={connectionLabel} accountActionsDisabled={accountActionsDisabled} archived={archived} archiveDisabled={syncing || syncError || (!archived && !canArchiveTask(session))} onArchiveChange={changeArchive} />
+      <ProductHeader activeMembers={activeMembers} copied={copied} currentMember={currentMember} members={teamMembers} onCopyInvite={copyInvite} onSignOut={signOut} onReset={openReset} repository={repository} sessionTitle={session.title} resetDisabled={resetDisabled} syncing={syncing} syncError={syncError} homeHref={homeHref} connectionLabel={connectionLabel} accountActionsDisabled={accountActionsDisabled} archived={archived} archiveDisabled={syncing || syncError || (!archived && !canArchiveTask(session))} onArchiveChange={changeArchive} renameDisabled={syncing || syncError || workspaceLocked} onRename={renameTask} />
       {notice}
       {session.archived ? <div className="shrink-0 border-b border-border bg-muted px-4 py-2 text-xs text-muted-foreground" role="status">Archived by {resolveMember(session.archived.by, teamMembers).shortName} · Read-only for everyone. Restore this task to continue.</div> : null}
       <Dialog onOpenChange={setResetOpen} open={resetOpen}>

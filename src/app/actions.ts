@@ -14,8 +14,8 @@ export async function createTaskSession(formData: FormData) {
   if (!member) throw new Error("Unauthorized");
 
   const title = String(formData.get("title") ?? "").trim();
-  if (!title || title.length > 120) {
-    throw new Error("Use a task title between 1 and 120 characters.");
+  if (title.length > 120) {
+    throw new Error("Use a task title of at most 120 characters.");
   }
 
   const session = await createStoredTaskSession(title, member);

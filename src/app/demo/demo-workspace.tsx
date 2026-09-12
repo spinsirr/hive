@@ -25,7 +25,6 @@ export function DemoWorkspace({ task }: { task: DashboardTask }) {
     <HiveWorkspaceView
       currentMember={member}
       sessionId={snapshot.session.sessionId}
-      sessionTitle={task.title}
       inviteToken=""
       homeHref="/demo"
       connectionLabel="Demo"

@@ -3,7 +3,7 @@ import type { TaskSessionSnapshot } from "./task-session-store.ts";
 import type { DashboardTask } from "./task-dashboard.ts";
 import { demoTaskMessages } from "./demo-task-conversation.ts";
 import { codingModelOptions, CODEX_SUBSCRIPTION_MODEL } from "./coding-models.ts";
-import { ARCHIVED_TASK_MESSAGE, appendHiveReply, applyHiveRunResult, createInitialTaskSessionState, isHiveRunActive, reduceTaskSession, type HiveRunResult, type TaskSessionAction, type TeamMember } from "./task-session.ts";
+import { ARCHIVED_TASK_MESSAGE, appendHiveReply, applyHiveRunResult, createInitialTaskSessionState, hiveReplyThreadId, isHiveRunActive, reduceTaskSession, type HiveRunResult, type TaskSessionAction, type TeamMember } from "./task-session.ts";
 import { requestPeerInput } from "./peer-collaboration.ts";
 import { beginWorkspaceRestore, completeWorkspaceRestore, restoreWorkspaceRequest, workspaceRestoreBlockReason } from "./workspace-restore-state.ts";
 
@@ -48,7 +48,7 @@ function initialSnapshot(task: DashboardTask): TaskSessionSnapshot {
     const initial = result(session, epoch, false);
     session.workspace = { ...session.workspace, ...initial, status: "ready", checkpoints: [{ id: initial.snapshot!.id, createdAt: epoch, result: initial }] };
   }
-  session.messages = demoTaskMessages(task);
+  if (task.title) session.messages = demoTaskMessages(task);
   if (task.id === "demo-thread") session.messages[1].subagents = [
     { id: "sample-research", runId: "preview-run", kind: "research", task: "Trace how a teammate's message enters the shared queue.", status: "completed", startedAt: epoch, result: "Sample finding: messages preserve the author and arrival order. This is invented demo content, not a live investigation." },
     { id: "sample-review", runId: "preview-run", kind: "review", task: "Review the cancellation flow for stale runs and cross-task access.", status: "completed", startedAt: epoch, result: "Sample review: bind Stop to both the task and active run. No live check was performed." },
@@ -72,8 +72,7 @@ export function createDemoWorkspace(task: DashboardTask) {
     let session = reduceTaskSession(snapshot.session, { ...action, actor: member.id }, Date.now(), demoMembers, models);
     if (session === snapshot.session) return snapshot;
     if (isHiveRunActive(session) && !session.workspace.liveReply) {
-      const source = session.activeSteer?.source;
-      const threadId = source && "messageId" in source && session.messages.some((message) => message.id === source.messageId && message.interaction) ? source.messageId : undefined;
+      const threadId = hiveReplyThreadId(session, { ...action, actor: member.id });
       session = { ...session, workspace: { ...session.workspace, liveReply: { id: `sample-run-${session.version}`, threadId, body: "", sequence: 0, startedAt: Date.now() } } };
     }
     publish({ ...snapshot, session });

@@ -5,6 +5,7 @@ import { customAlphabet } from "nanoid";
 import { db } from "@/db";
 import { taskSessionMembers, taskSessions, users } from "@/db/schema";
 import { sessionNotification } from "@/lib/session-events";
+import { normalizeTaskTitle } from "./task-title.ts";
 import { type CodingModelOption } from "./coding-models.ts";
 import { platformCodingModels } from "./platform-models.ts";
 import { assertHiveToolRun, hiveThreadReply, type HiveToolContext } from "@/lib/hive-tool-context";
@@ -20,6 +21,7 @@ import {
   appendHiveReply as appendHiveReplyToSession,
   createInitialTaskSessionState,
   didStartHiveRun,
+  hiveReplyThreadId,
   type HiveRunResult,
   type HiveSessionCheckpoint,
   type MemberId,
@@ -176,8 +178,8 @@ export async function createTaskSession(
   creator: TeamMember,
   now = Date.now(),
 ) {
-  const normalizedTitle = title.trim().slice(0, 120);
-  if (!normalizedTitle) throw new Error("Task title is required.");
+  const normalizedTitle = title.trim() ? normalizeTaskTitle(title) : "";
+  if (normalizedTitle === null) throw new Error("Use a task title of at most 120 characters.");
 
   const sessionId = sessionSlug(normalizedTitle);
   const initialSession = createInitialTaskSessionState(now, sessionId, {
@@ -318,9 +320,7 @@ export async function applyTaskSessionAction(
     }
     const startedRun = didStartHiveRun(previousSession, nextSession);
     if (startedRun) {
-      const source = nextSession.activeSteer?.source;
-      const threadId = source && "messageId" in source && nextSession.messages.some((message) => message.id === source.messageId && message.interaction)
-        ? source.messageId : action.type === "steer-message-annotation" && nextSession.messages.some((message) => message.id === action.messageId && message.interaction) ? action.messageId : undefined;
+      const threadId = hiveReplyThreadId(nextSession, action);
       nextSession.workspace = {
         ...nextSession.workspace,
         liveReply: { id: `agent-${randomUUID()}`, threadId, body: "", sequence: 0, startedAt: now },

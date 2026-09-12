@@ -15,6 +15,7 @@ import { buildHiveRunInput } from "@/lib/hive-prompt";
 import { createHiveToolToken, hiveToolEndpoint } from "@/lib/hive-tool-token";
 import { MESSAGE_BODY_LIMIT, type TaskSessionAction } from "@/lib/task-session";
 import { isTaskSessionId } from "@/lib/task-session-id";
+import { normalizeTaskTitle } from "@/lib/task-title";
 import { publicTaskSessionSnapshot } from "@/lib/task-session-snapshot";
 import { WorkspaceRestoreError } from "@/lib/workspace-restore-state";
 import { subagentCapability } from "@/lib/subagent-control";
@@ -82,6 +83,7 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
   }
 
   if (
+    payload.type !== "rename-task" &&
     payload.type !== "archive-task" &&
     payload.type !== "restore-task" &&
     payload.type !== "send-message" &&
@@ -102,6 +104,10 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
     payload.type !== "reset"
   ) {
     return NextResponse.json({ error: "Unknown session action" }, { status: 400 });
+  }
+
+  if (payload.type === "rename-task" && (!("title" in payload) || typeof payload.title !== "string" || !normalizeTaskTitle(payload.title))) {
+    return NextResponse.json({ error: "Use a task name between 1 and 120 characters." }, { status: 400 });
   }
 
   if (payload.type === "answer-question" && (!("messageId" in payload) || typeof payload.messageId !== "string" || payload.messageId.length > 200 ||

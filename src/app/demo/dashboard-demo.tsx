@@ -2,20 +2,19 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { TaskDashboard } from "@/components/hive/task-dashboard";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { demoLoadedAt, demoTaskHref, demoTasks, newDemoTask } from "@/lib/ui-demo";
+import { demoLoadedAt, demoTaskHref, demoTasks } from "@/lib/ui-demo";
 
 export function DashboardDemo() {
+  const router = useRouter();
   const [tasks, setTasks] = useState(demoTasks);
   const [notice, setNotice] = useState("");
   const [revision, setRevision] = useState(0);
 
-  async function createAction(formData: FormData) {
-    const task = newDemoTask(String(formData.get("title") ?? ""), crypto.randomUUID());
-    if (!task) return;
-    setTasks((current) => [task, ...current]);
-    setNotice(`“${task.title}” added in this demo only.`);
+  async function createAction() {
+    router.push("/demo/tasks/new");
   }
 
   function showScenario(empty: boolean) {

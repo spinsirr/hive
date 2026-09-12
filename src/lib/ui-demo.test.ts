@@ -36,13 +36,14 @@ test("new local tasks have a safe URL and reloadable title without storing a liv
   const restored = findDemoTask("new", url.searchParams.get("title")!);
   assert.equal(restored?.title, title);
   assert.equal(demoTaskMessages(restored!)[0].body, title);
-  assert.equal(findDemoTask("new"), null);
-  assert.equal(findDemoTask("new", "  "), null);
+  assert.equal(findDemoTask("new")?.title, "");
+  assert.equal(findDemoTask("new", "  ")?.title, "");
   assert.equal(findDemoTask("new", "x".repeat(121)), null);
 });
 
 test("demo creation validates the title and returns only a local display record", () => {
-  assert.equal(newDemoTask("  ", "1"), null);
+  assert.equal(newDemoTask("  ", "1")?.title, "");
+  assert.equal(demoTaskHref(newDemoTask("", "1")!), "/demo/tasks/new");
   assert.equal(newDemoTask("a".repeat(121), "1"), null);
   assert.equal(newDemoTask("a".repeat(120), "1")?.title.length, 120);
   assert.deepEqual(newDemoTask("  一起调整菜单  ", "1"), {
