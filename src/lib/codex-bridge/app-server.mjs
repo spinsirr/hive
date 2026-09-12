@@ -283,12 +283,9 @@ async function runNativeTurn({
           }
           send({ id: 2, method: "turn/start", params: {
             threadId,
-            input: [
-              { type: "text", text: start.prompt, text_elements: [] },
-              // Explicit native skill input preserves an existing thread. The
-              // generic adapter's skills replacement would request a restart.
-              ...(start.mcpServers?.hive ? [{ type: "skill", name: "hive-collaboration", path: fileURLToPath(new URL("./hive-collaboration/SKILL.md", import.meta.url)) }] : []),
-            ],
+            // Extra roots make the collaboration skill discoverable when needed.
+            // Naming it here would explicitly invoke it even for a plain greeting.
+            input: [{ type: "text", text: start.prompt, text_elements: [] }],
             ...(start.reasoningEffort ? { effort: start.reasoningEffort } : {}),
             ...(start.responseFormat?.type === "json" && start.responseFormat.schema
               ? { outputSchema: start.responseFormat.schema } : {}),
