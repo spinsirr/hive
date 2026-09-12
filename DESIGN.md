@@ -100,10 +100,14 @@ contribution. A question without its source turn remains a standalone message.
 The turn's explanation precedes its attached requests; source records, message
 IDs, individual copy actions and Thread destinations stay unchanged.
 
-Question/review status, prompt and Thread entry share one bordered card. The
-Thread preview is its attached footer, not a separate floating button. Ordinary
-message replies use an indented left rule. Copy and Reply actions sit in the
-message header instead of reserving an empty row between content and discussion.
+Every message with a Thread shares one bordered body-and-footer surface, whether
+it is a human message, agent response, question or review. `MessageThreadPreview`
+owns the same full-width footer, reply count, excerpt and open state for all of
+them; tool metadata belongs in the content area, never in a second Thread skin.
+Messages without a Thread retain their normal conversation presentation.
+Copy and Reply actions sit in the message header instead of reserving an empty
+row between content and discussion. Copy retains its copy icon and briefly says
+`Copied`; a persistent checkmark must not resemble review approval.
 The Thread's selected and keyboard-focus states are distinct, and the full-width
 entry remains available on touch screens and archived tasks. Production and Demo
 use the same message-group and preview components.
