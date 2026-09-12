@@ -91,6 +91,25 @@ for everyone. Renaming changes neither task ID/URL, messages nor agent execution
 it follows existing membership, origin, recovery and archive guards. Demo uses
 the same creation entry and workspace controls with local sample state.
 
+### Message editing (2026-09-12)
+
+Following Slack's message model, a member edits their own ordinary message in
+place via its compact action menu, with explicit Save changes / Cancel. Preserve
+its ID, author, original timestamp, Thread and timeline position. Keep the main
+composer's draft separate. Escape cancels; Ctrl/Command+Enter saves; Enter and IME
+confirmation remain text input. Menus and editor return keyboard focus correctly.
+Edited opens retained previous versions; that shared audit history is a Hive
+choice, not a claim about Slack's UI. Agent output, code quotes and restore
+receipts are not editable. Archived tasks remain read-only.
+
+Saving changes discussion without replaying or interrupting a run. A plain queued
+message updates its pending input atomically and keeps its queue position; already
+dispatched work and frozen whole-Thread steers retain their original input.
+Concurrent edits and changed queue identities fail visibly and keep the draft.
+The queue sits above the composer, with edit, reorder, remove and safe-boundary
+Run next actions. Removing a queued request keeps its conversation message.
+Production and Demo compose the same message actions, inline editor and queue.
+
 ### Thread presentation (2026-09-12)
 
 An agent turn and its adjacent question/review messages form one visual group

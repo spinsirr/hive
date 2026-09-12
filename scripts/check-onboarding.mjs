@@ -372,6 +372,43 @@ try {
   } finally { mock.timers.reset(); }
   console.log("PASS: concurrent restore claims are serialized, VM evidence survives a retry, stale workers cannot finish it, and concurrent confirmations restore files/context exactly once.");
 
+  // Seed a pending run through the store without executing a model, then use the real HTTP actions.
+  const pending = await store.applyTaskSessionAction(privateTask.sessionId, { type: "send-message", actor: owner.member.id, body: "Fixture run in progress", clientId: randomUUID() }, owner.member);
+  const queued = await store.applyTaskSessionAction(privateTask.sessionId, { type: "send-message", actor: newcomer.member.id, body: "Check keyboard focus", clientId: randomUUID() }, newcomer.member);
+  const editable = queued.snapshot.session.messages.at(-1);
+  const queuedSteerId = queued.snapshot.session.steeringQueue[0].id;
+  const editPayload = { type: "edit-message", messageId: editable.id, body: "Check keyboard focus and Escape", expectedRevision: 0, queuedSteerId };
+  const editRequest = (signedIn, payload) => action(new NextRequest(`https://hive.test/api/sessions/${privateTask.sessionId}`, {
+    method: "POST", headers: { cookie: browserCookie(signedIn), origin: "https://hive.test", "Content-Type": "application/json" }, body: JSON.stringify(payload),
+  }), foreignContext);
+  assert.equal((await editRequest(owner, { ...editPayload, actor: newcomer.member.id })).status, 403, "A member cannot impersonate a message author");
+  for (const invalid of [{ ...editPayload, body: " " }, { ...editPayload, body: "x".repeat(8_001) }, { ...editPayload, expectedRevision: -1 }, { ...editPayload, queuedSteerId: 123 }]) {
+    assert.equal((await editRequest(newcomer, invalid)).status, 400);
+  }
+  const editedResponse = await editRequest(newcomer, { ...editPayload, actor: owner.member.id });
+  assert.equal(editedResponse.status, 200);
+  const edited = (await editedResponse.json()).session;
+  assert.equal(edited.messages.at(-1).body, "Check keyboard focus and Escape");
+  assert.equal(edited.messages.at(-1).memberId, newcomer.member.id);
+  assert.equal(edited.messages.at(-1).edits[0].body, "Check keyboard focus");
+  assert.equal(edited.steeringQueue[0].body, "Check keyboard focus and Escape");
+  const savedWorkspace = (await store.getTaskSessionSnapshot(privateTask.sessionId)).session.workspace;
+  assert.deepEqual(savedWorkspace, queued.snapshot.session.workspace, "Edits preserve the active run and private checkpoint context");
+  assert.doesNotMatch(JSON.stringify(edited.workspace), /privateCheckpoint|resumeFrom/, "Edit responses retain the public snapshot boundary");
+  assert.equal(edited.workspace.liveReply.id, savedWorkspace.liveReply.id, "The client still observes the same run");
+  assert.equal((await editRequest(newcomer, editPayload)).status, 200, "Retrying the same edit is idempotent");
+  const otherViewer = await snapshot(new NextRequest(`https://hive.test/api/sessions/${privateTask.sessionId}`, { headers: { cookie: browserCookie(owner) } }), foreignContext);
+  assert.deepEqual((await otherViewer.json()).session.messages.at(-1), edited.messages.at(-1));
+  const racing = await Promise.all(["First browser", "Second browser"].map(body => editRequest(newcomer, { ...editPayload, expectedRevision: 1, body })));
+  assert.deepEqual(racing.map(response => response.status).sort(), [200, 409], "The row lock admits exactly one revision");
+  assert.equal((await editRequest(newcomer, { ...editPayload, body: "Stale browser" })).status, 409);
+  await store.appendHiveReply(privateTask.sessionId, "Fixture run completed", { forReplyId: pending.snapshot.session.workspace.liveReply.id });
+  const applied = await store.applyTaskSessionAction(privateTask.sessionId, { type: "apply-next-steer", actor: owner.member.id }, owner.member);
+  const frozen = applied.snapshot.session.activeSteer.body;
+  assert.equal((await editRequest(newcomer, { ...editPayload, expectedRevision: 2, body: "Too late to edit the queue" })).status, 409);
+  assert.equal((await store.getPublicTaskSessionSnapshot(privateTask.sessionId)).session.activeSteer.body, frozen);
+  console.log("PASS: authenticated message editing enforces authorship, validates input, persists history, synchronizes snapshots, serializes competing edits and rejects edits after dequeue without any model calls.");
+
   const repositoryUrl = `https://hive.test/api/github/repositories?session_id=${ownTasks[0].id}`;
   const repositoryCookie = newcomer.response.cookies.get("hive_github_user");
   assert.ok(repositoryCookie.httpOnly);

@@ -111,8 +111,32 @@ export type ChatMessage = {
   time: string;
   /** Epoch milliseconds; viewers format this in their own time zone. */
   createdAt?: number;
+  /** Previous text is retained for the shared audit trail; execution is never replayed by an edit. */
+  edits?: Array<{ body: string; replacedAt: number }>;
   subagents?: import("./hive-subagents.ts").HiveSubagent[];
 };
+
+export type MessageEdit = {
+  messageId: string;
+  body: string;
+  expectedRevision: number;
+  /** Captured when the editor opens, so a dequeued message cannot be silently edited as queued work. */
+  queuedSteerId?: string;
+};
+
+/** Restore receipts are server-authored evidence even though they carry a member's name. */
+export function canEditMessage(message: ChatMessage, memberId: MemberId) {
+  return message.role === "human" && message.memberId === memberId && !message.codeReference && !message.interaction && !message.id.startsWith("restore-");
+}
+
+export class MessageEditError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "MessageEditError";
+    this.status = status;
+  }
+}
 
 type RepositoryDetails = {
   id: number;
@@ -264,6 +288,7 @@ export type TaskSessionAction =
   | { type: "select-harness"; actor: MemberId; runtime: CodingRuntime; modelId?: string }
   | { type: "set-coding-effort"; actor: MemberId; effort: CodingEffort; modelId?: string }
   | { type: "send-message"; actor: MemberId; body: string; clientId?: string }
+  | ({ type: "edit-message"; actor: MemberId } & MessageEdit)
   | { type: "annotate-code"; actor: MemberId; body: string; clientId: string; reference: CodeReference }
   | {
       type: "connect-repository";
@@ -515,6 +540,40 @@ export function reduceTaskSession(
     return { ...state, archived: undefined, version: state.version + 1, updatedAt: now };
   }
   if (state.workspace.restore) return state;
+  if (action.type === "edit-message") {
+    const message = state.messages.find((entry) => entry.id === action.messageId);
+    if (!message) throw new MessageEditError(404, "This message is no longer available.");
+    if (message.role !== "human" || message.memberId !== action.actor) {
+      throw new MessageEditError(403, "You can only edit your own messages.");
+    }
+    if (message.codeReference) throw new MessageEditError(400, "Code selections are preserved as quoted evidence. Add a thread reply instead.");
+    if (!canEditMessage(message, action.actor)) throw new MessageEditError(400, "This message records a task operation and cannot be edited. Add a thread reply instead.");
+    const body = action.body.trim();
+    if (!body || body.length > MESSAGE_BODY_LIMIT || !Number.isSafeInteger(action.expectedRevision) || action.expectedRevision < 0) {
+      throw new MessageEditError(400, "Enter a message of up to 8,000 characters and a valid revision.");
+    }
+    const queued = state.steeringQueue.find((item) => item.source.kind === "message" && item.source.messageId === message.id);
+    if (queued?.id !== action.queuedSteerId) {
+      throw new MessageEditError(409, "This message is no longer in the same queue. Reopen the editor to review its current state.");
+    }
+    // A retry after a lost acknowledgement is harmless and adds no duplicate revision.
+    if (body === message.body) return state;
+    if ((message.edits?.length ?? 0) !== action.expectedRevision) {
+      throw new MessageEditError(409, "This message was edited elsewhere. Reopen the editor before saving again.");
+    }
+    return {
+      ...state,
+      messages: state.messages.map((entry) => entry.id === message.id ? {
+        ...entry,
+        body,
+        edits: [...(entry.edits ?? []), { body: entry.body, replacedAt: now }],
+      } : entry),
+      // Whole-thread and annotation steers are already frozen and must stay unchanged.
+      steeringQueue: state.steeringQueue.map((item) => item.id === queued?.id ? { ...item, body } : item),
+      version: state.version + 1,
+      updatedAt: now,
+    };
+  }
   if (action.type === "rename-task") {
     const title = normalizeTaskTitle(action.title);
     if (!title || title === state.title || !members.some((member) => member.id === action.actor)) return state;

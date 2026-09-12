@@ -123,7 +123,7 @@ export function buildHivePrompt(
     // do not append public copies of the agent's own history on every turn.
     .filter((message) => !hasNativeHistory || message.role === "human")
     .filter((message) => steer || message.id !== latestMessage?.id)
-    .map((message) => `[${message.name}]: ${message.body}`)
+    .map((message) => `[${message.name}${message.edits?.length ? " · edited; discussion update, not a request to replay earlier work" : ""}]: ${message.body}`)
     .join("\n");
 
   return [

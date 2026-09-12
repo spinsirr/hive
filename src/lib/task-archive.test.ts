@@ -36,7 +36,7 @@ test("archives reject every task mutation and checkpoint rollback until restored
   const actions: Record<TaskSessionAction["type"], boolean> = {
     "archive-task": true, "restore-task": true, "rename-task": false,
     "select-harness": false, "set-coding-effort": false, "recover-stalled-run": false,
-    reset: false, "connect-repository": false, "send-message": false, "annotate-code": false,
+    reset: false, "connect-repository": false, "send-message": false, "edit-message": false, "annotate-code": false,
     "annotate-message": false, "answer-question": false, "resolve-peer-review": false,
     "steer-thread": false, "steer-message-annotation": false, "steer-agent": false,
     "apply-next-steer": false, "continue-peer-response": false, "remove-queued-steer": false,

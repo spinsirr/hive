@@ -13,7 +13,7 @@ import { readCodexSubscription } from "@/lib/codex-subscription-store";
 import { usesPlatformSubscriptions } from "@/lib/platform-models";
 import { buildHiveRunInput } from "@/lib/hive-prompt";
 import { createHiveToolToken, hiveToolEndpoint } from "@/lib/hive-tool-token";
-import { MESSAGE_BODY_LIMIT, type TaskSessionAction } from "@/lib/task-session";
+import { MESSAGE_BODY_LIMIT, MessageEditError, type TaskSessionAction } from "@/lib/task-session";
 import { isTaskSessionId } from "@/lib/task-session-id";
 import { normalizeTaskTitle } from "@/lib/task-title";
 import { publicTaskSessionSnapshot } from "@/lib/task-session-snapshot";
@@ -87,6 +87,7 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
     payload.type !== "archive-task" &&
     payload.type !== "restore-task" &&
     payload.type !== "send-message" &&
+    payload.type !== "edit-message" &&
     payload.type !== "answer-question" &&
     payload.type !== "resolve-peer-review" &&
     payload.type !== "continue-peer-response" &&
@@ -106,6 +107,12 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
     return NextResponse.json({ error: "Unknown session action" }, { status: 400 });
   }
 
+  if (payload.type === "edit-message" && (
+    !("messageId" in payload) || typeof payload.messageId !== "string" || !payload.messageId ||
+    !("body" in payload) || typeof payload.body !== "string" || !payload.body.trim() || payload.body.trim().length > MESSAGE_BODY_LIMIT ||
+    !("expectedRevision" in payload) || typeof payload.expectedRevision !== "number" || !Number.isSafeInteger(payload.expectedRevision) || payload.expectedRevision < 0 ||
+    ("queuedSteerId" in payload && (typeof payload.queuedSteerId !== "string" || !payload.queuedSteerId))
+  )) return NextResponse.json({ error: "Choose a message and enter up to 8,000 characters with its current revision." }, { status: 400 });
   if (payload.type === "rename-task" && (!("title" in payload) || typeof payload.title !== "string" || !normalizeTaskTitle(payload.title))) {
     return NextResponse.json({ error: "Use a task name between 1 and 120 characters." }, { status: 400 });
   }
@@ -202,6 +209,7 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
   let applied;
   try { applied = await applyTaskSessionAction(sessionId, action, member, actionAt); }
   catch (error) {
+    if (error instanceof MessageEditError) return NextResponse.json({ error: error.message }, { status: error.status });
     if (error instanceof TaskSessionAccessError) return NextResponse.json({ error: error.message }, { status: 403, headers: { "Cache-Control": "private, no-store" } });
     if (error instanceof WorkspaceRestoreError) return NextResponse.json({ error: error.message }, { status: error.status });
     throw error;
