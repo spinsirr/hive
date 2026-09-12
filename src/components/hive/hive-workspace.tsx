@@ -32,7 +32,7 @@ import {
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
 import { ConversationComposer } from "@/components/hive/conversation-composer";
-import { ConversationMessage } from "@/components/hive/conversation-message";
+import { ConversationTurn } from "@/components/hive/conversation-message";
 import { DiffPane } from "@/components/hive/diff-pane";
 import { MessageThread } from "@/components/hive/message-thread";
 import { MessageTime } from "@/components/hive/message-time";
@@ -56,7 +56,7 @@ import type { CodingModelOption } from "@/lib/coding-models";
 import { displayHiveErrorMessage } from "@/lib/hive-error-copy";
 import { workspaceReadRevision } from "@/lib/workspace-files";
 import { canResolvePeerReview } from "@/lib/peer-collaboration";
-import { conversationTimelineMessages } from "@/lib/conversation-timeline";
+import { conversationTimelineTurns } from "@/lib/conversation-timeline";
 import {
   type ActiveSteer,
   type ChatMessage,
@@ -371,7 +371,7 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
   onEffortChange: (effort: CodingEffort, modelId?: string) => void;
   compact?: boolean;
 }) {
-  const timeline = useMemo(() => conversationTimelineMessages(messages), [messages]);
+  const timeline = useMemo(() => conversationTimelineTurns(messages), [messages]);
   const deliveredIds = useMemo(() => new Set(
     messages.filter((message) => message.memberId === currentMember && message.clientId).map((message) => message.clientId!),
   ), [currentMember, messages]);
@@ -398,7 +398,8 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
       <SteeringQueue activeSteer={activeSteer} canApply={canApplySteer} items={steeringQueue} members={members} onApply={onApplySteer} onMove={onMoveSteer} onRemove={onRemoveSteer} />
       <Conversation className="min-h-0 flex-1">
         <ConversationContent className={cn("gap-7 px-4 py-5 sm:px-6 sm:py-7", compact && "gap-5")}>
-          {timeline.map((message) => {
+          {timeline.map((turn) => {
+            const { message } = turn;
             if (message.status === "error") {
               return (
                 <div
@@ -413,7 +414,7 @@ function SharedSession({ sessionId, activeMembers, activeSteer, canApplySteer, r
               );
             }
             return (
-              <ConversationMessage key={message.id} message={message} currentMember={currentMember} members={members} sessionId={sessionId} disabled={disabled} runActive={runActive} selected={selectedThreadId === message.id} onOpenThread={onOpenThread} />
+              <ConversationTurn key={message.id} turn={turn} currentMember={currentMember} members={members} sessionId={sessionId} disabled={disabled} runActive={runActive} selectedThreadId={selectedThreadId} onOpenThread={onOpenThread} />
             );
           })}
           {runActive && runStalled ? (

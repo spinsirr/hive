@@ -93,6 +93,21 @@ the same creation entry and workspace controls with local sample state.
 
 ### Thread presentation (2026-09-12)
 
+An agent turn and its adjacent question/review messages form one visual group
+with one author header, linked only by the stored run ID. Never group by author,
+timestamp proximity or similar text, and never move a message across a human
+contribution. A question without its source turn remains a standalone message.
+The turn's explanation precedes its attached requests; source records, message
+IDs, individual copy actions and Thread destinations stay unchanged.
+
+Question/review status, prompt and Thread entry share one bordered card. The
+Thread preview is its attached footer, not a separate floating button. Ordinary
+message replies use an indented left rule. Copy and Reply actions sit in the
+message header instead of reserving an empty row between content and discussion.
+The Thread's selected and keyboard-focus states are distinct, and the full-width
+entry remains available on touch screens and archived tasks. Production and Demo
+use the same message-group and preview components.
+
 The main conversation shows one Thread entry per message, with only the latest
 reply's author and a bounded two-line excerpt. Opening the Thread hides that
 excerpt; full replies, timestamps and steering controls live in `MessageThread`.

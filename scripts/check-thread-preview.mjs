@@ -5,6 +5,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { registerHooks } from "node:module";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { JSDOM } from "jsdom";
 import { JsxEmit, ModuleKind, transpileModule } from "typescript";
 
 registerHooks({
@@ -21,7 +22,7 @@ registerHooks({
 });
 
 const { MessageThreadPreview } = await import("../src/components/hive/message-thread-preview.tsx");
-const { ConversationMessage } = await import("../src/components/hive/conversation-message.tsx");
+const { ConversationMessage, ConversationTurn } = await import("../src/components/hive/conversation-message.tsx");
 const members = [
   { id: "demo-alex", name: "Alex Example", shortName: "Alex", initials: "AL" },
   { id: "demo-casey", name: "Casey Example", shortName: "Casey", initials: "CA" },
@@ -83,3 +84,21 @@ const archivedCard = renderToStaticMarkup(createElement(ConversationMessage, { .
 assert.match(archivedCard, /Open thread with 2 replies/);
 assert.doesNotMatch(archivedCard, /disabled=""/);
 console.log("PASS: a question has one thread entry and never repeats a full transcript alongside the open thread.");
+
+const grouped = renderToStaticMarkup(createElement(ConversationTurn, {
+  ...cardProps, selectedThreadId: question.id,
+  turn: { message: { id: "qa-run", name: "Hive", initials: "H", role: "agent", body: "We need one preference before continuing.", time: "10:00 AM" }, requests: [question] },
+}));
+const groupedDoc = new JSDOM(grouped).window.document;
+assert.equal(groupedDoc.querySelectorAll('[role="img"][aria-label="Hive logo"]').length, 1, "a turn and its tool-created card share an author header");
+assert.equal(groupedDoc.querySelectorAll('[data-message-id]').length, 2, "grouping preserves both addressable source messages");
+const attachedCard = groupedDoc.querySelector('[data-slot="collaboration-message"]');
+assert.ok(attachedCard);
+assert.equal(attachedCard.lastElementChild.getAttribute("aria-label"), "Open thread with 2 replies", "the Thread entry is the attached card footer");
+assert.equal(attachedCard.querySelectorAll('button[aria-expanded]').length, 1, "one card has one Thread entry");
+assert.equal(attachedCard.querySelectorAll('button[aria-label="Copy response"]').length, 1, "the question retains its own copy action");
+assert.equal(groupedDoc.querySelectorAll('button[aria-label="Copy response"]').length, 2, "grouping must not discard the original response action");
+assert.equal(attachedCard.lastElementChild.getAttribute("aria-expanded"), "true");
+assert.match(single, /border-l-2/, "ordinary replies remain visually connected to their parent");
+assert.equal(actions, 0);
+console.log("PASS: one author group retains individual messages and a single attached Thread footer without mutations.");

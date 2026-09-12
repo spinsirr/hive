@@ -44,6 +44,6 @@ export function demoTaskMessages(task: DashboardTask): ChatMessage[] {
   return [
     { id: "request", role: "human", memberId: "demo-alex", name: "Alex", initials: "AL", time: "10:42 AM", body: sample.request },
     { id: "answer", role: "agent", name: "Hive", initials: "H", time: "10:42 AM", body: sample.response, annotations: [{ id: "reply", authorId: "demo-casey", body: sample.reply, createdAt: 1789054920000, status: "open" }] },
-    { id: "sample-question", role: "agent", name: "Hive", initials: "H", time: "10:43 AM", body: sample.question, interaction: { kind: "question", runId: "preview-run", targetMemberId: "demo-alex", options: sample.options } },
+    { id: "sample-question", role: "agent", name: "Hive", initials: "H", time: "10:43 AM", body: sample.question, interaction: { kind: "question", runId: "answer", targetMemberId: "demo-alex", options: sample.options } },
   ];
 }
