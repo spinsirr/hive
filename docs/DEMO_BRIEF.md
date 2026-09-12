@@ -1,6 +1,6 @@
 # Hive — Product walkthrough
 
-Use a small repository change to explore how teammates share one coding agent. The [public UI demo](https://hive-roan-mu.vercel.app/demo) uses page-local sample data and does not run an agent. Use the [live application](https://hive-roan-mu.vercel.app/) for real collaboration.
+Hive supports agentic peer programming: start a task, invite a teammate into work in progress, and use discussion, questions and review to shape the next change. Use a small repository change to explore this collaboration. The [public interactive demo](https://hive-roan-mu.vercel.app/demo) has four sample task pages. It uses page-local sample data and simulated responses, and does not run an agent. Use the [live application](https://hive-roan-mu.vercel.app/) for real collaboration.
 
 ## Before starting
 
@@ -17,6 +17,14 @@ Use a small repository change to explore how teammates share one coding agent. T
 4. Inspect the actual Diff, unchanged as well as changed Files, and expanded command output in Runs. An exit code is process evidence, not an inferred test verdict.
 5. At the safe boundary, apply the queued input and inspect the attributed result. If execution finished before queuing, this is an immediate-steer case; do not rerun just to manufacture a queue window.
 6. Refresh the second browser and verify that discussion and workspace state persist. A finished run or approved diff leaves the conversation open.
+
+## Questions and review in the same task
+
+Ask Hive to request a specific decision from the team. A structured question accepts choices or free text; the first eligible answer becomes an attributed continuation. When the agent is busy, the answer stays queued until a connected client observes a safe boundary. The continuation uses saved task context and returns its output to the original Thread. Ordinary replies remain discussion until explicitly steered.
+
+For a review request, inspect the saved changes, discuss a concern, and steer that feedback. Check the returned revision before choosing **Verify & resolve**. This records human verification of that review, not workspace approval or a merge. A later run or restore invalidates stale verification.
+
+These new paths passed controlled UI and real local Postgres checks; production model/two-account acceptance is still pending.
 
 ## Recovery and evidence
 

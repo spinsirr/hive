@@ -25,7 +25,7 @@ The single repository selected from Repository Access for a task session. It may
 _Avoid_: Project, default repository
 
 **Thread**:
-Discussion attached to one human or completed agent message. Replies retain their authors and stay human-only until explicitly steered. Existing message annotations are displayed as replies, not a separate comment system.
+Discussion attached to one human or completed agent message. Replies retain their authors and do not direct the agent until explicitly steered, except for a structured answer requested by Hive. Hive can participate as itself. Existing message annotations are displayed as replies, not a separate comment system.
 _Avoid_: New task session, agent history
 
 **Code Annotation**:
@@ -35,6 +35,12 @@ _Avoid_: File save, prompt, agent response
 **Steer**:
 One reply, an entire thread, or a teammate message explicitly promoted into agent direction. A whole-thread steer freezes the parent, replies through the selected boundary, and each author's identity. During a run, steers wait in an ordered queue for a safe boundary.
 _Avoid_: Comment, hidden prompt
+
+**Question**:
+A structured request from Hive, optionally addressed to a task member. The first eligible answer is saved once and queued with its author. An idle task continues immediately; an answer queued during a run continues at the next safe boundary when a connected client observes it ready. If every client closes, it remains saved until reconnect. This is a new turn using saved native history, not a suspended tool callback or a durable background workflow. Interrupted runs and restored queues require manual continuation.
+
+**Review Request**:
+Hive asks for human feedback in a Thread. Verification opens only after actual workspace evidence is collected, and is bound to that completed run's revision. Explicitly steered feedback returns its stream and result to the same Thread. New comments, another run, or a restore prevent stale verification. Resolving a review records a human's verification; it does not approve the workspace or merge a PR.
 
 **Run**:
 One agent execution turn against the attached repository. A run that has not reported for six minutes can be marked lost by a member; the discussion, partial output and queued steers stay and nothing reruns. Resetting a task is separate and deliberate: it requires confirmation and an idle task, and it erases the shared conversation for everyone.

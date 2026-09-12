@@ -21,14 +21,19 @@ const members: TeamMember[] = [
 const samples: ChatMessage[] = [
   { id: "request", role: "human", memberId: "demo-alex", name: "Alex", initials: "AL", time: "10:42 AM", body: "Let's make the navigation feel a little quieter. Keep the settings section open when I select a page." },
   { id: "answer", role: "agent", name: "Hive", initials: "H", time: "10:42 AM", body: "I’ll keep the parent section expanded and highlight only the active page.\n\nThe interaction should stay predictable: navigate without losing your place, and keep the selected state distinct from hover.", annotations: [{ id: "reply", authorId: "demo-casey", body: "Keep keyboard focus visible, too.", createdAt: 1789054920000, status: "open" }] },
+  { id: "sample-question", role: "agent", name: "Hive", initials: "H", time: "10:43 AM", body: "Should the settings section remain open after navigation?", interaction: { kind: "question", runId: "preview-run", targetMemberId: "demo-alex", options: ["Keep it open", "Close after navigation"] } },
 ];
 
-export function ConversationDemo() {
+export function ConversationDemo({ title = "Conversation preview", repositoryName, initialMessages = samples }: {
+  title?: string;
+  repositoryName?: string | null;
+  initialMessages?: ChatMessage[];
+}) {
   const [runtime, setRuntime] = useState<CodingRuntime>("codex");
   const [modelId, setModelId] = useState(CODEX_SUBSCRIPTION_MODEL);
   const [effort, setEffort] = useState<CodingEffort>("low");
   const [value, setValue] = useState("");
-  const [messages, setMessages] = useState(samples);
+  const [messages, setMessages] = useState(initialMessages);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [threadId, setThreadId] = useState<string | null>(null);
@@ -39,9 +44,13 @@ export function ConversationDemo() {
   };
   return (
     <main className="flex h-dvh min-h-0 flex-col bg-white text-[#171717]">
-      <header className="flex min-h-14 shrink-0 items-center justify-between gap-3 border-b border-[#eee] px-4 sm:px-6">
-        <Link href="/demo" className="flex items-center gap-2.5 text-sm font-semibold"><HiveMark className="size-7" /> Hive <span className="hidden font-normal text-[#aaa] sm:inline">/ Conversation preview</span></Link>
-        <div className="flex items-center gap-3 text-xs">
+      <header className="flex min-h-16 shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[#eee] px-4 py-3 sm:px-6">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <Link aria-label="Back to sample tasks" href="/demo" prefetch={false} className="flex shrink-0 items-center gap-2.5 rounded text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-4"><HiveMark className="size-7" /> <span className="hidden sm:inline">Sample tasks</span></Link>
+          <span aria-hidden="true" className="text-[#ddd]">/</span>
+          <div className="min-w-0"><h1 className="truncate text-sm font-medium" title={title}>{title}</h1>{repositoryName !== undefined ? <p className="mt-0.5 truncate text-xs text-[#888]">{repositoryName ?? "No repository attached"}</p> : null}</div>
+        </div>
+        <div className="flex shrink-0 items-center gap-3 text-xs">
           <button aria-pressed={busy} className="cursor-pointer rounded-full border border-[#e8e8e8] px-3 py-1.5 text-[#666] hover:bg-[#f5f5f5]" onClick={() => setBusy((current) => !current)} type="button">{busy ? "Preview: working" : "Preview: idle"}</button>
           <Link href="/" className="text-[#888] hover:text-[#171717]">Open Hive</Link>
         </div>
@@ -72,6 +81,14 @@ export function ConversationDemo() {
           <DialogTitle className="sr-only">Thread preview</DialogTitle>
           {thread ? <MessageThread sessionId="ui-conversation-preview" message={thread} members={members} currentMember="demo-alex" disabled={false} runActive={busy} queue={[]} onClose={() => setThreadId(null)} onReply={async (messageId, submission) => {
             setMessages((current) => current.map((message) => message.id !== messageId ? message : { ...message, annotations: [...message.annotations ?? [], { id: crypto.randomUUID(), clientId: submission.clientId, authorId: "demo-alex", body: submission.body, createdAt: Date.now(), status: "open" }] }));
+            return true;
+          }} onAnswerQuestion={async (messageId, submission) => {
+            const replyId = crypto.randomUUID();
+            setMessages((current) => current.map((message) => message.id !== messageId || message.interaction?.kind !== "question" || message.interaction.answer ? message : {
+              ...message, interaction: { ...message.interaction, answer: { replyId, by: "demo-alex", at: Date.now() } },
+              annotations: [...message.annotations ?? [], { id: replyId, clientId: submission.clientId, authorId: "demo-alex", body: submission.body, createdAt: Date.now(), status: "queued", queuedBy: "demo-alex" }],
+            }));
+            setNotice("Sample answer recorded locally. No agent is running and no task was changed.");
             return true;
           }} onSteerReply={steer} onSteerThread={async (messageId, throughReplyId) => {
             setMessages((current) => current.map((message) => message.id !== messageId ? message : { ...message, threadSteer: { id: crypto.randomUUID(), throughReplyId, replyCount: message.annotations?.length ?? 0, requestedBy: "demo-alex", requestedAt: Date.now(), status: "queued" } }));

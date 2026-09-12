@@ -14,7 +14,11 @@ function Avatar({ name, small = false }: { name: DemoMember | "Hive"; small?: bo
   return <span aria-hidden="true" className={cn("grid shrink-0 place-items-center rounded-full border text-[11px] font-medium", small ? "size-6" : "size-8", name === "Alex" ? "border-[#d9d8d4] bg-[#f0efeb] text-[#57534b]" : "border-[#d2ddd8] bg-[#eaf1ed] text-[#3c6551]")}>{name === "Alex" ? "AL" : "CA"}</span>;
 }
 
-export function CollaborationDemo() {
+export function CollaborationDemo({ title = "Keep navigation predictable", repositoryName = "sample-team / workspace", initialRequest = "Make the Settings navigation feel more predictable. Casey, could you review the interaction as Hive works?" }: {
+  title?: string;
+  repositoryName?: string;
+  initialRequest?: string;
+}) {
   const [state, dispatch] = useReducer(demoReducer, undefined, createDemoState);
   const [member, setMember] = useState<DemoMember>("Casey");
   const [choice, setChoice] = useState<DemoChoice>("open");
@@ -41,9 +45,9 @@ export function CollaborationDemo() {
 
   return <main className="flex h-dvh min-h-[520px] flex-col bg-white text-[#202020]">
     <header className="flex h-16 shrink-0 items-center gap-4 border-b border-[#e9e9e7] px-4 sm:px-7">
-      <Link className="flex shrink-0 items-center gap-2.5 font-semibold" href="/demo" prefetch={false}><HiveMark className="size-8" />Hive</Link>
+      <Link aria-label="Back to sample tasks" className="flex shrink-0 items-center gap-2.5 rounded text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-4" href="/demo" prefetch={false}><HiveMark className="size-8" /><span className="hidden sm:inline">Sample tasks</span></Link>
       <span aria-hidden="true" className="text-[#d1d1cf]">/</span>
-      <div className="min-w-0"><h1 className="truncate text-sm font-medium">Keep navigation predictable</h1><p className="mt-0.5 flex items-center gap-1.5 text-xs text-[#7a7a75]"><GitBranch className="size-3" />sample-team / workspace</p></div>
+      <div className="min-w-0"><h1 className="truncate text-sm font-medium" title={title}>{title}</h1><p className="mt-0.5 flex items-center gap-1.5 text-xs text-[#7a7a75]"><GitBranch className="size-3 shrink-0" /><span className="truncate">{repositoryName}</span></p></div>
       <div className="ml-auto hidden items-center gap-2 sm:flex"><div className="flex -space-x-1"><Avatar name="Alex" /><Avatar name="Casey" /></div><span className="ml-1 text-xs text-[#73736e]">Demo team</span></div>
     </header>
 
@@ -59,7 +63,7 @@ export function CollaborationDemo() {
         <div className="flex h-12 shrink-0 items-center gap-2 border-b border-[#efefec] px-5 text-xs sm:px-8"><MessageSquare className="size-3.5 text-[#7a7a75]" /><h2 className="font-medium">Task conversation</h2><span className="ml-auto text-[#7a7a75]">One shared thread</span></div>
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-8 pt-6 sm:px-8" ref={conversation}>
           <div className="mx-auto max-w-[740px]">
-            <div className="mb-7 flex gap-3"><Avatar name="Alex" /><div className="min-w-0"><div className="mb-1.5 flex items-center gap-2 text-xs"><span className="font-medium">Alex</span><span className="text-[#8a8a84]">Task owner</span></div><p className="text-sm leading-6">Make the Settings navigation feel more predictable. Casey, could you review the interaction as Hive works?</p></div></div>
+            <div className="mb-7 flex gap-3"><Avatar name="Alex" /><div className="min-w-0"><div className="mb-1.5 flex items-center gap-2 text-xs"><span className="font-medium">Alex</span><span className="text-[#8a8a84]">Task owner</span></div><p className="text-sm leading-6">{initialRequest}</p></div></div>
             <div className="flex gap-3"><Avatar name="Hive" /><div className="min-w-0 flex-1"><div className="mb-1.5 text-xs font-medium">Hive</div><p className="text-sm leading-6">I’ll update the navigation and prepare the keyboard checks. One behavior to agree on first:</p>
               <section aria-label="Question for the team" className="mt-4 overflow-hidden rounded-xl border border-[#dce3dc] bg-[#fcfdfb]">
                 <div className="flex items-center gap-2 border-b border-[#e5eae2] px-4 py-3 text-xs text-[#52634e]"><CircleHelp className="size-3.5" /><span className="font-medium">{state.answer ? "Answered" : "Question for Casey"}</span><span className="ml-auto text-[11px]">{state.answer ? `by ${state.answer.author}` : state.phase === "waiting" ? "Needed to continue" : "Not blocking yet"}</span></div>

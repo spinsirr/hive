@@ -8,6 +8,7 @@ import { HiveMark } from "@/components/hive/hive-mark";
 import { MessageThreadPreview } from "@/components/hive/message-thread-preview";
 import { MessageTime } from "@/components/hive/message-time";
 import { SubagentActivity } from "@/components/hive/subagent-activity";
+import { PeerRequestSummary } from "@/components/hive/peer-request-summary";
 import { codeReferenceLabel } from "@/lib/code-reference";
 import type { ChatMessage, TeamMember } from "@/lib/task-session";
 import { cn } from "@/lib/utils";
@@ -42,6 +43,7 @@ export function ConversationMessage({ message, currentMember, members, sessionId
         <MessageTime className="text-xs text-[#aaa]" message={message} />
       </div>
       {message.subagents?.length ? <SubagentActivity live={message.status === "streaming" && runActive && !disabled} sessionId={sessionId} tasks={message.subagents} /> : null}
+      <PeerRequestSummary message={message} members={members} />
       {message.body ? (
         <MessageContent className={cn(
           "max-w-full text-sm leading-6 shadow-none",
@@ -51,6 +53,7 @@ export function ConversationMessage({ message, currentMember, members, sessionId
           {isAgent ? <AgentResponse streaming={message.status === "streaming"}>{message.body}</AgentResponse> : message.codeReference ? <div><p className="break-all text-xs text-[#737373]">{codeReferenceLabel(message.codeReference)}</p><pre className="mt-2 max-h-40 overflow-auto whitespace-pre font-mono text-xs leading-5">{message.codeReference.quote}</pre></div> : message.body}
         </MessageContent>
       ) : null}
+      {message.interaction ? <button type="button" onClick={() => onOpenThread(message.id)} className="self-start rounded-lg border border-[#dedede] px-3 py-1.5 text-xs font-medium hover:bg-[#fafafa] focus-visible:outline-2">Open collaboration thread</button> : null}
       {message.status !== "streaming" ? (
         <div className={cn("-mt-1 flex items-center gap-1 transition-opacity focus-within:opacity-100 group-hover:opacity-100 sm:opacity-0 motion-reduce:transition-none", isOwn && "justify-end")}>
           {isAgent && message.body ? <button aria-label={copyState === "copied" ? "Response copied" : "Copy response"} className={actionClass} onClick={() => { void copy(); }} type="button" title={copyState === "copied" ? "Copied" : "Copy response"}>{copyState === "copied" ? <Check aria-hidden="true" className="size-3.5" /> : <Copy aria-hidden="true" className="size-3.5" />}</button> : null}

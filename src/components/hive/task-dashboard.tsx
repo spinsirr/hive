@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Eye, FolderGit2, Plus } from "lucide-react";
+import { ArrowRight, FolderGit2, Plus, Users } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
@@ -57,14 +57,14 @@ function NewTask({ createAction }: { createAction: (formData: FormData) => Promi
   );
 }
 
-export function TaskDashboard({ tasks, memberName, memberInitials, loadedAt, createAction, homeHref = "/", onPreviewTask }: {
+export function TaskDashboard({ tasks, memberName, memberInitials, loadedAt, createAction, homeHref = "/", previewTaskHref }: {
   tasks: DashboardTask[];
   memberName: string;
   memberInitials: string;
   loadedAt: number;
   createAction: (formData: FormData) => Promise<void>;
   homeHref?: string;
-  onPreviewTask?: (task: DashboardTask) => void;
+  previewTaskHref?: (task: DashboardTask) => string;
 }) {
   const visible = dashboardTasks(tasks);
 
@@ -86,12 +86,19 @@ export function TaskDashboard({ tasks, memberName, memberInitials, loadedAt, cre
       </header>
 
       <div className="mx-auto max-w-5xl px-5 py-9 sm:px-8 sm:py-12">
-        <div className="mb-8 flex items-start justify-between gap-4">
+        <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold tracking-[-0.04em]">{onPreviewTask ? "Sample tasks" : "Tasks"}</h1>
-            <p className="mt-1.5 text-sm text-[#737373]">{onPreviewTask ? "Explore the dashboard. These are not live tasks." : "Your shared work with Hive."}</p>
+            <h1 className="text-2xl font-semibold tracking-[-0.04em]">{previewTaskHref ? "Sample tasks" : "Tasks"}</h1>
+            <p className="mt-1.5 text-sm text-[#737373]">{previewTaskHref ? "Open a sample task to try Hive. No live agents or repository changes." : "Your shared work with Hive."}</p>
           </div>
-          <NewTask createAction={createAction} />
+          <div className="flex flex-wrap items-center gap-2">
+            {!previewTaskHref ? (
+              <Link className="inline-flex min-h-9 items-center gap-2 rounded-md px-3 py-2 text-xs font-medium text-[#737373] transition hover:bg-[#eeeeee] hover:text-[#171717] focus-visible:outline-2 focus-visible:outline-offset-2" href="/demo" prefetch={false}>
+                <Users aria-hidden="true" className="size-3.5" /> Explore demo
+              </Link>
+            ) : null}
+            <NewTask createAction={createAction} />
+          </div>
         </div>
 
         <section aria-label="Task list" className="overflow-hidden rounded-lg border border-[#e1e1e1] bg-white">
@@ -109,7 +116,7 @@ export function TaskDashboard({ tasks, memberName, memberInitials, loadedAt, cre
                     <div className="min-w-0">
                       <p className="flex items-center gap-2 text-sm font-medium tracking-[-0.015em]">
                         <span className="truncate" title={task.title}>{task.title}</span>
-                        {onPreviewTask ? <span className="shrink-0 rounded bg-[#f2f2f2] px-1.5 py-0.5 text-xs font-normal tracking-normal text-[#737373]">Preview</span> : null}
+                        {previewTaskHref ? <span className="shrink-0 rounded bg-[#f2f2f2] px-1.5 py-0.5 text-xs font-normal tracking-normal text-[#737373]">Demo</span> : null}
                       </p>
                       <p className="mt-1 truncate text-xs text-[#888] sm:hidden">{task.repositoryName ?? "No repository attached"}</p>
                     </div>
@@ -118,16 +125,12 @@ export function TaskDashboard({ tasks, memberName, memberInitials, loadedAt, cre
                       <span className="truncate">{task.repositoryName ?? "Not attached"}</span>
                     </span>
                     <time className="text-xs text-[#888]" dateTime={new Date(task.updatedAt).toISOString()}>{taskUpdatedLabel(task.updatedAt, loadedAt)}</time>
-                    {onPreviewTask ? <Eye aria-hidden="true" className="hidden size-3.5 text-[#aaa] group-hover:text-[#171717] sm:block" /> : <ArrowRight aria-hidden="true" className="hidden size-3.5 text-[#aaa] group-hover:text-[#171717] sm:block" />}
+                    <ArrowRight aria-hidden="true" className="hidden size-3.5 text-[#aaa] group-hover:text-[#171717] sm:block" />
                   </>
                 );
                 return (
                   <li key={task.id}>
-                    {onPreviewTask ? (
-                      <button aria-label={`Preview sample task: ${task.title}`} className={rowClassName} onClick={() => onPreviewTask(task)} type="button">{content}</button>
-                    ) : (
-                      <Link className={rowClassName} href={`/sessions/${task.id}`}>{content}</Link>
-                    )}
+                    <Link aria-label={previewTaskHref ? `Open sample task: ${task.title}` : undefined} className={rowClassName} href={previewTaskHref ? previewTaskHref(task) : `/sessions/${task.id}`} prefetch={previewTaskHref ? false : undefined}>{content}</Link>
                   </li>
                 );
               })}

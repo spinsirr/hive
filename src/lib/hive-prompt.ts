@@ -13,7 +13,7 @@ export function buildHiveRunInput(
   members: TeamMember[],
 ) {
   const activeSteer =
-    action.type === "apply-next-steer" || action.type === "steer-thread" ? session.activeSteer : undefined;
+    action.type === "apply-next-steer" || action.type === "steer-thread" || action.type === "answer-question" || action.type === "continue-peer-response" ? session.activeSteer : undefined;
   if ((action.type === "apply-next-steer" || action.type === "steer-thread") && !activeSteer) {
     throw new Error("The selected steer is no longer available.");
   }
@@ -34,7 +34,12 @@ export function buildHiveRunInput(
   // Memory search uses the selected contribution, never the expanded team prompt.
   let memoryQuery = action.type === "send-message" ? action.body : undefined;
 
-  if (source?.kind === "message-thread") {
+  if (source?.kind === "peer-response") {
+    if (!activeSteer) throw new Error("The answer is no longer available.");
+    memoryQuery = session.title;
+    steer = ["Continue the original task using this answer to your question. Inspect current files first; the workspace may have advanced since the question. Your response will appear in the original thread. Do not repeat this already answered question.",
+      `Answer author: ${actorName}`, `Thread ID: ${source.messageId}`, activeSteer.body].join("\n\n");
+  } else if (source?.kind === "message-thread") {
     if (!activeSteer) throw new Error("The steered thread is no longer available.");
     memoryQuery = session.title;
     steer = [`Steer requested by: ${actorName}`, `Run started by: ${resolveMember(action.actor, members).name}`, activeSteer.body].join("\n\n");
