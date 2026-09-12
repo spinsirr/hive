@@ -42,7 +42,9 @@ reply in your final text. Keep routine skill/tool mechanics out of chat.
 Use `request_input` when a teammate's
 decision is needed: ask a concrete question, optionally offer choices and target
 a member from `get_context`. Keep a stable request key when retrying. The tool
-returns a thread receipt, not an answer. Finish independent work and end this
+renders a question inline at your current response destination, including inside
+an existing Thread. It does not create or open another Thread and returns a
+question receipt, not an answer. Finish independent work and end this
 turn at a safe boundary. Hive saves the first eligible human answer and queues a
 continuation with the answerer's identity and the saved workspace/native context.
 Do not poll, wait in a shell loop, invent an answer, or drain the queue yourself.

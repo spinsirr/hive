@@ -96,13 +96,13 @@ try {
   assert.equal(continuations.filter((item) => item.startedRun).length, 1, "two clients receive only one execution grant");
   snapshot = await store.getPublicTaskSessionSnapshot(task.sessionId);
   const continuationId = snapshot.session.workspace.liveReply.id;
-  assert.equal(snapshot.session.workspace.liveReply.threadId, messageId);
+  assert.equal(snapshot.session.workspace.liveReply.threadId, undefined, "an inline answer does not create a Thread");
   assert.equal(snapshot.session.workspace.agentSession.id, "native-fixture");
   await store.checkpointAgentReply(task.sessionId, continuationId, "Checking the answer", 1);
   assert.equal((await store.getPublicTaskSessionSnapshot(task.sessionId)).session.workspace.liveReply.body, "Checking the answer");
   await store.appendHiveReply(task.sessionId, "Applied the team answer", { forReplyId: continuationId, runResult: { ...runResult, summary: "Applied the team answer" } });
   const finished = await store.getPublicTaskSessionSnapshot(task.sessionId);
-  assert.equal(finished.session.messages.find((m) => m.id === messageId).annotations.at(-1).body, "Applied the team answer");
+  assert.equal(finished.session.messages.find((m) => m.id === continuationId).body, "Applied the team answer");
   assert.equal(finished.session.steeringQueue.length, 0);
   await assert.rejects(store.createHivePeerRequest(scope, { key: "late", prompt: "Stale run" }));
   const reviewRun = await store.applyTaskSessionAction(task.sessionId, { type: "send-message", actor: members[0].id, body: "Prepare a review", clientId: randomUUID() }, members[0]);
@@ -130,7 +130,7 @@ try {
   const before = (await store.getPublicTaskSessionSnapshot(foreign.sessionId)).session.version;
   await store.applyTaskSessionAction(foreign.sessionId, { type: "answer-question", actor: members[0].id, messageId, body: "Cross-task ID", clientId: randomUUID() }, members[0]);
   assert.equal((await store.getPublicTaskSessionSnapshot(foreign.sessionId)).session.version, before);
-  console.log("PASS: real MCP → Postgres question → concurrent answers → one continuation → thread stream/result; reconnect read, stale run and cross-task denial.");
+  console.log("PASS: real MCP → Postgres inline question → concurrent answers → one main-conversation continuation; reconnect read, stale run and cross-task denial.");
   console.log("PASS: real MCP review request → completed evidence → assigned reviewer; stale version and duplicate resolution are no-ops.");
   // Ordinary discussions must have the same reply destination as structured
   // questions/reviews, including single replies and queued continuations.
@@ -171,6 +171,36 @@ try {
     assert.equal(replies.at(-1).role, "agent");
   }
   console.log("PASS: ordinary Thread single/whole and immediate/queued steers stream and finish in their original discussion; main messages remain root messages.");
+  for (const answerWhileBusy of [false, true]) {
+    const task = await store.createTaskSession(`Question in existing Thread ${answerWhileBusy}`, members[0]);
+    await store.joinTaskSession(task.sessionId, members[1].id);
+    const first = await store.applyTaskSessionAction(task.sessionId, { type: "send-message", actor: members[0].id, body: "Discuss navigation", clientId: randomUUID() }, members[0]);
+    const rootId = first.snapshot.session.workspace.liveReply.id;
+    await store.appendHiveReply(task.sessionId, "We can discuss here.", { forReplyId: rootId, runResult });
+    const discussion = await store.applyTaskSessionAction(task.sessionId, { type: "annotate-message", actor: members[1].id, messageId: rootId, body: "Ask me a density preference here", clientId: randomUUID() }, members[1]);
+    const throughReplyId = discussion.snapshot.session.messages.find((message) => message.id === rootId).annotations.at(-1).id;
+    const started = await store.applyTaskSessionAction(task.sessionId, { type: "steer-thread", actor: members[1].id, messageId: rootId, throughReplyId }, members[1]);
+    const scope = { sessionId: task.sessionId, memberId: members[1].id, runId: started.snapshot.session.workspace.liveReply.id };
+    const request = await store.createHivePeerRequest(scope, { key: "thread-density", prompt: "Compact or spacious?", targetMemberId: members[1].id, options: ["Compact", "Spacious"] });
+    const question = (await store.getPublicTaskSessionSnapshot(task.sessionId)).session.messages.find((message) => message.id === request.messageId);
+    assert.equal(question.threadId, rootId);
+    if (!answerWhileBusy) await store.appendHiveReply(task.sessionId, "Question ready.", { forReplyId: scope.runId, runResult });
+    const answers = await Promise.all([1, 2].map(() => store.applyTaskSessionAction(task.sessionId, { type: "answer-question", actor: members[1].id, messageId: question.id, body: "Compact", clientId: randomUUID() }, members[1])));
+    assert.equal(answers.filter((answer) => answer.startedRun).length, answerWhileBusy ? 0 : 1);
+    if (answerWhileBusy) {
+      await store.appendHiveReply(task.sessionId, "Question ready.", { forReplyId: scope.runId, runResult });
+      const pending = (await store.getPublicTaskSessionSnapshot(task.sessionId)).session.steeringQueue[0];
+      await store.applyTaskSessionAction(task.sessionId, { type: "continue-peer-response", actor: members[0].id, steerId: pending.id }, members[0]);
+    }
+    const resumed = (await store.getPublicTaskSessionSnapshot(task.sessionId)).session;
+    assert.equal(resumed.workspace.liveReply.threadId, rootId, "answer continuation stays in the existing Thread, not the question ID");
+    await store.checkpointAgentReply(task.sessionId, resumed.workspace.liveReply.id, "Compact it is.", 1);
+    await store.appendHiveReply(task.sessionId, "Compact it is.", { forReplyId: resumed.workspace.liveReply.id, runResult: { ...runResult, summary: "Compact it is." } });
+    const finished = (await store.getPublicTaskSessionSnapshot(task.sessionId)).session;
+    assert.equal(finished.messages.find((message) => message.id === rootId).annotations.at(-1).body, "Compact it is.");
+    assert.ok(!finished.messages.some((message) => message.id === resumed.workspace.liveReply.id), "no duplicate main reply");
+  }
+  console.log("PASS: real store retains Thread identity through question creation, concurrent answers, immediate/queued continuation, streaming and completion.");
   // Archive is a shared task state, serialized with run admission and recovery.
   const archive = { type: "archive-task", actor: members[0].id };
   const archived = await store.applyTaskSessionAction(task.sessionId, archive, members[0]);
@@ -244,7 +274,7 @@ try {
   assert.notEqual(reusedTool.isError, true);
   assert.deepEqual(JSON.parse(reusedTool.content[0].text), { messageId: original.messageId, created: false, status: "awaiting_answer" });
   await store.appendHiveReply(repeatTask.sessionId, "Discussed the opinion, no new question", { forReplyId: repeatScope.runId, runResult });
-  const finalAnswers = await Promise.all([1, 2].map(() => store.applyTaskSessionAction(repeatTask.sessionId, { type: "answer-question", actor: members[1].id, messageId: original.messageId, body: "YES", clientId: randomUUID() }, members[1])));
+  const finalAnswers = await Promise.all([1, 2].map(() => store.applyTaskSessionAction(repeatTask.sessionId, { type: "answer-question", actor: members[1].id, messageId: original.messageId, replyThreadId: original.messageId, body: "YES", clientId: randomUUID() }, members[1])));
   assert.equal(finalAnswers.filter((item) => item.startedRun).length, 1, "the original question answer continues exactly once");
   const afterAnswer = (await store.getPublicTaskSessionSnapshot(repeatTask.sessionId)).session;
   assert.equal(afterAnswer.workspace.liveReply.threadId, original.messageId);

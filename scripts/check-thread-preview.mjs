@@ -78,8 +78,9 @@ assert.doesNotMatch(openCard, /Here are the pros and cons/, "when the thread is 
 assert.match(openCard, /aria-expanded="true"/);
 assert.match(openCard, /Thread open/);
 const emptyQuestion = renderToStaticMarkup(createElement(ConversationMessage, { ...cardProps, message: { ...question, annotations: [] } }));
-assert.match(emptyQuestion, /Open collaboration thread/);
-assert.doesNotMatch(emptyQuestion, /Reply in thread to/);
+assert.doesNotMatch(emptyQuestion, /Open collaboration thread|Open thread with/);
+assert.match(emptyQuestion, /Reply in thread to/);
+assert.match(emptyQuestion, /data-slot="question-message"/);
 const archivedCard = renderToStaticMarkup(createElement(ConversationMessage, { ...cardProps, disabled: true }));
 assert.match(archivedCard, /Open thread with 2 replies/);
 assert.doesNotMatch(archivedCard, /disabled=""/);
@@ -107,11 +108,10 @@ assert.match(ordinary.lastElementChild.textContent, /Open thread/);
 for (const message of [
   { ...question, role: "human", memberId: "demo-alex", interaction: undefined },
   { ...question, interaction: { kind: "review", runId: "qa-run", status: "open", revision: "qa-run" } },
-  { ...question, annotations: [] },
 ]) {
   const surface = new JSDOM(renderToStaticMarkup(createElement(ConversationMessage, { ...cardProps, message }))).window.document.querySelector('[data-slot="threaded-message"]');
   assert.equal(surface.className, ordinary.className, "all Thread-bearing messages share one surface");
-  assert.equal(surface.lastElementChild.className, collapsedQuestion.className, "human, review and empty question Thread entries cannot fork their appearance");
+  assert.equal(surface.lastElementChild.className, collapsedQuestion.className, "human and review Thread entries cannot fork their appearance");
   assert.equal(surface.querySelectorAll('button[aria-expanded]').length, 1);
 }
 assert.equal(actions, 0);

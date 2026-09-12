@@ -46,13 +46,14 @@ test("sample actions use production identity, queue, review and recovery rules",
   const questionRun = demo.getSnapshot().session.workspace.liveReply;
   assert.ok(questionRun);
   demo.finishRun(questionRun.id);
-  assert.equal(demo.getSnapshot().session.messages.find((message) => message.id === "sample-question")?.annotations?.at(-1)?.role, "agent");
+  assert.equal(questionRun.threadId, undefined, "an inline answer stays in the main conversation");
+  assert.equal(demo.getSnapshot().session.messages.find((message) => message.id === questionRun.id)?.role, "agent");
   await demo.dispatch({ type: "send-message", clientId: "next", body: "Prepare a sample change for review" });
   const run = demo.getSnapshot().session.workspace.liveReply;
   assert.ok(run);
   const runId = run.id;
   demo.finishRun(runId);
-  const review = demo.getSnapshot().session.messages.find((message) => message.interaction?.kind === "review");
+  const review = demo.getSnapshot().session.messages.find((message) => message.interaction?.kind === "review" && message.interaction.revision === runId);
   assert.ok(review?.interaction?.kind === "review" && review.interaction.revision);
   assert.equal(review.interaction.status, "open");
   demo.setMember(demoMembers[1].id);

@@ -57,6 +57,7 @@ export function requestPeerInput(state: TaskSessionState, scope: HiveToolScope, 
   }
   if (state.messages.filter((message) => message.interaction?.runId === scope.runId).length >= 4) throw new Error("At most four requests per turn.");
   const message: ChatMessage = {
+    threadId: kind === "question" ? state.workspace.liveReply?.threadId : undefined,
     id: messageId, role: "agent", name: "Hive", initials: "H", body: request.prompt,
     time: new Date(now).toISOString(), createdAt: now,
     interaction: kind === "review"

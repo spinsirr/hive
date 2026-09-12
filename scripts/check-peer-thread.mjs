@@ -40,9 +40,9 @@ let replies = 0;
 let answers = 0;
 const props = {
   sessionId: scope.sessionId, message: session.messages.at(-1), members, currentMember: "maya", disabled: false, runActive: true, queue: [],
-  onClose() {}, onSteerReply() {}, onSteerThread: async () => true,
+  onClose() {}, onSteerThread: async () => true,
   onReply: async () => { replies++; return true; },
-  onAnswerQuestion: async (messageId, submission) => { answers++; session = reduceTaskSession(session, { type: "answer-question", actor: "maya", messageId, ...submission }, 4, members); return true; },
+  onAnswerQuestion: async (messageId, submission, replyThreadId) => { answers++; session = reduceTaskSession(session, { type: "answer-question", actor: "maya", messageId, replyThreadId, ...submission }, 4, members); return true; },
 };
 try {
   const view = render(createElement(MessageThread, props));
@@ -53,6 +53,7 @@ try {
   fireEvent.click(screen.getByRole("button", { name: "Send answer", exact: true }));
   await waitFor(() => assert.equal(answers, 1));
   assert.equal(replies, 0, "answer is not an ordinary discussion reply");
+  assert.equal(session.steeringQueue[0].source.replyThreadId, props.message.id, "answering inside a manually opened Thread returns here");
   view.rerender(createElement(MessageThread, { ...props, message: session.messages.at(-1), queue: session.steeringQueue }));
   assert.equal(screen.queryByRole("button", { name: "Send answer", exact: true }), null);
   assert.match(screen.getByLabelText("Message thread").textContent, /Answered by Maya/);
@@ -66,6 +67,30 @@ try {
   await waitFor(() => assert.equal(verified, "run-one"));
   console.log("PASS: choices, free text, answer-once acknowledgement and return to discussion in the real Thread.");
   console.log("PASS: review readiness gates verification and submits the displayed revision.");
+  cleanup();
+  let destination = "unset";
+  const answerProps = { message: props.message, currentMember: "maya", members, sessionId: "inline-question-ui", disabled: false, runActive: false, selected: false, onOpenThread() { throw new Error("answer must not open a Thread"); }, onAnswerQuestion: async (_id, _submission, threadId) => { destination = threadId; return true; } };
+  render(createElement(ConversationMessage, answerProps));
+  await waitFor(() => assert.equal(screen.getByRole("textbox", { name: "Answer Hive" }).disabled, false));
+  assert.equal(screen.queryByRole("button", { name: "Open collaboration thread" }), null);
+  fireEvent.click(screen.getByRole("button", { name: "Team", exact: true }));
+  fireEvent.click(screen.getByRole("button", { name: "Send answer", exact: true }));
+  await waitFor(() => assert.equal(destination, undefined));
+  assert.equal(screen.queryByLabelText("Message thread"), null, "inline answer does not navigate");
+  cleanup();
+  const threadRoot = { id: "root", name: "Maya", initials: "MC", body: "Discuss here", role: "human", time: "10:00", annotations: [{ id: "human-feedback", authorId: "maya", body: "Ask me a preference", createdAt: 1, status: "open" }, { id: "agent-ack", authorId: "hive-agent", role: "agent", body: "A question below", createdAt: 2, status: "open" }], threadSteer: { throughReplyId: "human-feedback", status: "steered", requestedBy: "maya", replyCount: 1 } };
+  destination = "unset";
+  const nestedView = render(createElement(MessageThread, { ...props, sessionId: "nested-question-ui", message: threadRoot, requests: [{ ...props.message, id: "nested-question", threadId: threadRoot.id }], onAnswerQuestion: async (_id, _submission, threadId) => { destination = threadId; return true; } }));
+  assert.equal(screen.getAllByLabelText("Message thread").length, 1);
+  assert.equal(screen.queryByRole("button", { name: /Open collaboration thread|Reply in thread to/ }), null, "a question in a Thread cannot create a nested Thread");
+  assert.ok(screen.getByRole("button", { name: /Queue entire thread/ }).disabled, "agent-only acknowledgement cannot be steered again");
+  await waitFor(() => assert.equal(screen.getByRole("textbox", { name: "Answer Hive" }).disabled, false));
+  fireEvent.click(screen.getByRole("button", { name: "Author", exact: true }));
+  fireEvent.click(screen.getByRole("button", { name: "Send answer", exact: true }));
+  await waitFor(() => assert.equal(destination, threadRoot.id));
+  nestedView.rerender(createElement(MessageThread, { ...props, message: { ...threadRoot, threadSteer: undefined, annotations: threadRoot.annotations.map((reply) => ({ ...reply, deliveryStatus: "streaming" })) } }));
+  assert.ok(screen.getByRole("button", { name: /Queue entire thread/ }).disabled, "partial output cannot be shared");
+  console.log("PASS: inline questions need no Thread; child questions and answer destinations stay in one Thread, with no agent self-steer or partial-output handoff.");
   cleanup();
   let copiedText;
   Object.defineProperty(navigator, "clipboard", { configurable: true, value: { async writeText(text) { copiedText = text; } } });

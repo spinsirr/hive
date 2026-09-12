@@ -4,7 +4,8 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { handleHiveMcp } from "./hive-mcp.ts";
 import { createHiveMemory } from "./hive-memory.ts";
-import { createInitialTaskSessionState, memberDirectory, reduceTaskSession, applyHiveRunResult, applyHiveRunError, conversationMessages, type TaskSessionState, type HiveRunResult } from "./task-session.ts";
+import { createInitialTaskSessionState, memberDirectory, reduceTaskSession, applyHiveRunResult, applyHiveRunError, conversationMessages, hiveReplyThreadId, type TaskSessionState, type HiveRunResult } from "./task-session.ts";
+import { conversationTimelineMessages } from "./conversation-timeline.ts";
 import { buildHivePrompt, buildHiveRunInput } from "./hive-prompt.ts";
 import { requestPeerInput } from "./peer-collaboration.ts";
 import { describeHiveContext } from "./hive-tool-context.ts";
@@ -46,9 +47,9 @@ test("agent can publish a question through its task tools, with choices and a na
   } finally { await client.close(); }
 });
 
-test("teammate answer is saved once, queued while busy, and continued with authorship in the original thread", () => {
+test("answering in an explicitly opened Thread continues there once with authorship", () => {
   const { session, messageId } = requestPeerInput(working(), scope, { key: "drafts", prompt: "Who can see drafts?", targetMemberId: "maya" }, members, 3);
-  const action = { type: "answer-question", actor: "maya", messageId, body: "Only the author, until shared.", clientId: "answer-one" } as const;
+  const action = { type: "answer-question", actor: "maya", messageId, replyThreadId: messageId, body: "Only the author, until shared.", clientId: "answer-one" } as const;
   const answered = reduceTaskSession(session, action, 4, members);
   assert.equal(answered.steeringQueue.length, 1);
   assert.equal(answered.messages.at(-1)?.annotations?.[0].authorId, "maya");
@@ -60,12 +61,40 @@ test("teammate answer is saved once, queued while busy, and continued with autho
   assert.equal(input.actor, "maya");
   assert.match(input.steer!, /Only the author/);
   assert.match(input.steer!, /Maya Chen/);
-  resumed.workspace.liveReply = { id: "run-two", threadId: messageId, body: "Checking access", sequence: 1, startedAt: 7 };
+  assert.equal(hiveReplyThreadId(resumed, { type: "apply-next-steer", actor: "spencer" }), messageId);
+  resumed.workspace.liveReply = { id: "run-two", threadId: hiveReplyThreadId(resumed, action), body: "Checking access", sequence: 1, startedAt: 7 };
   assert.equal(conversationMessages(resumed).find((m) => m.id === messageId)?.annotations?.at(-1)?.body, "Checking access");
   const finished = applyHiveRunResult(resumed, { ...result(), summary: "Drafts are private until shared." }, 8);
   assert.equal(finished.messages.find((m) => m.id === messageId)?.annotations?.at(-1)?.body, "Drafts are private until shared.");
   assert.equal(finished.messages.some((m) => m.id === "run-two"), false, "result does not escape its thread");
 });
+
+for (const inThread of [false, true]) for (const busy of [false, true]) {
+  test(`${busy ? "queued" : "immediate"} question answer preserves its ${inThread ? "existing Thread" : "main conversation"} destination`, () => {
+    const initial = working();
+    initial.messages.push({ id: "discussion-root", role: "human", name: "Spencer", initials: "SZ", body: "Discuss navigation", time: "12:00", createdAt: 1 });
+    if (inThread) initial.workspace.liveReply!.threadId = "discussion-root";
+    const requested = requestPeerInput(initial, scope, { key: "inline-destination", prompt: "Compact or spacious?", targetMemberId: "maya" }, members, 3);
+    const question = requested.session.messages.find((message) => message.id === requested.messageId)!;
+    assert.equal(question.threadId, inThread ? "discussion-root" : undefined);
+    assert.equal(conversationTimelineMessages(requested.session.messages).some((message) => message.id === question.id), !inThread, "Thread questions never also appear in the main timeline");
+    const session = busy ? requested.session : applyHiveRunResult(requested.session, result(), 4);
+    const action = { type: "answer-question", actor: "maya", messageId: question.id, body: "Compact", clientId: "one-answer" } as const;
+    assert.equal(reduceTaskSession(session, { ...action, replyThreadId: "another-task-or-thread" }, 5, members), session, "a client cannot redirect the answer to an unrelated Thread");
+    let resumed = reduceTaskSession(session, action, 5, members);
+    if (busy) resumed = reduceTaskSession(applyHiveRunResult(resumed, result(), 6), { type: "apply-next-steer", actor: "spencer" }, 7, members);
+    const threadId = hiveReplyThreadId(resumed, action);
+    assert.equal(threadId, inThread ? "discussion-root" : undefined);
+    const input = buildHiveRunInput(resumed, action, members);
+    assert.match(input.steer!, inThread ? /originating Thread discussion-root/ : /main conversation; do not create a Thread/);
+    resumed.workspace.liveReply = { id: "answer-result", threadId, body: "Compact it is.", sequence: 1, startedAt: 7 };
+    const live = conversationMessages(resumed);
+    assert.equal(inThread ? live.find((message) => message.id === threadId)?.annotations?.at(-1)?.body : live.find((message) => message.id === "answer-result")?.body, "Compact it is.");
+    const finished = applyHiveRunResult(resumed, { ...result(), summary: "Compact it is." }, 8);
+    assert.equal(inThread ? finished.messages.find((message) => message.id === threadId)?.annotations?.at(-1)?.body : finished.messages.find((message) => message.id === "answer-result")?.body, "Compact it is.");
+    if (inThread) assert.ok(!finished.messages.some((message) => message.id === "answer-result"), "no escaped duplicate main message");
+  });
+}
 
 function result(): HiveRunResult {
   return { sandboxName: "sandbox-test", agentSession: { id: "native-one", runtime: "codex" }, summary: "Waiting for the team decision.", diff: "", files: [], commands: [], changedFiles: [] };

@@ -9,6 +9,8 @@ import { MessageThreadPreview } from "@/components/hive/message-thread-preview";
 import { MessageTime } from "@/components/hive/message-time";
 import { SubagentActivity } from "@/components/hive/subagent-activity";
 import { PeerRequestSummary } from "@/components/hive/peer-request-summary";
+import { QuestionAnswer } from "@/components/hive/question-answer";
+import type { MessageSubmission } from "@/lib/message-draft";
 import { Button } from "@/components/ui/button";
 import { codeReferenceLabel } from "@/lib/code-reference";
 import type { ConversationTurn as ConversationTurnData } from "@/lib/conversation-timeline";
@@ -25,6 +27,7 @@ type ConversationMessageProps = {
   selected: boolean;
   hideAuthor?: boolean;
   onOpenThread: (messageId: string) => void;
+  onAnswerQuestion?: (messageId: string, submission: MessageSubmission, replyThreadId?: string) => Promise<boolean>;
 };
 
 export function ConversationTurn({ turn, selectedThreadId, ...props }: Omit<ConversationMessageProps, "message" | "selected" | "hideAuthor"> & {
@@ -37,12 +40,15 @@ export function ConversationTurn({ turn, selectedThreadId, ...props }: Omit<Conv
   </div>;
 }
 
-export function ConversationMessage({ message, currentMember, members, sessionId, disabled, runActive, selected, hideAuthor = false, onOpenThread }: ConversationMessageProps) {
+export function ConversationMessage({ message, currentMember, members, sessionId, disabled, runActive, selected, hideAuthor = false, onOpenThread, onAnswerQuestion }: ConversationMessageProps) {
   const isAgent = message.role === "agent";
   const isOwn = !isAgent && message.memberId === currentMember;
-  const hasReplies = Boolean(message.annotations?.length);
-  const hasThread = hasReplies || Boolean(message.interaction);
-  const canStartThread = !disabled && !hasReplies && !message.interaction;
+  const question = message.interaction?.kind === "question" ? message.interaction : undefined;
+  const discussion = question ? { ...message, annotations: message.annotations?.filter((reply) => reply.id !== question.answer?.replyId) } : message;
+  const hasReplies = Boolean(discussion.annotations?.length);
+  const hasThread = !message.threadId && (hasReplies || message.interaction?.kind === "review");
+  const hasCard = hasThread || Boolean(message.interaction);
+  const canStartThread = !disabled && !hasThread && !message.threadId;
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
   useEffect(() => {
     if (copyState !== "copied") return;
@@ -56,19 +62,19 @@ export function ConversationMessage({ message, currentMember, members, sessionId
   const actions = message.status !== "streaming" && ((isAgent && message.body) || canStartThread) ? (
     <div className={cn("ml-auto flex shrink-0 items-center gap-1 text-muted-foreground transition-opacity focus-within:opacity-100 group-hover:opacity-100 sm:opacity-0 motion-reduce:transition-none", isOwn && "ml-0")}>
       {isAgent && message.body ? <Button aria-label={copyState === "copied" ? "Response copied" : "Copy response"} className="text-muted-foreground" onClick={() => { void copy(); }} size={copyState === "copied" ? "xs" : "icon-xs"} type="button" variant="ghost" title={copyState === "copied" ? "Copied" : "Copy text"}><Copy aria-hidden="true" className="size-3.5" />{copyState === "copied" ? <span>Copied</span> : null}</Button> : null}
-      {canStartThread ? <Button aria-label={`Reply in thread to ${message.name}'s message`} className="text-xs text-muted-foreground" onClick={() => onOpenThread(message.id)} size="xs" type="button" variant="ghost"><MessageSquare aria-hidden="true" className="size-3.5" /> Reply</Button> : null}
+      {canStartThread ? <Button aria-label={`Reply in thread to ${message.name}'s message`} data-thread-trigger={message.id} className="text-xs text-muted-foreground" onClick={() => onOpenThread(message.id)} size="xs" type="button" variant="ghost"><MessageSquare aria-hidden="true" className="size-3.5" /> Reply</Button> : null}
     </div>
   ) : null;
   const body = message.body ? (
     <MessageContent className={cn(
       "max-w-full text-sm leading-6 shadow-none",
       isAgent ? "w-full overflow-visible bg-transparent px-0.5 py-1 text-[#333]" : "w-fit whitespace-pre-wrap rounded-[18px] bg-[#f4f4f4] px-4 py-3 text-[#333] group-[.is-user]:rounded-[18px] group-[.is-user]:bg-[#f4f4f4] sm:max-w-[94%]",
-      hasThread && "w-full rounded-none bg-transparent px-0.5 py-1 group-[.is-user]:rounded-none group-[.is-user]:bg-transparent group-[.is-user]:px-0.5 group-[.is-user]:py-1 sm:max-w-full",
+      hasCard && "w-full rounded-none bg-transparent px-0.5 py-1 group-[.is-user]:rounded-none group-[.is-user]:bg-transparent group-[.is-user]:px-0.5 group-[.is-user]:py-1 sm:max-w-full",
     )}>
       {isAgent ? <AgentResponse streaming={message.status === "streaming"}>{message.body}</AgentResponse> : message.codeReference ? <div><p className="break-all text-xs text-[#737373]">{codeReferenceLabel(message.codeReference)}</p><pre className="mt-2 max-h-40 overflow-auto whitespace-pre font-mono text-xs leading-5">{message.codeReference.quote}</pre></div> : message.body}
     </MessageContent>
   ) : null;
-  const thread = <MessageThreadPreview expanded={selected} members={members} message={message} onOpen={() => onOpenThread(message.id)} />;
+  const thread = <MessageThreadPreview expanded={selected} members={members} message={discussion} onOpen={() => onOpenThread(message.id)} />;
 
   return (
     <Message className={cn("min-w-0 max-w-full gap-2.5 rounded-xl", selected && !hasThread && "outline-1 outline-offset-4 outline-border")} data-message-id={message.id} from={isOwn ? "user" : "assistant"}>
@@ -79,15 +85,16 @@ export function ConversationMessage({ message, currentMember, members, sessionId
         {!message.interaction ? actions : null}
       </div> : null}
       {message.subagents?.length ? <SubagentActivity live={message.status === "streaming" && runActive && !disabled} sessionId={sessionId} tasks={message.subagents} /> : null}
-      {hasThread ? <div className={cn("w-full overflow-hidden rounded-xl border border-border bg-background", selected && "border-foreground/30")} data-slot="threaded-message">
+      {hasCard ? <div className={cn("w-full overflow-hidden rounded-xl border border-border bg-background", selected && "border-foreground/30")} data-slot={hasThread ? "threaded-message" : "question-message"}>
         <div className="flex min-w-0 flex-col gap-2 px-4 py-3">
           {message.interaction ? <div className="flex min-w-0 items-center gap-2">
             <PeerRequestSummary className="mb-0" message={message} members={members} />
             {actions}
           </div> : null}
           {body}
+          {question && onAnswerQuestion && !selected ? <QuestionAnswer currentMember={currentMember} disabled={disabled} members={members} message={message} onAnswer={onAnswerQuestion} replyThreadId={message.threadId} sessionId={sessionId} /> : null}
         </div>
-        {thread}
+        {hasThread ? thread : null}
       </div> : body}
       {copyState === "failed" ? <span className="text-xs text-muted-foreground" role="status">Couldn’t copy. Select the text to copy it.</span> : null}
     </Message>

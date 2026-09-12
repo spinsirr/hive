@@ -38,8 +38,9 @@ export function buildHiveRunInput(
   if (source?.kind === "peer-response") {
     if (!activeSteer) throw new Error("The answer is no longer available.");
     memoryQuery = session.title;
-    steer = ["Continue the original task using this answer to your question. Preserve the original request's scope and restrictions; an answer does not authorize additional work. If the task only asked you to collect a preference, acknowledge it briefly and stop without tools. Only inspect current files if the authorized next step requires repository work, because the workspace may have advanced since the question. Your response will appear in the original thread. Do not repeat this already answered question.",
-      `Answer author: ${actorName}`, `Thread ID: ${source.messageId}`, activeSteer.body].join("\n\n");
+    steer = ["Continue the original task using this answer to your question. Preserve the original request's scope and restrictions; an answer does not authorize additional work. If the task only asked you to collect a preference, acknowledge it briefly and stop without tools. Only inspect current files if the authorized next step requires repository work, because the workspace may have advanced since the question. Do not repeat this already answered question.",
+      source.replyThreadId ? `Your response stays in the originating Thread ${source.replyThreadId}.` : "Your response stays in the main conversation; do not create a Thread.",
+      `Answer author: ${actorName}`, `Question ID: ${source.messageId}`, activeSteer.body].join("\n\n");
   } else if (source?.kind === "message-thread") {
     if (!activeSteer) throw new Error("The steered thread is no longer available.");
     memoryQuery = session.title;
@@ -92,7 +93,7 @@ export function buildHiveRunInput(
         "Existing question state (server supplied):",
         JSON.stringify({ threadId: parent.id, key: peerRequestKey(parent), targetMemberId: parent.interaction.targetMemberId,
           status: parent.interaction.answer ? "answered" : "awaiting_answer" }),
-        "Respond to the selected contribution in this thread. Do not call request_input again for this existing question, create a replacement under a new key, or treat ordinary discussion as the designated answer. The question card already asks the human; do not repeat its prompt or receipt ID in your reply.",
+        "Respond to the selected contribution at the server-supplied response destination. Do not call request_input again for this existing question, create a replacement under a new key, or treat ordinary discussion as the designated answer. The question card already asks the human; do not repeat its prompt or receipt ID in your reply.",
       ].join("\n\n");
     }
   }
