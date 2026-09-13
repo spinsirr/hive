@@ -57,7 +57,7 @@ export function SteeringQueue({ activeSteer, canApply, disabled, items, messages
   return <section aria-label="Queued steering" className="mx-3 mt-2 shrink-0 overflow-hidden rounded-2xl border border-border bg-muted/30 sm:mx-5">
     <div className="flex items-center justify-between gap-2 px-3 py-2 text-xs text-muted-foreground">
       <span>{items.length ? `${items.length} queued` : "Current steer"}</span>
-      {items.length ? <Button disabled={disabled || !canApply} onClick={onApply} size="xs" title="Starts the next steer only after the current run finishes" type="button" variant="ghost"><Play aria-hidden="true" className="size-3" /> {canApply ? "Run next" : "After current run"}</Button> : null}
+      {items.length ? <Button disabled={disabled || !canApply} onClick={onApply} size="xs" title="Queued input continues automatically after a successful run. Use Run next to resume paused work." type="button" variant="ghost"><Play aria-hidden="true" className="size-3" /> {canApply ? "Run next" : "After current run"}</Button> : null}
     </div>
     <ul aria-label="Agent work" className="max-h-48 overflow-y-auto">
       {activeSteer ? <SteerRow applying item={activeSteer} members={members} message={messages.find((message) => "messageId" in activeSteer.source && message.id === activeSteer.source.messageId)} /> : null}

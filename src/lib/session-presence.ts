@@ -28,7 +28,7 @@ export function isPresenceAnnouncement(value: unknown): value is PresenceAnnounc
 /** Ephemeral, connection-owned presence. NOTIFY is a relay, never a table write/read. */
 export class SessionPresence {
   private instanceId = randomUUID();
-  private local = new Map<string, Map<symbol, { memberId: MemberId; typing: boolean }>>();
+  private local = new Map<string, Map<symbol, { memberId?: MemberId; typing: boolean }>>();
   private remote = new Map<string, Map<string, { members: [MemberId, boolean][]; expiresAt: number }>>();
   private renewal?: ReturnType<typeof setInterval>;
   private expiry?: ReturnType<typeof setTimeout>;
@@ -44,7 +44,8 @@ export class SessionPresence {
     this.changed = changed;
   }
 
-  join(sessionId: string, memberId: MemberId) {
+  // An observer joins the relay without representing an online person.
+  join(sessionId: string, memberId?: MemberId) {
     if (this.disposed) throw new Error("Presence connection is closed.");
     const connections = this.local.get(sessionId) ?? new Map();
     const key = Symbol();
@@ -114,7 +115,7 @@ export class SessionPresence {
   private localMembers(sessionId: string): [MemberId, boolean][] {
     const members = new Map<MemberId, boolean>();
     for (const { memberId, typing } of this.local.get(sessionId)?.values() ?? []) {
-      members.set(memberId, Boolean(members.get(memberId) || typing));
+      if (memberId) members.set(memberId, Boolean(members.get(memberId) || typing));
     }
     return [...members.entries()].sort(([a], [b]) => a.localeCompare(b));
   }

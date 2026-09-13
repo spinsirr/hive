@@ -90,7 +90,7 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
     payload.type !== "edit-message" &&
     payload.type !== "answer-question" &&
     payload.type !== "resolve-peer-review" &&
-    payload.type !== "continue-peer-response" &&
+    payload.type !== "continue-queued-steer" &&
     payload.type !== "select-harness" &&
     payload.type !== "set-coding-effort" &&
     payload.type !== "annotate-message" &&
@@ -123,8 +123,8 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
     !("clientId" in payload) || !isClientSubmissionId(payload.clientId))) {
     return NextResponse.json({ error: "Choose a question and provide an answer with a submission ID." }, { status: 400 });
   }
-  if (payload.type === "continue-peer-response" && (!("steerId" in payload) || typeof payload.steerId !== "string" || payload.steerId.length > 200)) {
-    return NextResponse.json({ error: "Choose a queued answer." }, { status: 400 });
+  if (payload.type === "continue-queued-steer" && (!("steerId" in payload) || typeof payload.steerId !== "string" || payload.steerId.length > 200)) {
+    return NextResponse.json({ error: "Choose a queued instruction." }, { status: 400 });
   }
   if (payload.type === "resolve-peer-review" && (!("messageId" in payload) || typeof payload.messageId !== "string" || payload.messageId.length > 200 ||
     !("revision" in payload) || typeof payload.revision !== "string" || !payload.revision || payload.revision.length > 200)) {
@@ -244,7 +244,7 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
         }
       : undefined;
   const activeSteer =
-    action.type === "apply-next-steer" || action.type === "steer-thread" || action.type === "answer-question" || action.type === "continue-peer-response"
+    action.type === "apply-next-steer" || action.type === "steer-thread" || action.type === "answer-question" || action.type === "continue-queued-steer"
       ? snapshot.session.activeSteer
       : undefined;
 

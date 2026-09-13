@@ -102,3 +102,21 @@ test("presence does not leak into another task and malformed notifications are r
     assert.equal(isPresenceAnnouncement({ kind: "presence", sessionId: "presence-one" }), false);
   } finally { f.dispose(); }
 });
+
+test("a presence observer sees people across instances without counting itself", () => {
+  const f = fixture();
+  try {
+    const person = f.instances[0].join("presence-qa", "github-101");
+    const secondTab = f.instances[0].join("presence-qa", "github-101");
+    f.flush();
+    const observer = f.instances[1].join("presence-qa");
+    f.flush();
+    assert.deepEqual(f.changes[1].at(-1)?.presence.activeMembers, ["github-101"]);
+    assert.deepEqual(f.changes[0].at(-1)?.presence.activeMembers, ["github-101"]);
+    secondTab.leave();
+    person.leave();
+    f.flush();
+    assert.deepEqual(f.changes[1].at(-1)?.presence.activeMembers, []);
+    observer.leave();
+  } finally { f.dispose(); }
+});

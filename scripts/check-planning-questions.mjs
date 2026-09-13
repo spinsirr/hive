@@ -24,6 +24,7 @@ globalThis.fetch = async (url, init) => {
   if (body.method === "tools/call") toolNames.push(body.params.name);
   const response = await handleHiveMcp(request, scope, {
     read: async () => ({ ...state, members }),
+    presence: async () => ({ activeMembers: ["spencer", "maya"], observedAt: 123 }),
     reply: async () => { throw new Error("Asking must not create a Thread"); },
     request: async (received, input) => {
       const published = requestPeerInput(state, received, input, members, 3);
@@ -39,11 +40,15 @@ globalThis.fetch = async (url, init) => {
 let connection;
 try {
   connection = await connectHiveConversationTools({ url: "https://hive.test/api/sessions/planning-questions/agent-tools", token: "fixture" });
-  assert.deepEqual(Object.keys(connection.tools).sort(), ["get_context", "reply_to_thread", "request_input"]);
-  assert.deepEqual(availableTools, ["get_context", "reply_to_thread", "request_input"], "the native MCP endpoint also exposes conversation-only capabilities before repository attachment");
+  assert.deepEqual(Object.keys(connection.tools).sort(), ["get_context", "get_presence", "read_thread", "reply_to_thread", "request_input"]);
+  assert.deepEqual(availableTools, ["get_context", "get_presence", "read_thread", "reply_to_thread", "request_input"], "the native MCP endpoint also exposes conversation-only capabilities before repository attachment");
   const options = { toolCallId: "test", messages: [], abortSignal: new AbortController().signal };
   const context = await connection.tools.get_context.execute({}, options);
   assert.match(JSON.stringify(context), /Maya/);
+  const presence = await connection.tools.get_presence.execute({}, options);
+  assert.match(JSON.stringify(presence), /onlineCount/);
+  const currentThread = await connection.tools.read_thread.execute({ messageId: state.messages[0].id }, options);
+  assert.match(JSON.stringify(currentThread), /Ask Maya about spacing/);
   const input = { key: "spacing", prompt: "Compact or comfortable?", targetMemberId: "maya", options: ["Compact", "Comfortable"] };
   await connection.tools.request_input.execute(input, options);
   await connection.tools.request_input.execute(input, options);
@@ -62,6 +67,6 @@ try {
   assert.equal(state.activeSteer.source.kind, "peer-response", "an idle task starts exactly one answer continuation");
   assert.equal(state.stage, "running");
   assert.equal(reduceTaskSession(state, answer, 7, members), state, "duplicate answer does not queue a second turn");
-  assert.deepEqual(toolNames, ["get_context", "request_input", "request_input"]);
+  assert.deepEqual(toolNames, ["get_context", "get_presence", "read_thread", "request_input", "request_input"]);
   console.log("PASS: no-repository question uses shared MCP schema and inline state, has no extra reply/Thread, and accepts one designated answer.");
 } finally { await connection?.close(); globalThis.fetch = realFetch; }
