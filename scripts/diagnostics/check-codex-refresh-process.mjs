@@ -1,4 +1,4 @@
-// Opt-in: pinned native Codex + loopback HTTP/WebSocket fixture, fabricated auth.
+// Opt-in: pinned native Codex + loopback HTTP streaming fixture, fabricated auth.
 // No provider request, host login, refresh token, repository, or paid credential.
 // node scripts/diagnostics/check-codex-refresh-process.mjs /isolated/codex-install
 import assert from "node:assert/strict";
@@ -30,6 +30,22 @@ for (const scenario of ["background-401", "inference-401", "background-and-infer
     requests.push(req.url);
     res.setHeader("Content-Type", "application/json");
     if (req.url.includes("/models")) res.end('{"models":[]}');
+    else if (req.url === "/backend-api/codex/responses" && req.method === "POST") {
+      if (inferenceFails) {
+        res.statusCode = 401;
+        res.end('{"error":{"message":"Fixture-only inference denial","type":"authentication_error"}}');
+        return;
+      }
+      res.setHeader("Content-Type", "text/event-stream");
+      const send = value => res.write(`event: ${value.type}\ndata: ${JSON.stringify(value)}\n\n`);
+      const item = { type: "message", role: "assistant", id: "fixture-message", content: [{type:"output_text",text:"HIVE_CODEX_OK"}] };
+      send({type:"response.created",response:{id:"fixture-response",status:"in_progress"}});
+      send({type:"response.output_item.added",output_index:0,item:{...item,content:[]}});
+      send({type:"response.output_text.delta",item_id:item.id,output_index:0,content_index:0,delta:"HIVE_CODEX_OK"});
+      send({type:"response.output_item.done",output_index:0,item});
+      send({type:"response.completed",response:{id:"fixture-response",status:"completed",output:[item],usage:{input_tokens:10,output_tokens:5,total_tokens:15}}});
+      res.end();
+    }
     else if (req.url.endsWith("/usage")) res.end(JSON.stringify({ plan_type: "plus", rate_limit: {
       allowed: true, limit_reached: false, primary_window: {
         used_percent: 0, limit_window_seconds: 18000, reset_after_seconds: 1000, reset_at: 1_999_999_999,
@@ -73,7 +89,10 @@ for (const scenario of ["background-401", "inference-401", "background-and-infer
       await runCodexAppServerTurn({
         workdir: root, onThread() {},
         start: { model: "gpt-5.6-luna", reasoningEffort: "low", prompt: "Reply HIVE_CODEX_OK. Do not use tools.",
-          codexConfig: { hive_subscription_tokens: { accessToken: token, chatgptAccountId: "fixture-account" } } },
+          codexConfig: {
+            model_providers: { hive_chatgpt: { base_url: `${base}/backend-api/codex` } },
+            hive_subscription_tokens: { accessToken: token, chatgptAccountId: "fixture-account" },
+          } },
         launch(cwd, subscription) {
           assert.equal(subscription, true); launches++;
           const child = spawn(process.execPath, [cli, "app-server", "-c", `chatgpt_base_url="${base}"`,

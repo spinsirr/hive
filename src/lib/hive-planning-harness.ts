@@ -1,7 +1,6 @@
 import { HarnessAgent } from "@ai-sdk/harness/agent";
 import type { HarnessV1 } from "@ai-sdk/harness";
 import { createVercelSandbox } from "@ai-sdk/sandbox-vercel";
-import { Sandbox } from "@vercel/sandbox";
 import { createHiveCodex } from "./codex-harness.ts";
 import { createHiveClaude } from "./claude-harness.ts";
 import { claudeSubscriptionToken } from "./claude-subscription.ts";
@@ -29,8 +28,6 @@ export async function runHivePlanningHarness(
   if (!model) throw new HiveAgentError("Choose a model available with this task's current connection.", new Error("Model unavailable."));
   const effort = model.efforts.length ? task.workspace.codingEffort ?? model.efforts[0] : undefined;
   if (effort && !model.efforts.includes(effort)) throw new HiveAgentError("Choose a supported effort for this model.", new Error("Unsupported effort."));
-  // The pinned Claude bootstrap OOMs at 2 GiB; 2 vCPUs provide 4 GiB.
-  const sandbox = await Sandbox.create({ runtime: "node24", ports: [4319], timeout: 10 * 60 * 1000, resources: { vcpus: runtime === "claude-code" ? 2 : 1 } });
   try {
     const harness: HarnessV1 = runtime === "claude-code"
         ? createHiveClaude({ gatewayAuth: {}, subscriptionToken: claudeToken, effort, supportsEffort: model.efforts.length > 0, adaptiveRequired: model.thinking === "adaptive-required",
@@ -42,7 +39,14 @@ export async function runHivePlanningHarness(
     const agent = new HarnessAgent({
       id: "hive-planning-agent", model: model.modelId, harness,
       ...(runtime === "claude-code" ? { inactiveTools: ["Agent", "SendMessage", "AskUserQuestion", "EnterPlanMode", "ExitPlanMode"] as const } : {}),
-      sandbox: createVercelSandbox({ sandbox }),
+      // Let Harness cache the credential-free bootstrap recipe and fork an
+      // isolated ephemeral VM per turn. Wrapping a manually created Sandbox
+      // bypasses that cache and reinstalls the CLI on every chat message.
+      sandbox: createVercelSandbox({
+        runtime: "node24", ports: [4319], timeout: 10 * 60 * 1000,
+        // The pinned Claude bootstrap needs 4 GiB; Codex keeps 2 GiB.
+        resources: { vcpus: runtime === "claude-code" ? 2 : 1 },
+      }),
       sandboxConfig: {
         workDir: "planning",
         onSession: async ({ session, sessionWorkDir, abortSignal }) => {
@@ -62,7 +66,5 @@ export async function runHivePlanningHarness(
   } catch (error) {
     if (error instanceof HiveAgentError) throw error;
     throw new HiveAgentError(hiveAgentFailureMessage(error, runtime === "claude-code" ? "claude-subscription" : "codex-subscription"), error);
-  } finally {
-    await sandbox.stop();
   }
 }

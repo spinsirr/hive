@@ -110,6 +110,18 @@ The queue sits above the composer, with edit, reorder, remove and safe-boundary
 Run next actions. Removing a queued request keeps its conversation message.
 Production and Demo compose the same message actions, inline editor and queue.
 
+`SteeringQueue` owns one compact row for pending and applying work, regardless of
+whether it came from a message, Thread, answer or code comment. Each row keeps a
+bounded content preview above quiet source/submitting-member metadata; status and
+the action menu occupy consistent positions. A Thread preview uses the last human
+reply within its saved handoff boundary, with that reply's author, never later
+discussion. Missing source content gets a neutral label, not an invented excerpt.
+Internal handoff instructions and answer JSON are not UI copy or hover titles.
+The applying row retains the same preview and source, but has no queue mutations.
+Pending rows keep reorder/remove and source navigation; only the author's own
+plain queued message is editable. Unifying presentation does not change queue
+order, frozen inputs, safe-boundary Run next or agent invocation.
+
 ### Thread presentation (2026-09-12)
 
 An agent turn and its adjacent question/review messages form one visual group
