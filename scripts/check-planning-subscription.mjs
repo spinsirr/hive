@@ -9,7 +9,7 @@ registerHooks({ resolve(specifier, context, next) {
   if (specifier.startsWith("@/")) return next(new URL(`../src/${specifier.slice(2)}.ts`, import.meta.url).href, context);
   return next(specifier, context);
 } });
-let settings, stopped = 0, detached = 0, starts = 0, fail = false, native, runtime;
+let settings, stopped = 0, detached = 0, starts = 0, fail = false, question = false, native, runtime;
 const collaboration = { url: "https://hive.test/api/sessions/planning-fixture/agent-tools", token: "short-lived-tool-fixture" };
 const raw = { name: "ai-sdk-harness-session-planning-native", persistent: true, timeout: 1_800_000,
   tags: { session: "planning-fixture" }, expiresAt: new Date(Date.now() + 1_800_000),
@@ -59,6 +59,13 @@ mock.module("@ai-sdk/harness/agent", { namedExports: { HarnessAgent: class {
       yield { type: "text-delta", text: "First " };
       if (fail) throw new Error("Subscription limit reached.");
       yield { type: "text-delta", text: "reply." };
+      if (question) {
+        const receipt = { messageId: "confirmed-question", created: true, status: "awaiting_answer" };
+        yield { type: "tool-result", toolName: runtime === "codex" ? "request_input" : "mcp__hive__request_input",
+          output: runtime === "codex" ? { content: [{ type: "text", text: JSON.stringify(receipt) }] } : receipt };
+        yield { type: "text-start", id: "unnecessary-followup" };
+        yield { type: "text-delta", text: '["Close after navigation"]' };
+      }
     })() };
   }
 } } });
@@ -80,6 +87,13 @@ for (runtime of ["codex", "claude-code"]) {
   assert.equal(result.agentSession.resumeFrom.data.threadId, "planning-history");
   assert.deepEqual(publicText, ["First ", "First reply."]);
   assert.equal(settings.sandboxConfig.workDir, "planning");
+  question = true;
+  const questionText = [];
+  const questionResult = await runHiveConversation(state, "person", "Person", text => questionText.push(text), undefined, auth, collaboration);
+  assert.equal(questionResult.summary, "First reply.", "a published question must not be followed by invented answer text");
+  assert.deepEqual(questionText, ["First ", "First reply."]);
+  assert.equal(questionResult.agentSession.resumeFrom.data.threadId, "planning-history", "the native turn still completes and retains context");
+  question = false;
   fail = true;
   await assert.rejects(runHiveConversation(state, "person", "Person", () => {}, undefined, auth, collaboration), /Subscription limit reached/);
   fail = false;
@@ -91,5 +105,5 @@ for (runtime of ["codex", "claude-code"]) {
   }
   assert.equal(starts, before, "Missing credentials cannot create a sandbox or select Gateway");
 }
-assert.equal(starts, 4); assert.equal(stopped, 2); assert.equal(detached, 2);
+assert.equal(starts, 6); assert.equal(stopped, 2); assert.equal(detached, 4);
 console.log("PASS: planning streams the selected subscription, retains native context and its isolated warm VM on success, stops on failure, and never falls back to Gateway.");

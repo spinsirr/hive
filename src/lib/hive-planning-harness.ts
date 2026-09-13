@@ -6,7 +6,7 @@ import { createHiveClaude } from "./claude-harness.ts";
 import { claudeSubscriptionToken } from "./claude-subscription.ts";
 import { platformCodingModels } from "./platform-models.ts";
 import { selectedCodingModel } from "./coding-models.ts";
-import { consumeAgentText } from "./agent-stream.ts";
+import { consumePlanningText } from "./planning-stream.ts";
 import { ensureCodexBridgeDependencies } from "./hive-runner.ts";
 import { HiveAgentError, hiveAgentFailureMessage } from "./hive-agent.ts";
 import type { CodexAccess } from "./codex-subscription-broker.ts";
@@ -65,7 +65,7 @@ export async function runHivePlanningHarness(
     const session = await agent.createSession({ sessionId, resumeFrom: task.workspace.agentSession?.resumeFrom });
     try {
       const result = await agent.stream({ session, prompt });
-      const summary = (await consumeAgentText(result.fullStream, onText)).trim();
+      const summary = (await consumePlanningText(result.fullStream, onText)).trim();
       const parked = await environment.park(session);
       return { summary, sandboxName: parked.sandboxName, environment: parked.environment,
         agentSession: { id: sessionId, runtime, resumeFrom: parked.resumeFrom } };
