@@ -51,7 +51,7 @@ export async function runHiveConversation(
     });
     await consumeAgentText(result.fullStream, onText);
 
-    return (await result.text).trim();
+    return { summary: (await result.text).trim() };
   } catch (error) {
     throw new HiveAgentError(hiveAgentFailureMessage(error), error);
   } finally { await collaboration?.close(); }

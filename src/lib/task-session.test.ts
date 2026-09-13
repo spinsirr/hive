@@ -303,7 +303,7 @@ test("a task can begin with Hive before a repository is attached", () => {
   assert.equal(replied.workspace.completedAt, 3);
 });
 
-test("attaching a repository preserves the task transcript and existing Codex identity", () => {
+test("attaching a repository preserves discussion but never treats the planning VM as a working copy", () => {
   const initial = createInitialTaskSessionState(1, "late-repo", {
     title: "Fix the secondary navigation",
     createdBy: "spencer",
@@ -335,8 +335,8 @@ test("attaching a repository preserves the task transcript and existing Codex id
 
   assert.equal(connected.title, initial.title);
   assert.equal(connected.messages.length, initial.messages.length + 1);
-  assert.equal(connected.workspace.agentSession?.id, "codex-existing");
-  assert.equal(connected.workspace.sandboxName, "hive-session-codex-existing");
+  assert.notEqual(connected.workspace.agentSession?.id, "codex-existing");
+  assert.equal(connected.workspace.sandboxName, undefined);
 
   const ignoredReplacement = reduceTaskSession(
     connected,

@@ -65,5 +65,5 @@ assert.match(modelInput.prompt, /Annotation author: Grace/);
 assert.match(modelInput.prompt, /Run started by: Ada/);
 assert.match(modelInput.prompt, /Annotation to execute:\nPreserve the annotation author's name/);
 assert.equal(modelInput.providerOptions.gateway.user, "github-202");
-assert.deepEqual(publicText, [reply]);
+assert.deepEqual(publicText, [reply.summary]);
 console.log("PASS: the pre-repository runner forwards the selected attributed steer to the model");

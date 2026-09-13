@@ -7,6 +7,8 @@ import {
 } from "@ai-sdk/harness/agent";
 import { createVercelSandbox } from "@ai-sdk/sandbox-vercel";
 import { Sandbox } from "@vercel/sandbox";
+import { TASK_ENVIRONMENT_IDLE_MS } from "./task-environment-policy.ts";
+import { createTaskEnvironment } from "./task-environment.ts";
 import type { HarnessV1 } from "@ai-sdk/harness";
 import type { Experimental_SandboxSession } from "ai";
 
@@ -342,7 +344,7 @@ export async function runHiveCodingTask(
         ...cloneCredentials,
         depth: 20,
       },
-      timeout: 10 * 60 * 1000,
+      timeout: TASK_ENVIRONMENT_IDLE_MS,
       persistent: true,
       snapshotExpiration: 0,
       keepLastSnapshots: { count: WORKSPACE_CHECKPOINT_LIMIT, expiration: 0 },
@@ -358,6 +360,7 @@ export async function runHiveCodingTask(
       await persistentSandbox.update({ keepLastSnapshots: { count: WORKSPACE_CHECKPOINT_LIMIT, expiration: 0 } });
     }
     const sandbox = createVercelSandbox({ sandbox: persistentSandbox });
+    const environment = createTaskEnvironment(taskSession, persistentSandbox);
     const harness: HarnessV1 = runtime === "claude-code" ? createHiveClaude({
         gatewayAuth,
         effort,
@@ -386,7 +389,7 @@ export async function runHiveCodingTask(
       }, auth?.onSubagents, auth?.codexSubscription);
     const agent = new HarnessAgent({
       id: "hive-coding-agent",
-      harness,
+      harness: environment.wrap(harness),
       model: model.modelId,
       ...(runtime === "claude-code" ? {
         // Hive's child-control protocol currently belongs to Codex. Do not
@@ -486,18 +489,17 @@ export async function runHiveCodingTask(
         commands,
         sandboxWorkDir,
       );
-      const nextResumeFrom = await agentSession.stop();
+      const parked = await environment.park(agentSession);
       sessionEnded = true;
-      const snapshot = await saveSandboxCheckpoint(persistentSandbox);
 
       return {
-        snapshot,
+        environment: parked.environment,
         sandboxName,
         agentSession: {
           id: sessionId,
           runtime,
           ...(authentication ? { authentication } : {}),
-          resumeFrom: nextResumeFrom,
+          resumeFrom: parked.resumeFrom,
         },
         summary:
           publicReply.trim() ||

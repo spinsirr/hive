@@ -33,17 +33,49 @@ if (templateArgument >= 0) assert.match(reusedTemplate ?? "", /^hive-qa-startup-
 const templateName = reusedTemplate ?? `hive-qa-startup-${randomUUID()}`;
 let templateAttempted = false;
 const results = [];
+const trace = process.argv.includes("--trace");
+const budgetArgument = process.argv.indexOf("--max-cached-ready-ms");
+const cachedBudgetMs = budgetArgument < 0 ? undefined : Number(process.argv[budgetArgument + 1]);
+if (cachedBudgetMs !== undefined) assert.ok(Number.isFinite(cachedBudgetMs) && cachedBudgetMs > 0);
+
+// Instrument only public Sandbox calls. Never print commands, paths, contents,
+// environment variables or method arguments, which may contain credentials.
+function traceSession(session, spans, elapsed) {
+  return new Proxy(session, { get(target, key) {
+    const value = Reflect.get(target, key, target);
+    if (key === "restricted") return () => traceSession(value.call(target), spans, elapsed);
+    if (typeof value !== "function") return value;
+    if (!["run", "spawn", "readTextFile", "writeTextFile", "getPortEndpoint", "setRequestTransformations"].includes(key)) return value.bind(target);
+    return async (...args) => {
+      const startedMs = elapsed();
+      try { return await value.apply(target, args); }
+      finally { spans.push({ method: key, startedMs, durationMs: elapsed() - startedMs }); }
+    };
+  } });
+}
 
 try {
-  for (const mode of reusedTemplate ? ["cached-new-process"] : ["uncached", "cached-first", "cached-repeat", "cached-repeat"]) {
+  for (const mode of reusedTemplate ? ["cached-new-process"] : trace ? ["cached-first", "cached-repeat", "cached-repeat"] : ["uncached", "cached-first", "cached-repeat", "cached-repeat"]) {
     const started = performance.now();
     const elapsed = () => Math.round(performance.now() - started);
     const timings = { mode };
-    let rawSandbox, session, sandboxSession, workDir;
+    const spans = [];
+    let rawSandbox, session, sandboxSession, workDir, acquiredNetworkSession;
     try {
       if (mode === "uncached") rawSandbox = await Sandbox.create(options);
       else templateAttempted = true;
       const native = createHiveCodex({ auth: {}, reasoningEffort: "low", webSearch: false });
+      const provider = rawSandbox ? createVercelSandbox({ sandbox: rawSandbox })
+        : createVercelSandbox({ ...options, name: templateName });
+      if (trace) {
+        const createSession = provider.createSession.bind(provider);
+        provider.createSession = async args => {
+          const created = await createSession(args);
+          acquiredNetworkSession = created;
+          timings.vmReadyMs = elapsed();
+          return traceSession(created, spans, elapsed);
+        };
+      }
       const agent = new HarnessAgent({
         id: "hive-startup-diagnostic", model: "gpt-5.6-luna", permissionMode: "allow-all",
         harness: { ...native, async doStart(args) {
@@ -52,8 +84,7 @@ try {
           timings.bridgeReadyMs = elapsed();
           return runtime;
         } },
-        sandbox: rawSandbox ? createVercelSandbox({ sandbox: rawSandbox })
-          : createVercelSandbox({ ...options, name: templateName }),
+        sandbox: provider,
         sandboxConfig: { workDir: "planning", async onSession({ session: sandbox, sessionWorkDir, abortSignal }) {
           sandboxSession = sandbox;
           workDir = sessionWorkDir;
@@ -64,21 +95,39 @@ try {
       });
       session = await agent.createSession({ abortSignal: AbortSignal.timeout(150_000) });
       timings.readyMs = elapsed();
-      results.push(timings);
+      results.push({ ...timings });
       console.log(JSON.stringify(timings));
+      if (trace) console.log(JSON.stringify({ mode, spans }));
       // No prompt/model call. A per-session marker must never reach another VM.
       const isolation = await sandboxSession.run({ command: "test ! -e startup-qa-marker", workingDirectory: workDir });
       assert.equal(isolation.exitCode, 0, "Per-turn files must not enter the bootstrap template.");
       await sandboxSession.writeTextFile({ path: `${workDir}/startup-qa-marker`, content: "diagnostic-only" });
+      if (process.argv.includes("--warm-resume") && mode === "cached-repeat") {
+        const sessionId = session.sessionId;
+        const resumeFrom = await session.detach();
+        session = undefined;
+        const resumeStarted = performance.now();
+        // Public Harness lifecycle: park the live bridge, then acquire a new
+        // handle via the provider. No model invocation or host-only session map.
+        session = await agent.createSession({ sessionId, resumeFrom, abortSignal: AbortSignal.timeout(30_000) });
+        const resumed = { mode: "live-bridge-resume", readyMs: Math.round(performance.now() - resumeStarted) };
+        results.push(resumed);
+        console.log(JSON.stringify(resumed));
+        const marker = await sandboxSession.run({ command: "test -e startup-qa-marker", workingDirectory: workDir });
+        assert.equal(marker.exitCode, 0, "A live resume must stay in the same task sandbox.");
+      }
     } finally {
       await session?.destroy();
+      // A failed acquisition after detach has no active Harness handle left.
+      // Delete only the diagnostic VM acquired by this iteration.
+      if (!session) await acquiredNetworkSession?.destroy();
       if (rawSandbox) {
         await rawSandbox.stop();
         await rawSandbox.delete({ deleteOrphanSnapshots: true });
       }
     }
   }
-  if (!reusedTemplate) {
+  if (!reusedTemplate && !trace) {
     // A fresh serverless process has no in-memory snapshot cache. Exercise the
     // provider's persisted template lookup as well, without mocking its SDK.
     await new Promise((resolve, reject) => {
@@ -88,6 +137,11 @@ try {
     });
   }
   console.log(JSON.stringify({ purpose: "Real startup only, not production TTFT", results }));
+  if (cachedBudgetMs !== undefined) {
+    const cached = results.filter(result => result.mode === "cached-repeat" || result.mode === "cached-new-process");
+    assert.ok(cached.length > 0);
+    assert.ok(cached.every(result => result.readyMs < cachedBudgetMs), `Cached runtime preparation exceeds ${cachedBudgetMs} ms before authentication or model inference.`);
+  }
 } finally {
   if (templateAttempted && !reusedTemplate) {
     try {

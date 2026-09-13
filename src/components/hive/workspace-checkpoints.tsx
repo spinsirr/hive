@@ -104,7 +104,7 @@ export function WorkspaceCheckpoints({ sessionId, revision, onRestored, recovery
           </div>
         ))}
       </div>
-      <p className="shrink-0 border-t border-[#ebebeb] px-4 py-3 text-xs text-[#737373]">Only checkpoints saved with matching agent context can be restored.{current?.data?.retentionCount ? ` Up to ${current.data.retentionCount} sandbox recovery points are retained.` : ""}</p>
+      <p className="shrink-0 border-t border-[#ebebeb] px-4 py-3 text-xs text-[#737373]">The environment saves a checkpoint after 30 minutes without messages. Only checkpoints with matching agent context can be restored.{current?.data?.retentionCount ? ` Up to ${current.data.retentionCount} recovery points are retained.` : ""}</p>
       <Dialog open={Boolean(confirm)} onOpenChange={(open) => { if (!open) setConfirm(undefined); }}>
         <DialogContent initialFocus={cancelButton}>
           <DialogHeader>

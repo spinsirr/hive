@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ARCHIVED_TASK_MESSAGE, isHiveRunActive, timeLabel, type TaskSessionState, type TeamMember } from "./task-session.ts";
+import { coldResumeState } from "./task-environment-policy.ts";
 
 export const restoreWorkspaceRequest = z.object({
   id: z.uuid(), snapshotId: z.string().min(1).max(200), version: z.number().int().nonnegative(),
@@ -65,6 +66,9 @@ export function completeWorkspaceRestore(session: TaskSessionState, operationId:
     stage: hasChanges && !checkpoint.error ? "review" : "waiting", activeSteer: undefined,
     workspace: {
       ...checkpoint.result, status: checkpoint.error ? "error" : hasChanges ? "review" : "ready", error: checkpoint.error, completedAt: now,
+      environment: undefined,
+      idleCheckpoint: undefined,
+      agentSession: { ...checkpoint.result.agentSession, resumeFrom: coldResumeState(checkpoint.result.agentSession.resumeFrom) },
       codingEffort: session.workspace.codingEffort,
       codingModel: session.workspace.codingModel,
       checkpoints: session.workspace.checkpoints,

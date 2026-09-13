@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { readTaskIdleCheckpoint, refreshTaskEnvironment } from "./task-environment.ts";
 import { and, desc, eq, getTableColumns, sql } from "drizzle-orm";
 import { customAlphabet } from "nanoid";
 
@@ -24,6 +25,8 @@ import {
   hiveReplyThreadId,
   type HiveRunResult,
   type HiveSessionCheckpoint,
+  type HivePlanningResult,
+  WORKSPACE_CHECKPOINT_LIMIT,
   type MemberId,
   reduceTaskSession,
   resolveMember,
@@ -321,6 +324,16 @@ export async function applyTaskSessionAction(
     }
     const startedRun = didStartHiveRun(previousSession, nextSession);
     if (startedRun) {
+      const saved = await readTaskIdleCheckpoint(previousSession, now);
+      if (saved) nextSession.workspace.checkpoints = [saved, ...(nextSession.workspace.checkpoints ?? []).filter((entry) => entry.id !== saved.id)].slice(0, WORKSPACE_CHECKPOINT_LIMIT);
+      // A new turn may change files. Never pair its later automatic snapshot
+      // with the preceding turn's native context after a crash.
+      delete nextSession.workspace.idleCheckpoint;
+    }
+    const hasNewMessage = nextSession.messages.some((message) => !previousSession.messages.some((old) => old.id === message.id) ||
+      (message.annotations ?? []).some((reply) => !(previousSession.messages.find((old) => old.id === message.id)?.annotations ?? []).some((old) => old.id === reply.id)));
+    if ((startedRun || hasNewMessage) && previousSession.workspace.environment) nextSession.workspace.environment = await refreshTaskEnvironment(previousSession, now);
+    if (startedRun) {
       const threadId = hiveReplyThreadId(nextSession);
       nextSession.workspace = {
         ...nextSession.workspace,
@@ -362,6 +375,7 @@ export async function appendHiveReply(
     forSteerAt?: number;
     status?: "error";
     runResult?: HiveRunResult;
+    planningResult?: HivePlanningResult;
     runError?: string;
     runCheckpoint?: HiveSessionCheckpoint;
     subagents?: HiveSubagent[];
@@ -424,6 +438,13 @@ export async function appendHiveReply(
             options.runCheckpoint,
           )
         : appendHiveReplyToSession(currentSession, body, now, options.status);
+    if (options.planningResult) {
+      const { summary: _summary, ...planning } = options.planningResult;
+      nextSession.workspace = { ...nextSession.workspace, ...planning };
+    }
+    if (options.runResult?.environment || options.planningResult?.environment) {
+      nextSession.workspace.environment = await refreshTaskEnvironment(nextSession, now);
+    }
     await transaction
       .update(taskSessions)
       .set(sessionValues(nextSession))
@@ -471,6 +492,22 @@ export async function checkpointSubagents(sessionId: string, replyId: string, va
   });
 }
 
+/** Import only an exact VM/context pair; reading Checkpoints never wakes a VM. */
+export async function syncTaskIdleCheckpoint(sessionId: string) {
+  await db.transaction(async (transaction) => {
+    const [row] = await transaction.select().from(taskSessions).where(eq(taskSessions.id, sessionId)).for("update");
+    if (!row) throw new Error("Task not found.");
+    const session = sessionState(row);
+    const saved = await readTaskIdleCheckpoint(session);
+    if (!saved) return;
+    session.workspace.checkpoints = [saved, ...(session.workspace.checkpoints ?? []).filter((entry) => entry.id !== saved.id)].slice(0, WORKSPACE_CHECKPOINT_LIMIT);
+    session.workspace.idleCheckpoint = undefined;
+    session.version++;
+    await transaction.update(taskSessions).set(sessionValues(session)).where(eq(taskSessions.id, sessionId));
+    await transaction.execute(sessionNotification(sessionId));
+  });
+}
+
 /** Control reads never download transcripts, file snapshots or native history. */
 export async function withTaskSubagentControl<T>(sessionId: string, control: (session: SubagentSession) => Promise<T>): Promise<T> {
   return db.transaction(async (transaction) => {
@@ -493,6 +530,7 @@ export async function withTaskSubagentControl<T>(sessionId: string, control: (se
 
 /** A file reader may resume a VM. Drain those readers before fencing a restore. */
 export async function withTaskWorkspaceRead<T>(sessionId: string, read: (session: TaskSessionState) => Promise<T>): Promise<T> {
+  await syncTaskIdleCheckpoint(sessionId);
   return db.transaction(async (transaction) => {
     const lock = await transaction.execute(sql`select pg_try_advisory_xact_lock_shared(hashtextextended(${'hive-workspace:' + sessionId}, 0)) as acquired`);
     if (!lock.rows[0]?.acquired) throw new WorkspaceRestoreError(409, "Workspace is busy. Try again shortly.");
@@ -565,7 +603,7 @@ export async function getAgentReply(sessionId: string) {
 export async function getPublicTaskSessionSnapshot(sessionId: string): Promise<TaskSessionSnapshot> {
   const [row] = await db.select({
     ...getTableColumns(taskSessions),
-    workspace: sql<TaskSessionState["workspace"]>`(${taskSessions.workspace} - 'checkpoints') #- '{agentSession,resumeFrom}'`.as("workspace"),
+    workspace: sql<TaskSessionState["workspace"]>`(${taskSessions.workspace} - 'checkpoints' - 'idleCheckpoint') #- '{agentSession,resumeFrom}'`.as("workspace"),
   }).from(taskSessions).where(eq(taskSessions.id, sessionId));
   if (!row) throw new Error(`Session ${sessionId} could not be loaded.`);
   return snapshotWithMembers(sessionState(row));
