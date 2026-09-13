@@ -1,8 +1,16 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { buildHivePrompt, buildHiveRunInput } from "./hive-prompt.ts";
 import { appendHiveReply, createInitialTaskSessionState, reduceTaskSession, type TeamMember } from "./task-session.ts";
+
+test("the shared Codex/Claude runtime instructions keep steered work in main, not the source Thread", () => {
+  const skill = readFileSync(new URL("./codex-bridge/hive-collaboration/SKILL.md", import.meta.url), "utf8");
+  assert.match(skill, /Explicit steers hand the team's discussion back to the main conversation/);
+  assert.match(skill, /report evidence in the main conversation/);
+  assert.doesNotMatch(skill, /originating Thread when continuing a steered discussion|result returns to that thread/);
+});
 
 test("workspace events inform the agent without becoming the latest user request", () => {
   const session = createInitialTaskSessionState(1);

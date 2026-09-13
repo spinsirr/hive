@@ -321,7 +321,7 @@ export async function applyTaskSessionAction(
     }
     const startedRun = didStartHiveRun(previousSession, nextSession);
     if (startedRun) {
-      const threadId = hiveReplyThreadId(nextSession, action);
+      const threadId = hiveReplyThreadId(nextSession);
       nextSession.workspace = {
         ...nextSession.workspace,
         liveReply: { id: `agent-${randomUUID()}`, threadId, body: "", sequence: 0, startedAt: now },

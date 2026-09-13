@@ -133,3 +133,17 @@ for (const message of [
   assert.equal(documents[0].querySelector('[data-message-id]').firstElementChild.className, documents[1].querySelector('[data-message-id]').firstElementChild.className, "author alignment stays stable");
 }
 console.log("PASS: human/Agent/question/review parent body and author styles are identical with zero or one reply.");
+
+// Opening a Thread only adds its selection outline, never changes the space
+// reserved for the author, message bubble, or footer.
+for (const message of [
+  { ...props.message, memberId: "demo-alex", annotations: [reply("one", "Keep focus visible")] },
+  question,
+]) {
+  const [closed, opened] = [false, true].map((selected) => new JSDOM(renderToStaticMarkup(createElement(ConversationMessage, { ...cardProps, message, selected }))).window.document.querySelector('[data-message-id]'));
+  const withoutOutline = (classes) => classes.split(/\s+/).filter((name) => !name.startsWith("outline-")).join(" ");
+  assert.equal(withoutOutline(closed.className), withoutOutline(opened.className), "selection preserves the message's layout and padding");
+  assert.equal(closed.firstElementChild.outerHTML, opened.firstElementChild.outerHTML, "selection preserves the author header");
+  assert.equal(closed.querySelector('[data-slot="message-content"]').outerHTML, opened.querySelector('[data-slot="message-content"]').outerHTML, "selection preserves the body and bubble");
+}
+console.log("PASS: opening a Thread preserves the parent message's spacing, author header and bubble.");

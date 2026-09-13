@@ -93,7 +93,7 @@ export function ConversationMessage({ message, currentMember, members, sessionId
   const thread = <MessageThreadPreview className={isOwn ? "self-end" : "self-start"} expanded={selected} members={members} message={discussion} onOpen={() => onOpenThread(message.id)} />;
 
   return (
-    <Message className={cn("min-w-0 max-w-full gap-2.5 rounded-xl focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring", selected && "outline-1 outline-offset-4 outline-border")} tabIndex={-1} data-message-id={message.id} from={isOwn ? "user" : "assistant"}>
+    <Message className={cn("min-w-0 max-w-full gap-2.5 rounded-xl p-3 sm:p-4 focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-ring", selected && "outline-1 outline-offset-0 outline-border")} tabIndex={-1} data-message-id={message.id} from={isOwn ? "user" : "assistant"}>
       {!hideAuthor ? <div className={cn("flex min-w-0 items-center gap-2 px-0.5", isOwn && "justify-end")}>
         {isAgent ? <HiveMark className="size-6 rounded-full border border-[#dedede]" light /> : <span className="grid size-6 shrink-0 place-items-center rounded-full bg-[#f1f1f1] text-xs font-semibold text-[#555]">{message.initials}</span>}
         <span className="min-w-0 truncate text-xs font-medium text-[#444]">{message.name}</span>

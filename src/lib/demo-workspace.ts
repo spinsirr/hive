@@ -63,6 +63,7 @@ type WithoutActor<T> = T extends { actor: string } ? Omit<T, "actor"> : never;
 export function createDemoWorkspace(task: DashboardTask) {
   let snapshot = initialSnapshot(task);
   let member = demoMembers[0];
+  let reviewRunId: string | undefined;
   const listeners = new Set<() => void>();
   const publish = (next: TaskSessionSnapshot) => {
     snapshot = next;
@@ -72,8 +73,13 @@ export function createDemoWorkspace(task: DashboardTask) {
     let session = reduceTaskSession(snapshot.session, { ...action, actor: member.id }, Date.now(), demoMembers, models);
     if (session === snapshot.session) return snapshot;
     if (isHiveRunActive(session) && !session.workspace.liveReply) {
-      const threadId = hiveReplyThreadId(session, { ...action, actor: member.id });
-      session = { ...session, workspace: { ...session.workspace, liveReply: { id: `sample-run-${session.version}`, threadId, body: "", sequence: 0, startedAt: Date.now() } } };
+      const threadId = hiveReplyThreadId(session);
+      const runId = `sample-run-${session.version}`;
+      // Demonstrate a new review for fresh work, not another review card each
+      // time the team hands discussion back to the main agent.
+      const source = session.activeSteer?.source;
+      reviewRunId = action.type === "steer-message-annotation" || source?.kind === "message-thread" || source?.kind === "message-annotation" ? undefined : runId;
+      session = { ...session, workspace: { ...session.workspace, liveReply: { id: runId, threadId, body: "", sequence: 0, startedAt: Date.now() } } };
     }
     publish({ ...snapshot, session });
     return snapshot;
@@ -139,7 +145,7 @@ export function createDemoWorkspace(task: DashboardTask) {
       let session = snapshot.session;
       if (session.archived || session.workspace.liveReply?.id !== runId || !isHiveRunActive(session)) return;
       if (session.repository) {
-        if (!session.workspace.liveReply.threadId) {
+        if (!session.workspace.liveReply.threadId && reviewRunId === runId) {
           session = requestPeerInput(session, { sessionId: session.sessionId, runId, memberId: member.id }, { kind: "review", key: "sample-review", prompt: "Review this sample change together. Does the keyboard focus behavior look right?", targetMemberId: demoMembers[1].id }, demoMembers, Date.now()).session;
         }
         session = applyHiveRunResult(session, result(session, Date.now(), true));

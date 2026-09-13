@@ -47,6 +47,7 @@ for (const busy of [false, true]) {
     assert.match(input.steer!, /Maya Chen/);
     assert.match(input.steer!, /Spencer Zhao/);
     assert.match(input.steer!, /If requirements conflict, ask for clarification/);
+    assert.match(input.steer!, /handing this discussion back to the main conversation/);
     assert.doesNotMatch(input.steer!, /LATER|also change the footer/);
     assert.equal(isHiveRunActive(steered), true);
   });

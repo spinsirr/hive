@@ -83,7 +83,7 @@ try {
   fireEvent.click(button("Files"));
   await waitFor(() => assert.match(screen.getByLabelText("Sample file: src/components/settings-nav.tsx").textContent, /SettingsNav/));
   fireEvent.click(button("1 question needs your answer"));
-  await waitFor(() => assert.equal(document.activeElement?.dataset.messageId, screen.getByRole("textbox", { name: "Answer Hive" }).closest("[data-message-id]").dataset.messageId));
+  await waitFor(() => assert.equal(document.activeElement?.dataset.messageId, screen.getByRole("group", { name: /^Answer:/ }).closest("[data-message-id]").dataset.messageId));
   assert.equal(screen.getByRole("button", { name: "Conversation", exact: true }).getAttribute("aria-pressed"), "true", "attention navigates only after an explicit click");
   assert.equal(button("Files").getAttribute("aria-pressed"), "true", "attention navigation retains the workspace tab");
   fireEvent.click(button("Checkpoints"));
@@ -93,11 +93,11 @@ try {
   fireEvent.click(button("Cancel"));
   fireEvent.click(button("Conversation"));
   assert.equal(screen.queryByRole("button", { name: "Open collaboration thread" }), null, "asking does not require a Thread");
-  const questionCard = screen.getByRole("textbox", { name: "Answer Hive" }).closest('[data-slot="question-message"]');
+  const questionCard = screen.getByRole("group", { name: /^Answer:/ }).closest('[data-slot="question-message"]');
   const discussionEntry = within(questionCard).getByRole("button", { name: /Reply in thread to/ });
   discussionEntry.focus();
   fireEvent.click(discussionEntry);
-  await waitFor(() => assert.ok(screen.getByRole("textbox", { name: "Answer Hive" })));
+  await waitFor(() => assert.ok(screen.getByRole("button", { name: "Write an answer", exact: true })));
   fireEvent.click(within(screen.getByLabelText("Demo controls")).getByRole("button", { name: "Casey", exact: true }));
   assert.equal(screen.queryByRole("button", { name: "1 question needs your answer" }), null, "a question for Alex must not summon Casey");
   await waitFor(() => assert.equal(screen.getByRole("textbox", { name: "Reply in thread" }).disabled, false));
@@ -114,10 +114,9 @@ try {
   fireEvent.click(document.activeElement);
   assert.match(screen.getByLabelText("Message thread").textContent, /Casey discussion, not Alex's answer/);
   fireEvent.click(within(screen.getByLabelText("Demo controls")).getByRole("button", { name: "Alex", exact: true }));
-  await waitFor(() => assert.equal(screen.getByRole("textbox", { name: "Answer Hive" }).disabled, false));
+  await waitFor(() => assert.equal(button("Keep it open").disabled, false));
   console.log("PASS: Casey can discuss, but cannot answer Alex's question; switching back restores Alex's answer controls.");
   fireEvent.click(button("Keep it open"));
-  fireEvent.click(button("Send answer"));
   await waitFor(() => assert.match(screen.getByLabelText("Message thread").textContent, /Answered by Alex/));
   await waitFor(() => assert.match(screen.getByLabelText("Message thread").textContent, /Simulated result/), { timeout: 2500 });
   fireEvent.click(button("Close thread"));
@@ -126,7 +125,10 @@ try {
   await waitFor(() => assert.ok(screen.getByLabelText("Message thread")));
   await waitFor(() => assert.equal(screen.getByRole("textbox", { name: "Reply in thread" }).disabled, false));
   const input = screen.getByRole("textbox", { name: "Reply in thread" });
-  fireEvent.change(input, { target: { value: "Please keep the focus ring visible" } });
+  // A Thread is discussion only, including text addressed to Hive. The human
+  // must explicitly Steer the whole discussion to the main agent.
+  fireEvent.change(input, { target: { value: "@Hive Please keep the focus ring visible" } });
+  assert.equal(screen.queryByRole("button", { name: "Ask Hive in thread", exact: true }), null, "Thread replies must not expose a separate agent invocation");
   fireEvent.click(button("Send reply"));
   await waitFor(() => assert.match(screen.getByLabelText("Message thread").textContent, /Please keep the focus ring visible/));
   fireEvent.click(button("Archive task: Polish the settings menu"));
@@ -166,27 +168,28 @@ try {
   assert.ok(document.activeElement !== button("Open review"), "direct Diff entry does not steal focus");
   fireEvent.click(button("Open review"));
   assert.match(screen.getByLabelText("Message thread").textContent, /Review this sample change together/);
-  assert.ok(button("Verify & resolve").disabled, "Alex cannot verify Casey's review");
+  assert.ok(button("Mark as reviewed").disabled, "Alex cannot verify Casey's review");
+  assert.match(screen.getByRole("group", { name: "Review actions" }).textContent, /Waiting for Casey to review/);
   fireEvent.click(button("View changes"));
   assert.ok(!screen.queryByRole("button", { name: "Approve changes", exact: true }), "viewing a review diff must not expose a separate task approval");
   assert.ok(button("Back to review"));
   assert.ok(document.activeElement === button("Back to review"), "keyboard focus lands on safe review navigation, not an approval action");
-  assert.equal(screen.queryByRole("button", { name: "Verify & resolve", exact: true }), null, "verification stays in its thread");
+  assert.equal(screen.queryByRole("button", { name: "Mark as reviewed", exact: true }), null, "verification stays in its thread");
   fireEvent.click(button("Runs"));
   fireEvent.click(button("Back to review"));
   assert.match(screen.getByLabelText("Message thread").textContent, /Review for Casey/);
   assert.match(screen.getByLabelText("Message thread").textContent, /Needs review/);
-  assert.ok(button("Verify & resolve").disabled);
+  assert.ok(button("Mark as reviewed").disabled);
   fireEvent.click(within(screen.getByLabelText("Demo controls")).getByRole("button", { name: "Casey", exact: true }));
-  await waitFor(() => assert.equal(button("Verify & resolve").disabled, false));
+  await waitFor(() => assert.equal(button("Mark as reviewed").disabled, false));
   fireEvent.click(button("View changes"));
   fireEvent.click(button("Back to review"));
   assert.match(screen.getByLabelText("Message thread").textContent, /Needs review/, "navigation alone never verifies the revision");
-  fireEvent.click(button("Verify & resolve"));
-  await waitFor(() => assert.match(screen.getByLabelText("Message thread").textContent, /Verified by Casey/));
+  fireEvent.click(button("Mark as reviewed"));
+  await waitFor(() => assert.match(screen.getByLabelText("Message thread").textContent, /Reviewed by Casey/));
   fireEvent.click(button("View changes"));
   assert.ok(button("Back to review"));
-  assert.match(screen.getByRole("region", { name: "Workspace reviews" }).textContent, /Verified by Casey/);
+  assert.match(screen.getByRole("region", { name: "Workspace reviews" }).textContent, /Reviewed by Casey/);
   assert.equal(screen.queryByRole("button", { name: "Approve changes", exact: true }), null);
   fireEvent.click(button("Back to review"));
   fireEvent.click(button("Close thread"));
@@ -195,12 +198,12 @@ try {
   fireEvent.click(button("Archive task: Polish the settings menu"));
   fireEvent.click(button("Archive task"));
   await waitFor(() => assert.match(screen.getByRole("region", { name: "Workspace reviews" }).textContent, /Archived · Read-only/));
-  assert.match(screen.getByRole("region", { name: "Workspace reviews" }).textContent, /Verified by Casey/);
+  assert.match(screen.getByRole("region", { name: "Workspace reviews" }).textContent, /Reviewed by Casey/);
   assert.ok(!button("Open review").disabled, "archiving preserves direct review navigation");
   fireEvent.click(button("Open review"));
-  assert.match(screen.getByLabelText("Message thread").textContent, /Verified by Casey/);
+  assert.match(screen.getByLabelText("Message thread").textContent, /Reviewed by Casey/);
   assert.ok(screen.getByRole("textbox", { name: "Reply in thread" }).disabled);
-  assert.ok(!screen.queryByRole("button", { name: "Verify & resolve", exact: true }));
+  assert.ok(!screen.queryByRole("button", { name: "Mark as reviewed", exact: true }));
   fireEvent.click(button("View changes"));
   assert.ok(!button("Back to review").disabled);
   assert.equal(requests, 0);
@@ -232,6 +235,39 @@ try {
   assert.equal(button("Runs").getAttribute("aria-pressed"), "true", "completion does not switch to Diff");
   cleanup();
   console.log("PASS: pending and completed sends preserve the reader's latest evidence-tab choice.");
+  for (const destination of ["failed", "another-thread", "files"]) {
+    const handoffDemo = createDemoWorkspace(demoTasks[0]);
+    let confirmHandoff;
+    const handoffView = () => h(HiveClientContext, { value: handoffDemo.client }, h(HiveWorkspaceView, {
+      currentMember: demoMembers[0], sessionId: handoffDemo.getSnapshot().session.sessionId, inviteToken: "",
+      connection: { snapshot: handoffDemo.getSnapshot(), dispatch: (action) => new Promise((resolve) => {
+        confirmHandoff = async () => resolve(destination === "failed" ? undefined : await handoffDemo.dispatch(action));
+      }), receiveSnapshot: handoffDemo.receiveSnapshot, setTyping() {}, syncing: false, syncError: false },
+    }));
+    const handoffMount = render(handoffView());
+    fireEvent.click(button("Open thread with 1 reply"));
+    fireEvent.click(button("Steer entire thread with 1 reply"));
+    if (destination === "another-thread") fireEvent.click(button("Reply in thread to Alex's message"));
+    if (destination === "files") {
+      fireEvent.click(button("Close thread"));
+      fireEvent.click(screen.getByRole("button", { name: /^Workspace/ }));
+      fireEvent.click(button("Files"));
+    }
+    await act(async () => confirmHandoff());
+    handoffMount.rerender(handoffView());
+    if (destination === "failed") {
+      assert.match(screen.getByLabelText("Message thread").textContent, /thread could not be steered/);
+      assert.equal(handoffDemo.getSnapshot().session.workspace.liveReply, undefined);
+    } else if (destination === "another-thread") {
+      assert.match(screen.getByLabelText("Message thread").textContent, /Make the Settings menu more predictable/);
+      assert.equal(screen.getByRole("button", { name: "Thread", exact: true }).getAttribute("aria-pressed"), "true");
+    } else {
+      assert.equal(button("Files").getAttribute("aria-pressed"), "true");
+      assert.equal(screen.getByRole("button", { name: /^Workspace/ }).getAttribute("aria-pressed"), "true");
+    }
+    cleanup();
+  }
+  console.log("PASS: failed Steer keeps discussion open; delayed acknowledgements never pull readers out of another Thread or Files.");
   const attentionSnapshot = structuredClone(navigationSnapshot);
   const attentionParent = { id: "attention-parent", role: "human", name: "Alex", initials: "AL", body: "Discuss the navigation", time: "12:00 PM", memberId: demoMembers[0].id };
   const attentionQuestion = { id: "attention-child", threadId: attentionParent.id, role: "agent", name: "Hive", initials: "H", body: "Should the menu stay open?", time: "12:01 PM", interaction: { kind: "question", runId: "attention-run", targetMemberId: demoMembers[0].id, options: ["Yes", "No"] } };
@@ -304,6 +340,14 @@ try {
   await waitFor(() => assert.equal(threadActions.length, 2));
   assert.equal(threadActions[1].type, "steer-thread");
   assert.equal(threadActions[1].messageId, firstQuestion.id);
+  await waitFor(() => assert.equal(screen.queryByLabelText("Message thread"), null, "a confirmed handoff returns the sender to the main conversation"));
+  assert.equal(threadDemo.getSnapshot().session.workspace.liveReply.threadId, undefined);
+  const handoffRunId = threadDemo.getSnapshot().session.workspace.liveReply.id;
+  const handoffReplies = threadDemo.getSnapshot().session.messages.find((m) => m.id === firstQuestion.id).annotations;
+  await act(async () => threadDemo.finishRun(handoffRunId));
+  threadMount.rerender(threadView());
+  assert.match(threadDemo.getSnapshot().session.messages.find((m) => m.id === handoffRunId).body, /Simulated result/);
+  assert.deepEqual(threadDemo.getSnapshot().session.messages.find((m) => m.id === firstQuestion.id).annotations, handoffReplies);
   assert.equal(threadDemo.getSnapshot().session.messages.find((m) => m.id === repeatedQuestion.id).annotations.length, 0);
   assert.equal(requests, 0);
   console.log("PASS: repeated empty questions collapse without history loss; full text appears once, and reply/steer keep the original Thread identity with no navigation wakeups.");
@@ -338,7 +382,7 @@ try {
   // Questions are inline; locate the old review by its durable revision, not a card ordinal.
   const oldReview = reviewsDemo.getSnapshot().session.messages.find((message) => message.interaction?.kind === "review" && message.interaction.revision !== secondRunId);
   fireEvent.click(within(document.querySelector(`[data-message-id="${oldReview.id}"]`)).getByRole("button", { name: "Open collaboration thread", exact: true }));
-  assert.ok(button("Verify & resolve").disabled);
+  assert.ok(button("Mark as reviewed").disabled);
   fireEvent.click(button("View changes"));
   assert.match(screen.getByRole("region", { name: "Workspace reviews" }).textContent, /does not match the current diff/);
   fireEvent.click(button("Back to review"));
@@ -346,12 +390,12 @@ try {
   fireEvent.click(screen.getByRole("button", { name: /^Workspace/ }));
   assert.equal(screen.getAllByRole("button", { name: "Open review", exact: true }).length, 2);
   fireEvent.click(screen.getAllByRole("button", { name: "Open review", exact: true })[0]);
-  assert.ok(!button("Verify & resolve").disabled, "the current review is ready for Alex before archiving");
+  assert.ok(!button("Mark as reviewed").disabled, "the current review is ready for Alex before archiving");
   assert.equal(navigationWrites, 0, "opening and switching reviews never dispatches a task mutation");
   await reviewsDemo.dispatch({ type: "archive-task" });
   reviewMount.rerender(reviewView());
-  assert.ok(button("Verify & resolve").disabled);
-  assert.doesNotMatch(screen.getByLabelText("Message thread").textContent, /workspace has moved on/, "archiving is not a revision change");
+  assert.ok(button("Mark as reviewed").disabled);
+  assert.doesNotMatch(screen.getByLabelText("Message thread").textContent, /changes are out of date/, "archiving is not a revision change");
   fireEvent.click(button("View changes"));
   assert.match(screen.getByRole("region", { name: "Workspace reviews" }).textContent, /Archived · Read-only/);
   assert.ok(!button("Back to review").disabled);

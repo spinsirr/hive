@@ -39,6 +39,15 @@ export function MessageThread({ sessionId, message, requests = [], members, curr
   const replies = message.annotations;
   const question = message.interaction?.kind === "question" ? message.interaction : undefined;
   const review = message.interaction?.kind === "review" ? message.interaction : undefined;
+  const reviewHint = !review || review.resolved ? null
+    : disabled ? "Reviewing is paused for this task."
+    : reviewReady ? null
+    : review.status === "preparing" ? "Waiting for Hive to finish these changes."
+    : review.status === "unavailable" ? "No completed changes to review. Ask Hive to try again."
+    : runActive ? "Waiting for Hive to finish."
+    : !reviewCurrent ? "These changes are out of date. Ask Hive for a new review."
+    : review.targetMemberId && review.targetMemberId !== currentMember ? `Waiting for ${resolveMember(review.targetMemberId, members).shortName} to review.`
+    : "Finish pending work and feedback before marking as reviewed.";
   const waitingFor = question && !question.answer && question.targetMemberId && question.targetMemberId !== currentMember ? resolveMember(question.targetMemberId, members).shortName : null;
   const deliveredIds = useMemo(() => new Set((replies ?? []).filter((reply) => reply.authorId === currentMember && reply.clientId).map((reply) => reply.clientId!)), [currentMember, replies]);
   const send = useCallback((submission: MessageSubmission) => onReply(message.id, submission), [message.id, onReply]);
@@ -68,7 +77,7 @@ export function MessageThread({ sessionId, message, requests = [], members, curr
     setResolving(true);
     setError("");
     try {
-      if (!await onResolveReview(message.id, review.revision)) setError("The review changed. Check the latest changes and replies before verifying again.");
+      if (!await onResolveReview(message.id, review.revision)) setError("The review changed. Check the latest changes and replies before marking it reviewed.");
     } finally { setResolving(false); }
   };
 
@@ -92,11 +101,11 @@ export function MessageThread({ sessionId, message, requests = [], members, curr
               {message.role === "agent" ? <AgentResponse>{message.body}</AgentResponse> : message.codeReference ? <><p className="break-all text-xs text-[#737373]">{codeReferenceLabel(message.codeReference)}</p><pre className="mt-2 max-h-52 overflow-auto font-mono text-xs leading-5">{message.codeReference.quote}</pre></> : <p className="whitespace-pre-wrap">{message.body}</p>}
             </div>
             {question && onAnswerQuestion ? <div className="mt-3"><QuestionAnswer currentMember={currentMember} disabled={disabled} members={members} message={message} onAnswer={onAnswerQuestion} replyThreadId={message.id} sessionId={sessionId} /></div> : null}
-            {review ? <div className="mt-4 rounded-xl border border-[#e5e5e5] bg-[#fafafa] p-3">
-              <p className="text-xs leading-5 text-[#737373]">{review.resolved ? "This revision was verified by a teammate. This does not approve or merge a pull request." : review.status === "preparing" ? "The review will open when Hive saves this turn’s real workspace changes." : review.status === "unavailable" ? "No completed review evidence. Continue the task and ask Hive to request review again." : !reviewCurrent ? "The workspace has moved on. Ask Hive to refresh this review against the current changes." : "Review the current diff, share feedback with Hive, then verify the returned revision. New discussion must be addressed first."}</p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {onViewChanges ? <Button size="sm" variant="outline" onClick={onViewChanges}>View changes</Button> : null}
-                {onResolveReview && !review.resolved ? <Button size="sm" disabled={disabled || !reviewReady || resolving} onClick={() => void resolveReview()}>{resolving ? "Verifying…" : "Verify & resolve"}</Button> : null}
+            {review ? <div className="mt-3 space-y-2" role="group" aria-label="Review actions">
+              {reviewHint ? <p className="text-xs leading-5 text-muted-foreground">{reviewHint}</p> : null}
+              <div className="flex flex-wrap gap-1.5">
+                {onViewChanges ? <Button className="h-7 px-2.5 text-xs" size="sm" variant="outline" onClick={onViewChanges}>View changes</Button> : null}
+                {onResolveReview && !review.resolved ? <Button className="h-7 px-2.5 text-xs" size="sm" variant="secondary" title="Records your review only; does not approve or merge a pull request." disabled={disabled || !reviewReady || resolving} onClick={() => void resolveReview()}>{resolving ? "Saving…" : "Mark as reviewed"}</Button> : null}
               </div>
             </div> : null}
           </article>
@@ -122,7 +131,7 @@ export function MessageThread({ sessionId, message, requests = [], members, curr
             <Button aria-label={sending ? "Sending reply" : draft?.status === "unconfirmed" ? "Retry reply" : "Send reply"} className="size-8 shrink-0 rounded-full shadow-none" disabled={disabled || !draft?.body.trim() || sending} onClick={() => void submit()} size="icon">{sending ? <LoaderCircle className="size-3.5 animate-spin" /> : <ArrowUp className="size-4.5" />}</Button>
           </div>
         </div>
-        <p className="mt-2 px-1 text-xs text-[#737373]" role="status">{draft?.status === "unconfirmed" ? "Delivery unconfirmed. Your reply is saved; retry when connected." : waitingFor ? `Waiting for ${waitingFor}. Your reply is discussion, not an answer.` : "Replies stay here. Steer the thread to share the whole discussion with Hive."}</p>
+        <p className="mt-2 px-1 text-xs text-[#737373]" role="status">{draft?.status === "unconfirmed" ? "Delivery unconfirmed. Your reply is saved; retry when connected." : waitingFor ? `Waiting for ${waitingFor}. Your reply is discussion, not an answer.` : "Replies stay here. Steer the thread to continue with Hive in the main conversation."}</p>
       </footer>
     </section>
   );

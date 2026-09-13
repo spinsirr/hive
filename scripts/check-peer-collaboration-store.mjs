@@ -138,16 +138,21 @@ try {
   assert.equal((await store.getPublicTaskSessionSnapshot(foreign.sessionId)).session.version, before);
   console.log("PASS: real MCP → Postgres inline question → concurrent answers → one main-conversation continuation; reconnect read, stale run and cross-task denial.");
   console.log("PASS: real MCP review request → completed evidence → assigned reviewer; stale version and duplicate resolution are no-ops.");
-  // Ordinary discussions must have the same reply destination as structured
-  // questions/reviews, including single replies and queued continuations.
+  // Thread discussion never invokes an agent, even when addressed to Hive.
+  // Explicit Steer admits main work directly, including queued continuations.
   for (const mode of ["reply", "thread", "queued-reply", "queued-thread"]) {
     const discussion = await store.createTaskSession(`Ordinary thread ${mode}`, members[0]);
     await store.joinTaskSession(discussion.sessionId, members[1].id);
     const parentRun = await store.applyTaskSessionAction(discussion.sessionId, { type: "send-message", actor: members[0].id, body: "Inspect the settings", clientId: randomUUID() }, members[0]);
     const parentId = parentRun.snapshot.session.workspace.liveReply.id;
     await store.appendHiveReply(discussion.sessionId, runResult.summary, { forReplyId: parentId, runResult });
-    const comment = await store.applyTaskSessionAction(discussion.sessionId, { type: "annotate-message", actor: members[1].id, messageId: parentId, body: "Explain the tradeoffs here", clientId: randomUUID() }, members[1]);
-    assert.equal(comment.startedRun, false);
+    const beforeComment = (await store.getPublicTaskSessionSnapshot(discussion.sessionId)).session;
+    const commentBody = "@Hive explain the tradeoffs here, keeping all keyboard navigation behavior intact.";
+    const comment = await store.applyTaskSessionAction(discussion.sessionId, { type: "annotate-message", actor: members[1].id, messageId: parentId, body: commentBody, clientId: randomUUID() }, members[1]);
+    assert.equal(comment.startedRun, false, "mentioning Hive in discussion does not grant execution");
+    const afterComment = (await store.getPublicTaskSessionSnapshot(discussion.sessionId)).session;
+    assert.deepEqual(afterComment.workspace, beforeComment.workspace, "discussion does not create or alter agent state");
+    assert.deepEqual(comment.snapshot.session.steeringQueue, beforeComment.steeringQueue);
     const replyId = comment.snapshot.session.messages.find((message) => message.id === parentId).annotations.at(-1).id;
     let busyRun;
     if (mode.startsWith("queued")) {
@@ -164,21 +169,78 @@ try {
       assert.equal(grants.filter((grant) => grant.startedRun).length, 1);
     }
     const active = (await store.getPublicTaskSessionSnapshot(discussion.sessionId)).session;
-    assert.equal(active.workspace.liveReply.threadId, parentId, `${mode}: ordinary Thread retains its identity`);
+    assert.equal(active.workspace.liveReply.threadId, undefined, `${mode}: Steer hands work back to the main conversation`);
+    assert.ok(active.activeSteer.body.includes(commentBody), "Steer preserves the full reply, without a generated summary");
     const activeId = active.workspace.liveReply.id;
     await store.checkpointAgentReply(discussion.sessionId, activeId, "Considering the tradeoffs", 1);
     await store.appendHiveReply(discussion.sessionId, "Thread result", { forReplyId: activeId, runResult: { ...runResult, summary: "Thread result" } });
     const done = (await store.getPublicTaskSessionSnapshot(discussion.sessionId)).session;
-    assert.deepEqual(done.messages.map((message) => message.id), active.messages.map((message) => message.id));
+    assert.deepEqual(done.messages.map((message) => message.id), [...active.messages.map((message) => message.id), activeId]);
     const replies = done.messages.find((message) => message.id === parentId).annotations;
     assert.equal(replies[0].authorId, members[1].id, "steering does not transfer authorship to the promoter");
-    assert.equal(replies.at(-1).id, activeId);
-    assert.equal(replies.at(-1).body, "Thread result");
-    assert.equal(replies.at(-1).role, "agent");
+    assert.deepEqual(replies, active.messages.find((message) => message.id === parentId).annotations);
+    assert.equal(done.messages.at(-1).id, activeId);
+    assert.equal(done.messages.at(-1).body, "Thread result");
+    assert.equal(done.messages.at(-1).role, "agent");
   }
-  console.log("PASS: ordinary Thread single/whole and immediate/queued steers stream and finish in their original discussion; main messages remain root messages.");
+  console.log("PASS: ordinary Thread single/whole and immediate/queued steers finish once in the main conversation without altering the human discussion.");
+  // Model results below are fixtures. This checks real storage/admission/context
+  // wiring only; the live acceptance separately verifies the model's decision.
+  const { buildHiveRunInput, buildHivePrompt } = await import("../src/lib/hive-prompt.ts");
+  for (const queued of [false, true]) {
+    const task = await store.createTaskSession(`Repeated Steer after main decision ${queued}`, members[0]);
+    await store.joinTaskSession(task.sessionId, members[1].id);
+    await store.applyTaskSessionAction(task.sessionId, {
+      type: "connect-repository", actor: members[0].id, repositoryUrl: "https://github.com/example/fixture", repositoryId: 42,
+      repositoryName: "example/fixture", repositoryBranch: "main", visibility: "public", installationId: 1, githubUserId: 100, githubLogin: members[0].id,
+    }, members[0]);
+    const act = (action) => store.applyTaskSessionAction(task.sessionId, { actor: members[0].id, ...action }, members[0]);
+    const initial = await act({ type: "send-message", body: "Create the settings prototype", clientId: randomUUID() });
+    const rootId = initial.snapshot.session.messages.find((message) => message.role === "human").id;
+    await store.appendHiveReply(task.sessionId, "Prototype ready", { forReplyId: initial.snapshot.session.workspace.liveReply.id, runResult });
+    const blue = await act({ type: "annotate-message", messageId: rootId, body: "Use blue for the color.", clientId: randomUUID() });
+    const firstBoundary = blue.snapshot.session.messages.find((message) => message.id === rootId).annotations.at(-1).id;
+    const first = await act({ type: "steer-thread", messageId: rootId, throughReplyId: firstBoundary });
+    assert.equal(first.startedRun, true);
+    await store.appendHiveReply(task.sessionId, "The color is blue.", { forReplyId: first.snapshot.session.workspace.liveReply.id, runResult });
+    const main = await act({ type: "send-message", body: "Change the color to black. This replaces the earlier color choice.", clientId: randomUUID() });
+    const currentResult = { ...runResult, summary: "The color is black.",
+      files: [{ path: "hive-steer-qa.json", content: '{"color":"black","radius":0}' }],
+      agentSession: { ...runResult.agentSession, resumeFrom: { type: "resume-session", specificationVersion: "harness-v1", harnessId: "codex", data: { checkpoint: "AFTER_MAIN_BLACK_DECISION" } } },
+    };
+    const finishMain = () => store.appendHiveReply(task.sessionId, currentResult.summary, { forReplyId: main.snapshot.session.workspace.liveReply.id, runResult: currentResult });
+    if (!queued) await finishMain();
+    const radius = await act({ type: "annotate-message", messageId: rootId, body: "Set the radius to 12.", clientId: randomUUID() });
+    assert.equal(radius.startedRun, false);
+    const secondBoundary = radius.snapshot.session.messages.find((message) => message.id === rootId).annotations.at(-1).id;
+    const secondAction = { type: "steer-thread", messageId: rootId, throughReplyId: secondBoundary };
+    let second = await act(secondAction);
+    assert.equal(second.startedRun, !queued);
+    const duplicate = await act(secondAction);
+    assert.equal(duplicate.startedRun, false);
+    assert.equal(duplicate.snapshot.session.version, second.snapshot.session.version);
+    if (queued) {
+      assert.equal(second.snapshot.session.workspace.liveReply.id, main.snapshot.session.workspace.liveReply.id, "queueing a Thread does not interrupt main");
+      await finishMain();
+      second = await act({ type: "apply-next-steer" });
+      assert.equal(second.startedRun, true);
+    }
+    const active = second.snapshot.session;
+    assert.equal(active.workspace.liveReply.threadId, undefined);
+    assert.equal(active.workspace.agentSession.id, "native-fixture", "second Steer keeps the main native session");
+    assert.equal(active.workspace.agentSession.resumeFrom.data.checkpoint, "AFTER_MAIN_BLACK_DECISION", "queued input must resume the checkpoint current at admission, not at the earlier Thread handoff");
+    assert.equal(active.workspace.files.find((file) => file.path === "hive-steer-qa.json").content, '{"color":"black","radius":0}');
+    assert.ok(active.activeSteer.body.includes(firstBoundary), "the previous handoff boundary accompanies the complete Thread");
+    const input = buildHiveRunInput(active, { actor: members[0].id, ...(queued ? { type: "apply-next-steer" } : secondAction) }, members);
+    assert.match(input.steer, /Use blue for the color\./);
+    assert.match(input.steer, /Set the radius to 12\./);
+    assert.match(input.steer, /Previously shared discussion is context, not a request to repeat finished work/);
+    const prompt = buildHivePrompt(active, input.actor, input.steer, input.actorName);
+    assert.match(prompt, /Change the color to black\. This replaces the earlier color choice\./, "the newer main decision is available alongside the old Thread");
+    console.log(`PASS: ${queued ? "queued" : "immediate"} second Steer preserves newer main decision, current native checkpoint/files and full attributed Thread; duplicate grant denied (model result is a fixture).`);
+  }
   for (const answerWhileBusy of [false, true]) {
-    const task = await store.createTaskSession(`Question in existing Thread ${answerWhileBusy}`, members[0]);
+    const task = await store.createTaskSession(`Question after Thread handoff ${answerWhileBusy}`, members[0]);
     await store.joinTaskSession(task.sessionId, members[1].id);
     const first = await store.applyTaskSessionAction(task.sessionId, { type: "send-message", actor: members[0].id, body: "Discuss navigation", clientId: randomUUID() }, members[0]);
     const rootId = first.snapshot.session.workspace.liveReply.id;
@@ -189,11 +251,11 @@ try {
     const scope = { sessionId: task.sessionId, memberId: members[1].id, runId: started.snapshot.session.workspace.liveReply.id };
     const request = await store.createHivePeerRequest(scope, { key: "thread-density", prompt: "Compact or spacious?", targetMemberId: members[1].id, options: ["Compact", "Spacious"] });
     const question = (await store.getPublicTaskSessionSnapshot(task.sessionId)).session.messages.find((message) => message.id === request.messageId);
-    assert.equal(question.threadId, rootId);
-    const posted = await store.appendHiveToolReply(scope, question.id, "One contribution to this existing discussion.", "nested-reply");
-    assert.equal(posted.messageId, rootId, "even a tool targeting a child question posts to the existing Thread");
+    assert.equal(question.threadId, undefined, "questions raised after Steer belong to main, not the source discussion");
+    const posted = await store.appendHiveToolReply(scope, rootId, "One contribution to this existing discussion.", "nested-reply");
+    assert.equal(posted.messageId, rootId, "a deliberate tool contribution retains its explicit destination");
     const retried = await store.appendHiveToolReply(scope, rootId, "One contribution to this existing discussion.", "nested-reply");
-    assert.deepEqual(retried, posted, "aliasing the question and Thread IDs cannot duplicate the reply");
+    assert.deepEqual(retried, posted, "retries cannot duplicate a deliberate tool reply");
     const postedState = (await store.getPublicTaskSessionSnapshot(task.sessionId)).session;
     assert.ok(!postedState.messages.find((message) => message.id === question.id).annotations?.length);
     assert.equal(postedState.messages.find((message) => message.id === rootId).annotations.filter((reply) => reply.id === posted.replyId).length, 1);
@@ -206,14 +268,15 @@ try {
       await store.applyTaskSessionAction(task.sessionId, { type: "continue-peer-response", actor: members[0].id, steerId: pending.id }, members[0]);
     }
     const resumed = (await store.getPublicTaskSessionSnapshot(task.sessionId)).session;
-    assert.equal(resumed.workspace.liveReply.threadId, rootId, "answer continuation stays in the existing Thread, not the question ID");
+    assert.equal(resumed.workspace.liveReply.threadId, undefined, "answer continuation remains in the main conversation");
     await store.checkpointAgentReply(task.sessionId, resumed.workspace.liveReply.id, "Compact it is.", 1);
     await store.appendHiveReply(task.sessionId, "Compact it is.", { forReplyId: resumed.workspace.liveReply.id, runResult: { ...runResult, summary: "Compact it is." } });
     const finished = (await store.getPublicTaskSessionSnapshot(task.sessionId)).session;
-    assert.equal(finished.messages.find((message) => message.id === rootId).annotations.at(-1).body, "Compact it is.");
-    assert.ok(!finished.messages.some((message) => message.id === resumed.workspace.liveReply.id), "no duplicate main reply");
+    assert.deepEqual(finished.messages.find((message) => message.id === rootId).annotations, postedState.messages.find((message) => message.id === rootId).annotations);
+    assert.equal(finished.messages.filter((message) => message.id === resumed.workspace.liveReply.id).length, 1, "one main reply");
+    assert.equal(finished.messages.find((message) => message.id === resumed.workspace.liveReply.id).body, "Compact it is.");
   }
-  console.log("PASS: real store retains Thread identity through question creation, concurrent answers, immediate/queued continuation, streaming and completion.");
+  console.log("PASS: questions after Steer, concurrent answers and immediate/queued continuation stay in main without duplicating the source discussion.");
   // Archive is a shared task state, serialized with run admission and recovery.
   const archive = { type: "archive-task", actor: members[0].id };
   const archived = await store.applyTaskSessionAction(task.sessionId, archive, members[0]);
@@ -270,7 +333,7 @@ try {
   assert.equal(steering.filter((item) => item.startedRun).length, 1, "two clients steering one opinion still grant only one run");
   const newRun = (await store.getPublicTaskSessionSnapshot(repeatTask.sessionId)).session.workspace.liveReply;
   repeatScope.runId = newRun.id;
-  assert.equal(newRun.threadId, original.messageId);
+  assert.equal(newRun.threadId, undefined, "steering an opinion returns work to main without duplicating its question");
   const beforeRepeat = (await store.getPublicTaskSessionSnapshot(repeatTask.sessionId)).session.version;
   const repeated = await Promise.all([1, 2].map(() => store.createHivePeerRequest(repeatScope, repeatRequest)));
   assert.ok(repeated.every((receipt) => receipt.messageId === original.messageId && !receipt.created && receipt.status === "awaiting_answer"));
@@ -295,6 +358,7 @@ try {
   assert.deepEqual(await store.createHivePeerRequest(repeatScope, repeatRequest), { messageId: original.messageId, created: false, status: "answered" });
   assert.equal((await store.getPublicTaskSessionSnapshot(repeatTask.sessionId)).session.version, afterAnswer.version);
   console.log("PASS: real store and MCP reuse one task-scoped question across steered discussion turns, concurrent calls and answer continuation; no duplicate card, task update or execution grant.");
+
 } finally {
   await client?.close();
   await pool.end();

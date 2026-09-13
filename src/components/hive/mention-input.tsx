@@ -8,7 +8,7 @@ import { shouldSubmitMessage } from "@/lib/message-keyboard";
 import type { TeamMember } from "@/lib/task-session";
 import { activeTeammateMention, insertTeammateMention, matchingTeammates, teammateMentionHandle } from "@/lib/teammate-mention";
 
-export function MentionInput({ value, onChange, onSubmit, members, currentMember, disabled, readOnly, label = "Ask Hive or mention a teammate", placeholder, maxLength, autoFocus = false, className }: {
+export function MentionInput({ value, onChange, onSubmit, members, currentMember, disabled, readOnly, label = "Ask Hive or mention a teammate", placeholder, maxLength, autoFocus = false, rows = 3, className }: {
   value: string;
   onChange: (value: string) => void;
   onSubmit: () => void;
@@ -20,6 +20,7 @@ export function MentionInput({ value, onChange, onSubmit, members, currentMember
   placeholder?: string;
   maxLength?: number;
   autoFocus?: boolean;
+  rows?: number;
   className?: string;
 }) {
   const textarea = useRef<HTMLTextAreaElement>(null);
@@ -109,7 +110,7 @@ export function MentionInput({ value, onChange, onSubmit, members, currentMember
         onSelect={(event) => setSelection({ start: event.currentTarget.selectionStart ?? 0, end: event.currentTarget.selectionEnd ?? 0 })}
         placeholder={placeholder ?? (disabled ? "Messaging is paused." : "Ask Hive or @mention a teammate…")}
         maxLength={maxLength}
-        render={<textarea ref={textarea} rows={3} />}
+        render={<textarea ref={textarea} rows={rows} />}
       />
       <Autocomplete.Portal>
         <Autocomplete.Positioner align="start" className="z-50" side="top" sideOffset={10}>

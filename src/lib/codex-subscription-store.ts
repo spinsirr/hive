@@ -12,8 +12,8 @@ export class SubscriptionAccessDenied extends Error {}
 async function authorizedTask(scope: HiveToolScope) {
   const [task] = await db.select({ ownerId: taskSessions.createdBy, repository: taskSessions.repository }).from(taskSessions)
     .innerJoin(taskSessionMembers, and(eq(taskSessionMembers.sessionId, taskSessions.id), eq(taskSessionMembers.memberId, scope.memberId)))
-    .where(and(eq(taskSessions.id, scope.sessionId), eq(taskSessions.stage, "running"),
-      sql`${taskSessions.workspace}->'liveReply'->>'id' = ${scope.runId}`,
+    .where(and(eq(taskSessions.id, scope.sessionId), sql`${taskSessions.archived} IS NULL`,
+      eq(taskSessions.stage, "running"), sql`${taskSessions.workspace}->'liveReply'->>'id' = ${scope.runId}`,
       sql`(${taskSessions.workspace}->'restore' IS NULL OR ${taskSessions.workspace}->'restore' = 'null'::jsonb)`));
   if (!task) throw new SubscriptionAccessDenied("This run no longer has access.");
   return task;

@@ -3,9 +3,11 @@ import { test } from "node:test";
 import { createDemoWorkspace, demoMembers } from "./demo-workspace.ts";
 import { demoTasks } from "./ui-demo.ts";
 import { workspaceCheckpointsResponse, workspaceReadResponse } from "./workspace-files.ts";
+import { applyHiveRunError, conversationMessages } from "./task-session.ts";
+import { requestPeerInput } from "./peer-collaboration.ts";
 
 for (const mode of ["reply", "thread", "queued-reply", "queued-thread"] as const) {
-  test(`${mode} steering returns the result to the ordinary discussion, not the main conversation`, async () => {
+  test(`${mode} steering hands work back to the main conversation and preserves the human discussion`, async () => {
     const demo = createDemoWorkspace(demoTasks[0]);
     const queued = mode.startsWith("queued");
     if (queued) await demo.dispatch({ type: "send-message", clientId: "other-work", body: "Other work first" });
@@ -17,16 +19,25 @@ for (const mode of ["reply", "thread", "queued-reply", "queued-thread"] as const
       await demo.dispatch({ type: "apply-next-steer" });
     }
     const running = demo.getSnapshot().session;
-    assert.equal(running.workspace.liveReply?.threadId, "answer");
+    assert.equal(running.workspace.liveReply?.threadId, undefined);
     const rootIds = running.messages.map((message) => message.id);
+    const originalReplies = running.messages.find((message) => message.id === "answer")!.annotations!;
     const runId = running.workspace.liveReply!.id;
+    const streaming = { ...running, workspace: { ...running.workspace, liveReply: { ...running.workspace.liveReply!, body: "Working on the team's feedback", sequence: 1 } } };
+    assert.equal(conversationMessages(streaming).find((message) => message.id === runId)?.status, "streaming");
+    assert.deepEqual(conversationMessages(streaming).find((message) => message.id === "answer")?.annotations, originalReplies);
+    const asked = requestPeerInput(running, { sessionId: running.sessionId, runId, memberId: demoMembers[0].id }, { key: "clarification", prompt: "Which behavior?" }, demoMembers, Date.now());
+    assert.equal(asked.session.messages.find((message) => message.id === asked.messageId)?.threadId, undefined, "new agent questions also belong to the main conversation");
+    const failed = applyHiveRunError(streaming, "Connection lost");
+    assert.equal(failed.messages.at(-1)?.body, "Connection lost");
+    assert.deepEqual(failed.messages.find((message) => message.id === "answer")?.annotations, originalReplies, "errors must not jump back into the human discussion");
     demo.finishRun(runId);
     const completed = demo.getSnapshot().session;
-    assert.deepEqual(completed.messages.map((message) => message.id), rootIds, "a thread continuation must not add another root message or review");
+    assert.deepEqual(completed.messages.map((message) => message.id), [...rootIds, runId], "one main result, without a duplicate review or thread reply");
     const replies = completed.messages.find((message) => message.id === "answer")!.annotations!;
-    assert.equal(replies.at(-1)?.id, runId);
-    assert.equal(replies.at(-1)?.role, "agent");
-    assert.match(replies.at(-1)!.body, /Simulated result/);
+    assert.deepEqual(replies, originalReplies);
+    assert.equal(completed.messages.at(-1)?.role, "agent");
+    assert.match(completed.messages.at(-1)!.body, /Simulated result/);
     assert.equal(replies[0].authorId, "demo-casey");
   });
 }
