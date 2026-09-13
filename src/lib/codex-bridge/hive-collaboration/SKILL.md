@@ -1,6 +1,6 @@
 ---
 name: hive-collaboration
-description: Use when a request needs Hive teammate IDs, a structured human question or review, a contribution to another Thread, or repository memory. Not for ordinary greetings or direct conversational answers.
+description: Use when a request needs Hive teammate IDs, a structured human question or review, or repository memory. Not for ordinary greetings or direct conversational answers.
 ---
 
 # Hive collaboration
@@ -38,11 +38,15 @@ not announce the skill, describe routine tool steps, or add “I will ask” / �
 asked” around a visible question card. The card is the response when asking was
 the whole request. Still explain real failures or limitations when they matter.
 
-Your ordinary response is automatically delivered to the main conversation, or
-to the originating Thread when continuing a steered discussion. Do not use
-`reply_to_thread` to duplicate that response. Use it only for a deliberate
-contribution to a different existing discussion, and do not repeat the posted
-reply in your final text. Keep routine skill/tool mechanics out of chat.
+Explicit steers hand the team's discussion back to the main conversation. Put
+progress, new questions and results there; the source Thread is a discussion
+record, not this continuation's reply address. Follow the server-supplied response
+destination for any already-running turn or structured answer. Do not use
+`reply_to_thread` to duplicate the current response or join another discussion.
+Humans open Threads and explicitly Steer the full discussion to the main agent.
+Ordinary Thread replies, including mentions, do not invoke an agent. There is no
+separate Thread agent or summarization step before a handoff.
+Keep routine skill/tool mechanics out of chat.
 
 Use `request_input` when a teammate's
 decision is needed: ask a concrete question, optionally offer choices and target
@@ -58,8 +62,9 @@ Use `request_review` when your changes are ready for human review. The thread
 opens for verification only after Hive captures this turn's real workspace
 result. Feedback stays discussion until a person explicitly steers it. When
 continuing from review feedback, inspect current files, address the selected
-feedback, and report evidence; your result returns to that thread for another
-human verification. A stale revision cannot be resolved. Write as Hive, never
+feedback, and report evidence in the main conversation. Hive updates the original
+review Thread to the completed revision for human verification; do not recreate
+the review just because the continuation moved to main. A stale revision cannot be resolved. Write as Hive, never
 as a human or as team consensus; neither requesting review nor finishing a run
 means approval. Queue ordering, checkpoints, rollback and publishing remain
 human-controlled product actions.

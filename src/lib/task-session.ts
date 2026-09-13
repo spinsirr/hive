@@ -465,15 +465,12 @@ export function didStartHiveRun(previous: TaskSessionState, next: TaskSessionSta
   return !isHiveRunActive(previous) && isHiveRunActive(next);
 }
 
-/** Thread-originated work returns to its parent, whether structured or ordinary.
- * Immediate single-reply steers use the action; queued/whole-thread work keeps
- * its source in activeSteer. A queued main message is not a thread reply.
- */
-export function hiveReplyThreadId(state: TaskSessionState, action?: TaskSessionAction): string | undefined {
+/** Explicit steers hand work back to main; their source is provenance, not a
+ * reply destination. Only a structured answer explicitly made in a Thread
+ * continues there. Already-admitted runs retain their saved liveReply route. */
+export function hiveReplyThreadId(state: TaskSessionState): string | undefined {
   const source = state.activeSteer?.source;
-  const messageId = source?.kind === "peer-response" ? source.replyThreadId : source && (source.kind === "message-annotation" || source.kind === "message-thread")
-    ? source.messageId
-    : action?.type === "steer-message-annotation" ? action.messageId : undefined;
+  const messageId = source?.kind === "peer-response" ? source.replyThreadId : undefined;
   return messageId && state.messages.some((message) => message.id === messageId) ? messageId : undefined;
 }
 
@@ -922,22 +919,22 @@ export function reduceTaskSession(
     if (targetAnnotation?.role === "agent") return state;
     if (!targetAnnotation || targetAnnotation.status !== "open") return state;
 
+    const queueItem: SteeringQueueItem = {
+      id: `steer-${now}-${state.version + 1}`,
+      body: targetAnnotation.body,
+      authorId: action.actor,
+      queuedAt: now,
+      source: {
+        kind: "message-annotation",
+        messageId: action.messageId,
+        annotationId: action.annotationId,
+      },
+      sourceLabel: `${
+        state.messages.find((message) => message.id === action.messageId)
+          ?.name ?? actor.shortName
+      }'s message`,
+    };
     if (isHiveRunActive(state) || state.steeringQueue.length > 0) {
-      const queueItem: SteeringQueueItem = {
-        id: `steer-${now}-${state.version + 1}`,
-        body: targetAnnotation.body,
-        authorId: action.actor,
-        queuedAt: now,
-        source: {
-          kind: "message-annotation",
-          messageId: action.messageId,
-          annotationId: action.annotationId,
-        },
-        sourceLabel: `${
-          state.messages.find((message) => message.id === action.messageId)
-            ?.name ?? actor.shortName
-        }'s message`,
-      };
       return {
         ...state,
         version: state.version + 1,
@@ -968,6 +965,7 @@ export function reduceTaskSession(
       version: state.version + 1,
       revision: 2,
       stage: "running",
+      activeSteer: { ...queueItem, appliedAt: now },
       workspace: state.repository
         ? {
             ...state.workspace,

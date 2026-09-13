@@ -141,14 +141,34 @@ Thread entry. Only the designated teammate can answer; others see who is awaited
 The answer is displayed in the question card, not counted as a discussion reply.
 Reply can explicitly start discussion. Archived tasks keep existing Threads
 readable and disable answering.
+
+Question controls are compact (2026-09-12): choices and a quiet Write an answer
+entry, not a permanently open second composer. Clicking a question option submits
+that answer immediately; there is no second Answer confirmation. Disable choices
+while sending, show progress on the chosen option, and reuse its delivery identity
+on retry. This shortcut never applies to review approval. Custom text expands a one-row,
+content-growing input with its submit action alongside, without a separate footer.
+Questions without options show that compact input directly. Restored custom drafts
+stay visible without stealing focus. Keep question metadata neutral; no large
+warning badge, surrounding card or decorative attention animation. The same
+QuestionAnswer component owns this behavior inline and inside Threads.
+
 The timeline suppresses exact repeated empty question cards using their stable
 request key, prompt, addressee and choices. Source records and IDs are unchanged;
 copies with replies, answers or other evidence stay visible and are never merged.
-Whole-Thread steers return their stream/result to the original
-discussion, including ordinary messages and code annotations, not only question
-and review cards. `hiveReplyThreadId` is shared by run admission and the Demo;
-immediate and queued starts use the same destination rule. Main-message work
-still returns to the main conversation. Navigation never starts a run.
+Thread is for team discussion; an explicit Steer hands work back to the main
+conversation. Progress, new questions, results and failures from that run appear
+there once, not as replies to the source Thread. This applies to immediate and
+queued starts, including historical single-reply steers. The source keeps its
+authors, discussion and handoff boundary; it is provenance, not a reply address.
+Run admission and the Demo share this destination rule. Already-admitted runs
+keep their persisted route. Navigation never starts a run.
+
+After a confirmed handoff, the sender returns to the main conversation. Failed
+submissions keep the Thread open; delayed confirmations do not override a newer
+navigation choice. Other teammates' views never move. Review feedback remains
+bound to its source Thread and the completed revision even though Hive replies
+in main; later comments are not silently marked addressed.
 
 A question raised while working in a Thread belongs to that existing Thread.
 Its durable message keeps the originating `threadId`; the timeline excludes it
@@ -164,7 +184,8 @@ attributed discussion up to the clicked reply boundary to the existing main
 agent. Later replies are not silently included. Previously shared replies remain
 context; a new handoff needs new human feedback, so Hive's own acknowledgement
 cannot repeatedly wake itself. Partial streaming responses cannot be handed off.
-Ordinary replies do not start a run. Historical per-reply steering attribution
+Ordinary replies, including mentions, do not start a run. No agent-generated
+summary is required before Steer. Historical per-reply steering attribution
 and already queued work remain readable and executable.
 
 ### Review navigation (2026-09-12)
@@ -175,9 +196,16 @@ workspace revision, with the shared review status and Open review links. Archive
 tasks retain these read-only links and verification history. Older review Threads
 retain their own return link and explicitly warn when the current diff no longer
 matches. Diff, Files and Runs are evidence views, never approval
-surfaces. Verify & resolve lives only in the original Thread, gated by the current
+surfaces. Mark as reviewed lives only in the original Thread, gated by the current
 revision and reviewer. No global Approve changes button or action remains. Demo
 uses these same components. Historical task approval records are not rewritten.
+
+Review controls follow the compact question treatment: a flat View changes /
+Mark as reviewed row, no surrounding card or repeated instruction paragraph.
+Only unavailable actions get a short reason (pending work, outdated revision or
+the designated reviewer). Completion is consistently labeled Reviewed by across
+the Thread, conversation and workspace. Marking a revision reviewed records that
+human decision only; it does not start a run, approve a PR or merge anything.
 
 ### Team archive (2026-09-12)
 

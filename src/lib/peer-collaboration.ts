@@ -82,10 +82,11 @@ export function canResolvePeerReview(state: TaskSessionState, message: ChatMessa
 export function finishPeerReviews(state: TaskSessionState, messages: ChatMessage[], succeeded: boolean): ChatMessage[] {
   const run = state.workspace.liveReply;
   if (!run) return messages;
+  const source = state.activeSteer?.source;
+  const sourceThreadId = source?.kind === "message-thread" || source?.kind === "message-annotation" ? source.messageId : undefined;
   return messages.map((message) => {
     const review = message.interaction;
-    if (review?.kind !== "review" || !((review.runId === run.id && review.status === "preparing") || message.id === run.threadId)) return message;
-    const source = state.activeSteer?.source;
+    if (review?.kind !== "review" || !((review.runId === run.id && review.status === "preparing") || message.id === run.threadId || message.id === sourceThreadId)) return message;
     return { ...message, interaction: { ...review, status: succeeded ? "open" : "unavailable", revision: succeeded ? run.id : undefined, resolved: undefined,
       coveredThroughReplyId: succeeded && source?.kind === "message-thread" && source.messageId === message.id ? source.throughReplyId : review.coveredThroughReplyId,
     } };

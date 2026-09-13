@@ -33,7 +33,7 @@ The single repository selected from Repository Access for a task session. It may
 _Avoid_: Project, default repository
 
 **Thread**:
-Discussion attached to one human or completed agent message. Replies retain their authors and do not direct the agent until explicitly steered, except for a structured answer requested by Hive. Hive can participate as itself. Existing message annotations are displayed as replies, not a separate comment system.
+Discussion attached to one human or completed agent message. Ordinary replies, including mentions, retain their authors and never invoke an agent. Steer hands the full discussion directly to the main agent, without a separate Thread agent or summarization step. Structured answers requested by Hive retain their recorded continuation destination. Existing message annotations are displayed as replies, not a separate comment system.
 _Avoid_: New task session, agent history
 
 **Code Annotation**:
@@ -45,14 +45,14 @@ A correction by the original author. Pending message edits update the queued req
 _Avoid_: Retry, conversation rewind, hidden steer
 
 **Steer**:
-One reply, an entire thread, or a teammate message explicitly promoted into agent direction. A whole-thread steer freezes the parent, replies through the selected boundary, and each author's identity. During a run, steers wait in an ordered queue for a safe boundary.
+One reply, an entire thread, or a teammate message explicitly promoted into agent direction. A whole-thread steer freezes the parent, replies through the selected boundary, and each author's identity. During a run, steers wait in an ordered queue for a safe boundary. Explicit steers hand work back to the main conversation: Hive's progress, new questions and result go there; the source Thread remains the team's discussion record.
 _Avoid_: Comment, hidden prompt
 
 **Question**:
 A structured request from Hive, optionally addressed to a task member. The first eligible answer is saved once and queued with its author. An idle task continues immediately; an answer queued during a run continues at the next safe boundary when a connected client observes it ready. If every client closes, it remains saved until reconnect. This is a new turn using saved native history, not a suspended tool callback or a durable background workflow. Interrupted runs and restored queues require manual continuation.
 
 **Review Request**:
-Hive asks for human feedback in a Thread. Verification opens only after actual workspace evidence is collected, and is bound to that completed run's revision and its designated reviewer, if any. Explicitly steered feedback returns its stream and result to the same Thread. New comments, another run, or a restore prevent stale verification. Viewing Diff, Files or Runs is navigation only; Back to review returns to the original Thread. Verify & resolve is the sole review confirmation, not a task approval or PR merge. There is no separate global Approve changes action.
+Hive asks for human feedback in a Thread. Verification opens only after actual workspace evidence is collected, and is bound to that completed run's revision and its designated reviewer, if any. Explicitly steered feedback returns its stream and result to the main conversation while the original review stays linked to the updated revision. New comments, another run, or a restore prevent stale verification. Viewing Diff, Files or Runs is navigation only; Back to review returns to the original Thread. Mark as reviewed is the sole review confirmation, not a task approval or PR merge. There is no separate global Approve changes action.
 
 **Run**:
 One agent execution turn against the attached repository. A run that has not reported for six minutes can be marked lost by a member; the discussion, partial output and queued steers stay and nothing reruns. Resetting a task is separate and deliberate: it requires confirmation and an idle task, and it erases the shared conversation for everyone.

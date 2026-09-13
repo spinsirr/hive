@@ -394,7 +394,7 @@ export async function runHiveCodingTask(
         inactiveTools: ["Agent", "SendMessage", "AskUserQuestion", "EnterPlanMode", "ExitPlanMode", "EnterWorktree", "ExitWorktree", "CronCreate", "CronDelete", "CronList", "RemoteTrigger", "ScheduleWakeup", "Workflow"] as const,
         skills: [{
           name: "hive-collaboration",
-          description: "Use when a request needs Hive teammate IDs, a structured human question or review, a contribution to another Thread, or repository memory. Not for ordinary greetings or direct conversational answers.",
+          description: "Use when a request needs Hive teammate IDs, a structured human question or review, or repository memory. Not for ordinary greetings or direct conversational answers.",
           content: await readFile(path.join(process.cwd(), "src/lib/codex-bridge/hive-collaboration/SKILL.md"), "utf8"),
         }],
       } : {}),

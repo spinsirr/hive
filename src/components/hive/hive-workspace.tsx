@@ -689,6 +689,10 @@ export function HiveWorkspaceView({
     : [], [messages, reviewContext, tab, workspace.reviewRevision]);
   const threadMessage = reviewContext ? undefined : selectedThread;
   const selectedThreadId = threadMessage?.id ?? null;
+  const visibleThreadRef = useRef<string | null>(null);
+  useEffect(() => {
+    visibleThreadRef.current = pane === "workspace" ? selectedThreadId : null;
+  }, [pane, selectedThreadId]);
   useEffect(() => {
     if (viewingReviewChanges) backToReviewRef.current?.focus();
   }, [viewingReviewChanges]);
@@ -795,8 +799,12 @@ export function HiveWorkspaceView({
   const steer = useCallback(() => { void dispatch({ type: "steer-agent" }); }, [dispatch]);
   const steerThread = useCallback(async (messageId: string, throughReplyId: string) => {
     const nextSnapshot = await dispatch({ type: "steer-thread", messageId, throughReplyId });
-    return nextSnapshot?.session.messages.find((message) => message.id === messageId)?.threadSteer?.throughReplyId === throughReplyId;
-  }, [dispatch]);
+    const confirmed = nextSnapshot?.session.messages.find((message) => message.id === messageId)?.threadSteer?.throughReplyId === throughReplyId;
+    // Only the sender follows a confirmed handoff. A delayed acknowledgement
+    // must not pull them out of a different discussion or evidence view.
+    if (confirmed && visibleThreadRef.current === messageId) closeThread();
+    return confirmed;
+  }, [closeThread, dispatch]);
   const moveSteer = useCallback((steerId: string, direction: "up" | "down") => {
     void dispatch({ type: "reorder-queued-steer", steerId, direction });
   }, [dispatch]);
@@ -949,7 +957,7 @@ export function HiveWorkspaceView({
                     {reviewContext ? <><ArrowLeft className="size-3.5" /> Back to review</> : <><MessageSquare className="size-3.5" /> Open review</>}
                   </Button>
                 </div>)}
-                <p className="mt-1 text-xs text-muted-foreground">{archived ? "Archived · Read-only" : "Viewing changes only · Verify in the review thread"}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{archived ? "Archived · Read-only" : "Viewing changes only · Mark as reviewed in the thread"}</p>
                 {reviewContext && (!reviewContext.interaction?.revision || reviewContext.interaction.revision !== workspace.reviewRevision) ? <p className="mt-1 text-xs text-muted-foreground">This review does not match the current diff. Return to the thread for context.</p> : null}
               </section> : null}
               <div className="min-h-0 flex-1">

@@ -61,8 +61,8 @@ test("answering in an explicitly opened Thread continues there once with authors
   assert.equal(input.actor, "maya");
   assert.match(input.steer!, /Only the author/);
   assert.match(input.steer!, /Maya Chen/);
-  assert.equal(hiveReplyThreadId(resumed, { type: "apply-next-steer", actor: "spencer" }), messageId);
-  resumed.workspace.liveReply = { id: "run-two", threadId: hiveReplyThreadId(resumed, action), body: "Checking access", sequence: 1, startedAt: 7 };
+  assert.equal(hiveReplyThreadId(resumed), messageId);
+  resumed.workspace.liveReply = { id: "run-two", threadId: hiveReplyThreadId(resumed), body: "Checking access", sequence: 1, startedAt: 7 };
   assert.equal(conversationMessages(resumed).find((m) => m.id === messageId)?.annotations?.at(-1)?.body, "Checking access");
   const finished = applyHiveRunResult(resumed, { ...result(), summary: "Drafts are private until shared." }, 8);
   assert.equal(finished.messages.find((m) => m.id === messageId)?.annotations?.at(-1)?.body, "Drafts are private until shared.");
@@ -83,7 +83,7 @@ for (const inThread of [false, true]) for (const busy of [false, true]) {
     assert.equal(reduceTaskSession(session, { ...action, replyThreadId: "another-task-or-thread" }, 5, members), session, "a client cannot redirect the answer to an unrelated Thread");
     let resumed = reduceTaskSession(session, action, 5, members);
     if (busy) resumed = reduceTaskSession(applyHiveRunResult(resumed, result(), 6), { type: "apply-next-steer", actor: "spencer" }, 7, members);
-    const threadId = hiveReplyThreadId(resumed, action);
+    const threadId = hiveReplyThreadId(resumed);
     assert.equal(threadId, inThread ? "discussion-root" : undefined);
     const input = buildHiveRunInput(resumed, action, members);
     assert.match(input.steer!, inThread ? /originating Thread discussion-root/ : /main conversation; do not create a Thread/);
@@ -173,7 +173,7 @@ test("question metadata survives the discussion window without exposing queued a
   assert.doesNotMatch(JSON.stringify(context), /QUEUED_PRIVATE_ANSWER/);
 });
 
-test("review is bound to the completed run, not agent-supplied versions, and only a human can resolve current evidence", () => {
+for (const steerKind of ["thread", "reply"]) test(`${steerKind}: main-conversation result updates the source review, and only a human can resolve current evidence`, () => {
   const { session, messageId } = requestPeerInput(working(), scope, { kind: "review", key: "access", prompt: "Review draft access", targetMemberId: "maya" }, members, 3);
   const resolve = { type: "resolve-peer-review", actor: "maya", messageId, revision: "run-one" } as const;
   assert.equal(reduceTaskSession(session, resolve, 4, members), session, "cannot approve a running workspace");
@@ -192,9 +192,16 @@ test("review is bound to the completed run, not agent-supplied versions, and onl
   const discussion = reduceTaskSession(ready, { type: "annotate-message", actor: "maya", messageId, body: "Check shared drafts too", clientId: "feedback-one" }, 6, members);
   assert.equal(reduceTaskSession(discussion, resolve, 7, members), discussion, "unaddressed discussion cannot be silently resolved");
   const replyId = discussion.messages.find((m) => m.id === messageId)!.annotations!.at(-1)!.id;
-  const revised = reduceTaskSession(discussion, { type: "steer-thread", actor: "maya", messageId, throughReplyId: replyId }, 8, members);
-  revised.workspace.liveReply = { id: "run-two", threadId: messageId, body: "", sequence: 0, startedAt: 8 };
+  const revised = reduceTaskSession(discussion, steerKind === "thread"
+    ? { type: "steer-thread", actor: "maya", messageId, throughReplyId: replyId }
+    : { type: "steer-message-annotation", actor: "maya", messageId, annotationId: replyId }, 8, members);
+  revised.workspace.liveReply = { id: "run-two", body: "", sequence: 0, startedAt: 8 };
+  const failed = applyHiveRunError(revised, "Could not finish", 9);
+  assert.equal(failed.messages.find((m) => m.id === messageId)?.interaction?.status, "unavailable");
+  assert.equal(failed.messages.find((m) => m.id === messageId)?.interaction?.revision, undefined);
   const verify = applyHiveRunResult(revised, { ...result(), diff: "+ private and shared drafts" }, 9);
+  assert.equal(verify.messages.find((m) => m.id === "run-two")?.role, "agent");
+  assert.deepEqual(verify.messages.find((m) => m.id === messageId)?.annotations, revised.messages.find((m) => m.id === messageId)?.annotations);
   assert.equal(verify.messages.find((m) => m.id === messageId)?.interaction?.revision, "run-two");
   assert.equal(reduceTaskSession(verify, resolve, 10, members), verify, "an old review cannot approve the revision");
   assert.equal(reduceTaskSession(verify, { ...resolve, revision: "run-two" }, 10, members).messages.find((m) => m.id === messageId)?.interaction?.resolved?.by, "maya");
@@ -238,7 +245,7 @@ test("review completion covers only the feedback captured by that run, not a lat
   state = reduceTaskSession(state, { type: "annotate-message", actor: "maya", messageId, body: "Check author access", clientId: "first" }, 5, members);
   const first = state.messages.find((m) => m.id === messageId)!.annotations!.at(-1)!.id;
   state = reduceTaskSession(state, { type: "steer-thread", actor: "maya", messageId, throughReplyId: first }, 6, members);
-  state.workspace.liveReply = { id: "feedback-run", threadId: messageId, body: "", sequence: 0, startedAt: 6 };
+  state.workspace.liveReply = { id: "feedback-run", body: "", sequence: 0, startedAt: 6 };
   state = reduceTaskSession(state, { type: "annotate-message", actor: "spencer", messageId, body: "Also check links", clientId: "later" }, 7, members);
   const later = state.messages.find((m) => m.id === messageId)!.annotations!.at(-1)!.id;
   state = reduceTaskSession(state, { type: "steer-thread", actor: "spencer", messageId, throughReplyId: later }, 8, members);
