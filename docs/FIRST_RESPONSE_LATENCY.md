@@ -215,3 +215,71 @@ regressions, disposable-Postgres integration, peer store and production build.
 The local runner used Node 25.2.1; clean Node-24 CI is a separate release gate.
 Deployment identity and fresh production measurements will be recorded on the
 release PR after deployment; these local results are not production evidence.
+
+## Remaining startup cost after PR #27
+
+Production acceptance of `f7e308b` is recorded on
+[PR #27](https://github.com/spinsirr/hive/pull/27#issuecomment-5651076230).
+The subsequent no-repository reply took **8.035–8.291 s** to become visible;
+removing the transport retry did not make startup negligible.
+
+The next diagnostic uses real isolated Vercel Sandboxes and the pinned native
+bridge, but **no model calls, user credentials, production task mutations, or
+application changes**. Public Sandbox calls are timed without recording their
+arguments, contents, environment, or output.
+
+```sh
+node scripts/diagnostics/check-planning-startup.mjs --live --trace \
+  --max-cached-ready-ms 3000
+```
+
+This was run and failed the preparation-only budget after clean teardown.
+Cached repeats took **4.786 s** and **4.513 s**. Their initial VM acquisition
+returned in 320/392 ms, but the first bootstrap-marker reads took another
+**2.109/1.799 s**. Dependency checks took 538/557 ms, and bridge startup took
+1.609/1.588 s. These timings show the cost of a fresh execution environment;
+they do not distinguish VM readiness from lazy filesystem loading inside the
+first read, and do not include authentication or inference.
+
+An opt-in lifecycle comparison uses the installed SDK public `detach()` and
+`createSession({ sessionId, resumeFrom })` APIs:
+
+```sh
+node scripts/diagnostics/check-planning-startup.mjs --live --trace --warm-resume
+```
+
+It measured fresh cached preparation at **4.102/4.481 s**, versus live-bridge
+reacquisition at **1.916/1.293 s**. A task-local file survived reacquisition,
+while the separate fresh VMs did not inherit it. These are new session handles
+in the same diagnostic process, not a production multi-worker acceptance test
+or end-to-end TTFT. All temporary VMs and the template were removed.
+
+Reusing a live task environment is a promising next change, not shipped code.
+It requires durable task-scoped recovery state, refreshed run-scoped credentials,
+removing subscription forwarding while idle, and explicit reset/repository/
+runtime-switch boundaries. It also trades immediate resource release for idle
+compute. The installed Sandbox `update({ timeout })` only extends a running
+deadline when increased; lowering it must not be assumed to implement a shorter
+idle shutdown. Decide the idle lifetime/cost policy before changing the current
+stop-after-each-turn lifecycle. Do not replace it with an unbounded host-process
+cache or claim the measured preparation saving as a production first-token time.
+
+## Task environment implementation (not yet released)
+
+The user approved retaining each task's environment until 30 minutes without
+messages, and moving successful-turn checkpoints to idle shutdown. The local
+implementation detaches a completed native session, removes inference forwarding
+while idle, and persists task-scoped recovery state. A new message extends the
+current VM's deadline; page polling and ordinary discussion after expiry do not
+wake a stopped VM. Repository attachment and runtime changes start an isolated
+environment instead of reinterpreting another runtime's state. Existing saved
+checkpoints remain available.
+
+Verification targets Hive's integration, not Vercel's timer implementation.
+The standalone 30-minute provider-expiry diagnostic was cancelled at the user's
+request and its two isolated resources were deleted. Before cancellation, warm
+reacquisition retained the same VM and test file; that is not evidence of idle
+expiry, production recovery, or improved end-to-end first-token latency. Hive's
+persisted deadline, no-wake, and exact snapshot/context pairing rules are covered
+by the disposable-Postgres regression. Fresh production interactions and latency
+measurements remain outstanding until release.

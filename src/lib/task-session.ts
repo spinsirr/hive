@@ -10,6 +10,7 @@ import { codeReferenceContext, codeReferenceSchema, type CodeReference } from ".
 import { finalizeSubagents } from "./hive-subagents.ts";
 import { normalizeTaskTitle, taskTitleFromMessage } from "./task-title.ts";
 import { canResolvePeerReview, finishPeerReviews, type PeerInteraction } from "./peer-collaboration.ts";
+import type { TaskEnvironment } from "./task-environment-policy.ts";
 
 export type MemberId = string;
 export type CodingRuntime = "codex" | "claude-code";
@@ -184,6 +185,9 @@ export type WorkspaceState = {
   codingEffort?: CodingEffort;
   codingModel?: string;
   sandboxName?: string;
+  environment?: TaskEnvironment;
+  /** Private pairing for the provider's next idle-shutdown snapshot. */
+  idleCheckpoint?: { vmId: string; completedAt: number; result: Omit<HiveRunResult, "snapshot"> };
   agentSession?: {
     id: string;
     runtime: CodingRuntime;
@@ -244,6 +248,7 @@ export type AgentReply = {
 
 export type HiveRunResult = {
   snapshot?: { id: string; createdAt: number };
+  environment?: TaskEnvironment;
   sandboxName: string;
   agentSession: NonNullable<WorkspaceState["agentSession"]>;
   summary: string;
@@ -256,6 +261,7 @@ export type HiveRunResult = {
 // A failed turn may retain command results even if its sandbox or Codex
 // checkpoint could not be read. Missing fields preserve the last saved state.
 export type HiveSessionCheckpoint = Partial<Omit<HiveRunResult, "summary">>;
+export type HivePlanningResult = Pick<HiveRunResult, "summary" | "sandboxName" | "agentSession" | "environment">;
 
 export type Annotation = {
   status: "open" | "queued" | "steered";
@@ -477,9 +483,9 @@ export function hiveReplyThreadId(state: TaskSessionState): string | undefined {
 /** A native conversation belongs to one harness; never reinterpret its history. */
 export function canSelectHarness(state: TaskSessionState) {
   return !state.archived && !isHiveRunActive(state) && !state.workspace.restore && !state.activeSteer &&
-    state.steeringQueue.length === 0 && !state.workspace.sandboxName &&
+    state.steeringQueue.length === 0 && (!state.repository || (!state.workspace.sandboxName &&
     !state.workspace.agentSession?.resumeFrom && !state.workspace.checkpoints?.length &&
-    !(state.repository && state.workspace.startedAt !== undefined);
+    state.workspace.startedAt === undefined));
 }
 
 export function canSetCodingEffort(state: TaskSessionState) {
@@ -601,7 +607,7 @@ export function reduceTaskSession(
       ...state, version: state.version + 1, updatedAt: now,
       workspace: { ...state.workspace, codingModel: action.modelId ? model.modelId : undefined, codingEffort: modelEffort(model, state.workspace.codingEffort), agentSession: action.runtime === runtime && state.workspace.agentSession ? state.workspace.agentSession : {
         id: createAgentSessionId(state.sessionId, now), runtime: action.runtime,
-      } },
+      }, ...(action.runtime !== runtime ? { sandboxName: undefined, environment: undefined, idleCheckpoint: undefined } : {}) },
     };
   }
   if (action.type === "recover-stalled-run") {
@@ -674,12 +680,12 @@ export function reduceTaskSession(
         status: "ready",
         codingEffort: state.workspace.codingEffort,
         codingModel: state.workspace.codingModel,
-        agentSession:
-          state.workspace.agentSession ?? {
-            id: createAgentSessionId(state.sessionId, now),
-            runtime: "codex",
-          },
-        sandboxName: state.workspace.sandboxName,
+        // Planning has no working copy. Attaching a repository creates a new
+        // native session, never reuses its planning VM as a cloned repository.
+        agentSession: state.workspace.agentSession && !state.workspace.sandboxName && !state.workspace.agentSession.resumeFrom ? state.workspace.agentSession : {
+          id: createAgentSessionId(state.sessionId, now),
+          runtime: state.workspace.agentSession?.runtime ?? "codex",
+        },
         diff: "",
         files: [],
         commands: [],
@@ -1226,6 +1232,8 @@ export function applyHiveRunResult(
       codingEffort: state.workspace.codingEffort,
       codingModel: state.workspace.codingModel,
       sandboxName: result.sandboxName,
+      environment: result.environment,
+      idleCheckpoint: result.environment ? { vmId: result.environment.vmId, completedAt: now, result } : undefined,
       agentSession: result.agentSession,
       summary: result.summary,
       diff: result.diff,
@@ -1266,6 +1274,8 @@ export function applyHiveRunError(
       ...state.workspace,
       reviewRevision: undefined,
       sandboxName: checkpoint?.sandboxName ?? state.workspace.sandboxName,
+      environment: undefined,
+      idleCheckpoint: undefined,
       agentSession: checkpoint?.agentSession ?? state.workspace.agentSession,
       diff: checkpoint?.diff ?? state.workspace.diff,
       files: checkpoint?.files ?? state.workspace.files,

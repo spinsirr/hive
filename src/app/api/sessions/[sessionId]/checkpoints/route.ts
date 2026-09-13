@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { getSessionMember, HIVE_SESSION_COOKIE } from "@/lib/auth-session";
 import { isTaskSessionId } from "@/lib/task-session-id";
-import { getTaskSessionSnapshot, getPublicTaskSessionSnapshot, isTaskSessionMember, startTaskWorkspaceRestore, recordTaskWorkspaceRestoreSource, finishTaskWorkspaceRestore, TaskSessionAccessError } from "@/lib/task-session-store";
+import { getTaskSessionSnapshot, getPublicTaskSessionSnapshot, syncTaskIdleCheckpoint, isTaskSessionMember, startTaskWorkspaceRestore, recordTaskWorkspaceRestoreSource, finishTaskWorkspaceRestore, TaskSessionAccessError } from "@/lib/task-session-store";
 import { readWorkspaceCheckpoints, WorkspaceReadError } from "@/lib/workspace-browser";
 import { restoreWorkspaceRequest, WorkspaceRestoreError } from "@/lib/workspace-restore-state";
 import { confirmSandboxCheckpoint, restoreSandboxCheckpoint } from "@/lib/workspace-restore";
@@ -18,6 +18,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ ses
     const { sessionId } = await context.params;
     const member = await getSessionMember(request.cookies.get(HIVE_SESSION_COOKIE)?.value);
     if (!isTaskSessionId(sessionId) || !member || !(await isTaskSessionMember(sessionId, member.id))) return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers });
+    await syncTaskIdleCheckpoint(sessionId);
     const { session } = await getTaskSessionSnapshot(sessionId);
     const signal = AbortSignal.any([request.signal, AbortSignal.timeout(30_000)]);
     return NextResponse.json(await readWorkspaceCheckpoints(session, signal), { headers });

@@ -287,7 +287,7 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
       runId: replyId,
     } : undefined;
     if (!snapshot.session.repository) {
-      const reply = await runHiveConversation(
+      const result = await runHiveConversation(
         snapshot.session,
         runActor,
         actorName,
@@ -298,7 +298,8 @@ export async function POST(request: NextRequest, context: TaskSessionRouteContex
       );
       await writer.close();
       return sessionResponse(
-        await appendHiveReply(sessionId, reply, {
+        await appendHiveReply(sessionId, result.summary, {
+          ...("agentSession" in result ? { planningResult: result } : {}),
           forReplyId: replyId,
           forMessageId: sourceMessageId,
           forMessageAnnotation: sourceMessageAnnotation,

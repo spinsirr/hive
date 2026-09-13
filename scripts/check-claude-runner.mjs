@@ -13,7 +13,7 @@ let nativeSettings;
 let explicitModel, explicitEffort;
 mock.module("@ai-sdk/harness-claude-code", { namedExports: { createClaudeCode(value) {
   nativeSettings = value;
-  return { harnessId: "claude-code", specificationVersion: "harness-v1" };
+  return { harnessId: "claude-code", specificationVersion: "harness-v1", async doStart() { return {}; } };
 } } });
 const resume = { type: "resume-session", harnessId: "claude-code", specificationVersion: "harness-v1", data: { claudeSessionId: "native-fixture-id" } };
 const sandbox = {
@@ -22,10 +22,12 @@ const sandbox = {
     return { exitCode: 0, stderr: "", stdout: command === "git rev-parse --show-toplevel" ? "/vercel/sandbox/repo\n" : "" };
   },
 };
-const persistent = { keepLastSnapshots: { count: 3 }, async stop() { stopped++; return { snapshot: { id: "saved-native-and-files", createdAt: 100, status: "created" } }; } };
+const persistent = { name: "hive-session-fixture", tags: { session: "claude-test" }, persistent: true, timeout: 1_800_000,
+  expiresAt: new Date(Date.now() + 1_800_000), currentSession: () => ({ sessionId: "claude-vm" }),
+  keepLastSnapshots: { count: 3 }, async stop() { stopped++; return { snapshot: { id: "saved-native-and-files", createdAt: 100, status: "created" } }; } };
 mock.module("@vercel/sandbox", { namedExports: { Sandbox: { async getOrCreate(options) {
   assert.equal(options.resources.vcpus, 2, "New Claude workspaces must have enough memory for native bootstrap");
-  starts++; return persistent;
+  persistent.tags = options.tags; starts++; return persistent;
 }, async get() { starts++; return persistent; } } } });
 mock.module("@ai-sdk/sandbox-vercel", { namedExports: { createVercelSandbox() { return {}; } } });
 mock.module(new URL("../src/lib/github-app.ts", import.meta.url).href, { namedExports: { async getRepositoryCloneCredentials() { return {}; } } });
@@ -44,7 +46,8 @@ mock.module("@ai-sdk/harness/agent", { namedExports: { HarnessAgent: class {
   async createSession(options) {
     assert.equal(options.resumeFrom, expectedResume);
     await settings.sandboxConfig.onSession({ session: sandbox, sessionWorkDir: "/vercel/sandbox/repo" });
-    return { async stop() { return resume; } };
+    await settings.harness.doStart({ ...options, sandboxSession: { id: persistent.name, async setRequestTransformations() {}, async addRequestTransformations() {} } });
+    return { async stop() { return resume; }, async detach() { return resume; } };
   }
   async stream() {
     return { fullStream: (async function* () {
@@ -94,7 +97,8 @@ try {
       assert.equal(result.agentSession.runtime, "claude-code");
       assert.equal(result.agentSession.resumeFrom, resume);
       assert.equal(result.agentSession.authentication, subscription ? "claude-subscription" : "gateway");
-      assert.equal(result.snapshot.id, "saved-native-and-files");
+      if (fail) assert.equal(result.snapshot.id, "saved-native-and-files");
+      else { assert.equal(result.snapshot, undefined); assert.equal(result.environment.vmId, "claude-vm"); }
       assert.equal(result.commands[0].exitCode, null, "Never display a synthesized Claude 0/1 as the true process exit code");
       assert.equal(result.commands[0].resultReceived, true);
       assert.equal(result.commands[0].output, "Exit code 7\nREAL_OUTPUT");
@@ -115,7 +119,7 @@ try {
       }
     }
   }
-  assert.equal(stopped, 6);
+  assert.equal(stopped, 2, "successful turns keep the VM warm; failed turns stop safely");
   subscription = true; fail = false; expectedResume = undefined;
   const nativeModels = codingModelOptions("gpt-5.6-luna", true);
   let task = createInitialTaskSessionState(1, "claude-models", { createdBy: "owner" });
@@ -141,7 +145,7 @@ try {
   task.workspace.codingEffort = "xhigh";
   await assert.rejects(runHiveCodingTask(task, "owner"), /supported effort/);
   assert.equal(starts, before, "Unsupported model/effort must be rejected before starting a sandbox");
-  assert.equal(stopped, 10);
+  assert.equal(stopped, 2);
   console.log("PASS: Opus Max, Fable Low/Extra high and Haiku reach the native runtime without losing resume state; invalid selections never start work.");
   console.log("PASS: Claude shares the runner, streams only public text, preserves file/native checkpoints after success or failure, resumes exactly and never silently changes authentication.");
 } finally {

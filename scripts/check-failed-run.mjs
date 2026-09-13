@@ -42,14 +42,16 @@ const sandbox = {
   async readTextFile() { return content; },
 };
 
-const persistentSandbox = { keepLastSnapshots: { count: 3 }, async stop() { sandboxStopped = true; return { snapshot: { id: "snap-run-fixture", status: "created", createdAt: 50 } }; } };
+const persistentSandbox = { name: "hive-session-fixture", persistent: true, timeout: 1_800_000,
+  tags: { session: "failed-run" }, expiresAt: new Date(Date.now() + 1_800_000), currentSession: () => ({ sessionId: "fixture-vm" }),
+  keepLastSnapshots: { count: 3 }, async stop() { sandboxStopped = true; return { snapshot: { id: "snap-run-fixture", status: "created", createdAt: 50 } }; } };
 mock.module("@vercel/sandbox", { namedExports: {
   Sandbox: { async getOrCreate() { return persistentSandbox; }, async get() { return persistentSandbox; } },
 } });
 mock.module("@ai-sdk/sandbox-vercel", { namedExports: { createVercelSandbox() { return {}; } } });
 mock.module("@ai-sdk/harness-codex", { namedExports: { createCodex(settings) {
   assert.equal(settings.reasoningEffort, scenario.effort ?? "low", "Shared effort must reach Codex, not just the UI");
-  return {};
+  return { async doStart() { return {}; } };
 } } });
 mock.module(new URL("../src/lib/github-app.ts", import.meta.url).href, {
   namedExports: { async getRepositoryCloneCredentials() { return {}; } },
@@ -62,10 +64,11 @@ mock.module("@ai-sdk/harness/agent", { namedExports: {
     }
     async createSession() {
       await this.settings.sandboxConfig.onSession({ session: sandbox, sessionWorkDir: "/vercel/sandbox/hive" });
+      await this.settings.harness.doStart({ sandboxSession: { id: persistentSandbox.name, async setRequestTransformations() {} } });
       return { async stop() {
         if (scenario.checkpointFailure) throw new Error("Checkpoint unavailable (fixture)");
         return checkpoint;
-      } };
+      }, async detach() { return checkpoint; } };
     }
     async stream({ prompt }) {
       // Match the public prepareCall contract; the installed SDK lifecycle is
@@ -167,7 +170,7 @@ for (const options of [
   assert.equal(state.workspace.commands[0]?.output, "1 test passed");
   assert.equal(state.workspace.commands[1]?.exitCode, options.fail ? null : 0);
   assert.deepEqual(publicText, ["The test passed; checking the diff."], "Tool results must stay out of the chat");
-  assert.equal(sandboxStopped, true);
+  assert.equal(sandboxStopped, options.fail, "successful turns remain warm; failed turns stop and preserve recovery evidence");
   assert.deepEqual(memoryQueries, options.memoryRecall ? [{ query: "Fix the steer label.", filters: { AND: [{ user_id: repositoryMemoryId({ installationId: 1, repositoryId: 1 }) }, { app_id: "hive" }] }, top_k: 3, rerank: false }] : []);
   console.log(`PASS: ${options.name}`);
 }

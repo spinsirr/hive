@@ -9,9 +9,14 @@ registerHooks({ resolve(specifier, context, next) {
   if (specifier.startsWith("@/")) return next(new URL(`../src/${specifier.slice(2)}.ts`, import.meta.url).href, context);
   return next(specifier, context);
 } });
-let settings, stopped = 0, starts = 0, fail = false, native, runtime;
+let settings, stopped = 0, detached = 0, starts = 0, fail = false, native, runtime;
 const collaboration = { url: "https://hive.test/api/sessions/planning-fixture/agent-tools", token: "short-lived-tool-fixture" };
-mock.module("@vercel/sandbox", { namedExports: { Sandbox: { async create(options) {
+const raw = { name: "ai-sdk-harness-session-planning-native", persistent: true, timeout: 1_800_000,
+  tags: { session: "planning-fixture" }, expiresAt: new Date(Date.now() + 1_800_000),
+  currentSession: () => ({ sessionId: "planning-vm" }), async stop() {},
+};
+const network = { id: raw.name, async setRequestTransformations() {}, async addRequestTransformations() {} };
+mock.module("@vercel/sandbox", { namedExports: { Sandbox: { async get({ resume }) { assert.equal(resume, false); return raw; }, async create(options) {
   assert.fail(`Planning must let the Harness provider reuse its bootstrap snapshot, not create a cold VM directly (${options.runtime}).`);
 } } } });
 mock.module("@ai-sdk/sandbox-vercel", { namedExports: { createVercelSandbox(options) {
@@ -19,11 +24,12 @@ mock.module("@ai-sdk/sandbox-vercel", { namedExports: { createVercelSandbox(opti
   assert.equal(options.source, undefined);
   assert.equal(options.persistent, undefined, "only the clean bootstrap template is persistent, never the per-turn VM");
   assert.equal(options.runtime, "node24");
+  assert.equal(options.timeout, 30 * 60_000, "a task environment must remain available for the agreed 30-minute idle window");
   assert.equal(options.resources.vcpus, runtime === "claude-code" ? 2 : 1);
   return {};
 } } });
-mock.module("@ai-sdk/harness-codex", { namedExports: { createCodex(value) { native = value; return realCodex(value); } } });
-mock.module("@ai-sdk/harness-claude-code", { namedExports: { createClaudeCode(value) { native = value; return realClaudeCode(value); } } });
+mock.module("@ai-sdk/harness-codex", { namedExports: { createCodex(value) { native = value; return { ...realCodex(value), async doStart() { return {}; } }; } } });
+mock.module("@ai-sdk/harness-claude-code", { namedExports: { createClaudeCode(value) { native = value; return { ...realClaudeCode(value), async doStart() { return {}; } }; } } });
 mock.module("@ai-sdk/harness/agent", { namedExports: { HarnessAgent: class {
   constructor(value) {
     // Exercise the real SDK's settings validation; replacing the whole agent
@@ -40,9 +46,12 @@ mock.module("@ai-sdk/harness/agent", { namedExports: { HarnessAgent: class {
     assert.match(value.instructions, /Do not.*run commands/);
     assert.doesNotMatch(JSON.stringify(native), /REAL_CODEX_ACCESS|sk-ant-oat01-native-fixture/);
   }
-  async createSession() {
+  async createSession(options) {
     starts++;
-    return { async stop() { stopped++; } };
+    await settings.harness.doStart({ ...options, sandboxSession: network });
+    return { async stop() { stopped++; }, async detach() { detached++; return {
+      type: "resume-session", harnessId: runtime, specificationVersion: "harness-v1", data: { threadId: "planning-history" },
+    }; } };
   }
   async stream({ prompt }) {
     assert.match(prompt, /Clarify the acceptance criteria/);
@@ -65,7 +74,10 @@ for (runtime of ["codex", "claude-code"]) {
   state = reduceTaskSession(state, { type: "select-harness", actor: "person", runtime, modelId: runtime === "codex" ? "gpt-5.6-luna" : "claude-opus-4-6" }, 2, [], platformCodingModels(process.env));
   state = reduceTaskSession(state, { type: "send-message", actor: "person", body: "Clarify the acceptance criteria" }, 3);
   const publicText = [];
-  assert.equal(await runHiveConversation(state, "person", "Person", text => publicText.push(text), undefined, auth, collaboration), "First reply.");
+  const result = await runHiveConversation(state, "person", "Person", text => publicText.push(text), undefined, auth, collaboration);
+  assert.equal(result.summary, "First reply.");
+  assert.equal(result.environment.vmId, "planning-vm");
+  assert.equal(result.agentSession.resumeFrom.data.threadId, "planning-history");
   assert.deepEqual(publicText, ["First ", "First reply."]);
   assert.equal(settings.sandboxConfig.workDir, "planning");
   fail = true;
@@ -79,5 +91,5 @@ for (runtime of ["codex", "claude-code"]) {
   }
   assert.equal(starts, before, "Missing credentials cannot create a sandbox or select Gateway");
 }
-assert.equal(starts, 4); assert.equal(stopped, 4);
-console.log("PASS: pre-repository chat delegates cached bootstrap and per-turn isolation to Harness, streams the selected subscription, stops sessions on success/failure, and never falls back to Gateway.");
+assert.equal(starts, 4); assert.equal(stopped, 2); assert.equal(detached, 2);
+console.log("PASS: planning streams the selected subscription, retains native context and its isolated warm VM on success, stops on failure, and never falls back to Gateway.");

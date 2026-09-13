@@ -42,6 +42,7 @@ mock.module(new URL("../src/lib/task-session-store.ts", import.meta.url).href, {
   isTaskSessionMember: async () => admitted,
   getTaskSessionSnapshot: async () => ({ session }),
   getPublicTaskSessionSnapshot: async () => ({ session }),
+  syncTaskIdleCheckpoint: async () => {},
   checkpointAgentReply: async () => {},
   checkpointSubagents: async () => {},
   applyTaskSessionAction: async (_id, action, actor, now) => {

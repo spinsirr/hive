@@ -19,6 +19,7 @@ export function publicTaskSessionSnapshot(snapshot: TaskSessionSnapshot): TaskSe
         // Saved snapshots include private native-harness recovery data. The
         // checkpoint endpoint exposes only task-scoped display metadata.
         checkpoints: undefined,
+        idleCheckpoint: undefined,
         agentSession: session
           ? { id: session.id, runtime: session.runtime }
           : undefined,
