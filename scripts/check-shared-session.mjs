@@ -1,35 +1,13 @@
+import { registerTestModules } from "./test-modules.mjs";
 // Real client synchronization hook; only browser/network boundaries are doubled.
 import assert from "node:assert/strict";
-import { registerHooks } from "node:module";
-import { JSDOM } from "jsdom";
 
-const dom = new JSDOM("<!doctype html><html><body></body></html>", {
+import { createDomFixture } from "./test-dom.mjs";
+
+const dom = createDomFixture("<!doctype html><html><body></body></html>", {
   url: "https://hive.test/sessions/shared-qa",
 });
-for (const name of [
-  "window",
-  "document",
-  "navigator",
-  "HTMLElement",
-  "Element",
-  "Node",
-]) {
-  Object.defineProperty(globalThis, name, {
-    configurable: true,
-    value: name === "window" ? dom.window : dom.window[name],
-  });
-}
-globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-registerHooks({
-  resolve(specifier, context, next) {
-    if (specifier.startsWith("@/"))
-      return next(
-        new URL(`../src/${specifier.slice(2)}.ts`, import.meta.url).href,
-        context
-      );
-    return next(specifier, context);
-  },
-});
+registerTestModules();
 const sockets = [],
   requests = [];
 class Socket {
@@ -353,5 +331,5 @@ try {
   );
 } finally {
   cleanup();
-  dom.window.close();
+  dom.close();
 }

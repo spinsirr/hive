@@ -1,3 +1,6 @@
+/** Shared transport limit; threads and code selections use stricter limits. */
+export const MESSAGE_BODY_LIMIT = 8_000;
+
 export type MessageSubmission = { clientId: string; body: string };
 export type MessageDraft = {
   body: string;

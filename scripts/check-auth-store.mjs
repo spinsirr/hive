@@ -1,14 +1,12 @@
+import { createTestDatabase } from "./test-database.mjs";
+import { registerTestModules } from "./test-modules.mjs";
 // Real Postgres and the host-only vault; no OAuth, Neon or model calls.
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { registerHooks } from "node:module";
-import { fileURLToPath } from "node:url";
+
 import { mock } from "node:test";
 import { eq } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/node-postgres";
-import { migrate } from "drizzle-orm/node-postgres/migrator";
-import { Client } from "pg";
-import { createFixturePool } from "./fixture-pool.mjs";
+
 import {
   codexAccountHash,
   sealCodexAuth,
@@ -16,45 +14,18 @@ import {
 } from "../src/lib/codex-subscription-credentials.ts";
 import { readFile } from "node:fs/promises";
 
-const url = new URL(process.env.HIVE_AUTH_TEST_DATABASE_URL || "invalid:");
-assert.ok(
-  ["postgres:", "postgresql:"].includes(url.protocol) &&
-    ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname) &&
-    !url.search,
-  "Set HIVE_AUTH_TEST_DATABASE_URL to disposable loopback Postgres, never Neon."
+const database = createTestDatabase(
+  process.env.HIVE_AUTH_TEST_DATABASE_URL,
+  "hive_auth_test"
 );
 globalThis.fetch = async () => {
   throw new Error("External HTTP is forbidden in this fixture.");
 };
-const name = `hive_auth_test_${randomUUID().replaceAll("-", "")}`;
-assert.match(name, /^hive_auth_test_[a-f0-9]{32}$/);
-const admin = new Client({
-  connectionString: url.toString(),
-  connectionTimeoutMillis: 5000,
-});
-url.pathname = `/${name}`;
-process.env.DATABASE_URL = url.toString();
+
 process.env.HIVE_INVITE_SECRET = "auth-fixture-secret-".repeat(4);
 process.env.HIVE_CODEX_AUTH_SECRET = "vault-fixture-secret-".repeat(4);
-const { pool, closePool } = createFixturePool({
-  connectionString: url.toString(),
-  max: 5,
-});
-globalThis.__hiveDatabasePool = pool;
-registerHooks({
-  resolve(specifier, context, next) {
-    if (specifier === "server-only")
-      return next("next/dist/compiled/server-only/empty.js", context);
-    if (specifier === "@/db")
-      return next(new URL("../src/db/index.ts", import.meta.url).href, context);
-    if (specifier.startsWith("@/"))
-      return next(
-        new URL(`../src/${specifier.slice(2)}.ts`, import.meta.url).href,
-        context
-      );
-    return next(specifier, context);
-  },
-});
+
+registerTestModules();
 mock.module("@vercel/functions", { namedExports: { attachDatabasePool() {} } });
 let refreshCalls = 0,
   refresh;
@@ -69,14 +40,9 @@ mock.module(
     },
   }
 );
-let created = false;
+
 try {
-  await admin.connect();
-  await admin.query(`CREATE DATABASE "${name}"`);
-  created = true;
-  await migrate(drizzle(pool), {
-    migrationsFolder: fileURLToPath(new URL("../drizzle", import.meta.url)),
-  });
+  await database.start();
   const { db } = await import("../src/db/index.ts");
   const { taskSessions, taskSessionMembers, users, codexSubscriptions } =
     await import("../src/db/schema.ts");
@@ -359,13 +325,5 @@ try {
     "PASS: access is rechecked after refresh; uncertain failure stays fenced without token replay; shared snapshots contain no vault data."
   );
 } finally {
-  await closePool();
-  // Pool shutdown can precede socket close; FORCE would kill those closing clients.
-  if (created) {
-    await admin.query(`DROP DATABASE "${name}"`);
-    console.log(
-      "CLEANUP: removed only this run's disposable local auth database."
-    );
-  }
-  await admin.end();
+  await database.close();
 }

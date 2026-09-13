@@ -1,7 +1,8 @@
+import { registerTestModules } from "./test-modules.mjs";
 // Exercise the real pre-repository runner; only the model service is doubled.
 // Run with: node --experimental-test-module-mocks scripts/check-conversation-input.mjs
 import assert from "node:assert/strict";
-import { registerHooks } from "node:module";
+
 import { mock } from "node:test";
 import {
   APICallError,
@@ -11,23 +12,7 @@ import {
   stepCountIs,
 } from "ai";
 
-registerHooks({
-  resolve(specifier, context, nextResolve) {
-    if (specifier === "server-only") {
-      return {
-        url: "data:text/javascript,export%20%7B%7D",
-        shortCircuit: true,
-      };
-    }
-    if (specifier.startsWith("@/")) {
-      return nextResolve(
-        new URL(`../src/${specifier.slice(2)}.ts`, import.meta.url).href,
-        context
-      );
-    }
-    return nextResolve(specifier, context);
-  },
-});
+registerTestModules();
 
 let modelInput;
 mock.module("ai", {

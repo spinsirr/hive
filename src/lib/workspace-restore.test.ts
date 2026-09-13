@@ -124,6 +124,7 @@ test("restore replaces files and native context together, preserves conversation
   assert.equal(
     reduceTaskSession(started, {
       type: "send-message",
+      clientId: crypto.randomUUID(),
       actor: "maya",
       body: "New task",
     }),
@@ -222,6 +223,7 @@ test("a failed or interrupted restore keeps the task fenced and only permits the
   assert.equal(
     reduceTaskSession(failed, {
       type: "send-message",
+      clientId: crypto.randomUUID(),
       actor: "maya",
       body: "Must remain fenced",
     }),

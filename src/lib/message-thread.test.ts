@@ -13,7 +13,12 @@ import {
 function discussion(busy = false) {
   let session = reduceTaskSession(
     createInitialTaskSessionState(1),
-    { type: "send-message", actor: "spencer", body: "Review the navigation" },
+    {
+      type: "send-message",
+      clientId: crypto.randomUUID(),
+      actor: "spencer",
+      body: "Review the navigation",
+    },
     2
   );
   if (!busy)
@@ -78,6 +83,7 @@ test("people can reply to a completed agent message without waking Hive or losin
       session,
       {
         type: "annotate-message",
+        clientId: crypto.randomUUID(),
         actor: "maya",
         messageId,
         body: "x".repeat(4001),
@@ -98,6 +104,7 @@ for (const busy of [false, true]) {
       session,
       {
         type: "annotate-message",
+        clientId: crypto.randomUUID(),
         actor: "maya",
         messageId,
         body: "LATER: also change the footer",
@@ -257,6 +264,7 @@ test("an agent acknowledgement alone cannot re-steer the same discussion", () =>
     finished,
     {
       type: "annotate-message",
+      clientId: crypto.randomUUID(),
       actor: "maya",
       messageId,
       body: "Also keep focus visible",

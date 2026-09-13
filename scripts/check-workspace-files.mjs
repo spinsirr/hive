@@ -1,25 +1,15 @@
+import { registerTestModules } from "./test-modules.mjs";
 // Exercise the production route and sandbox reader; only identity, storage and
 // the remote sandbox transport are doubled. No real task or model is touched.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
-import { registerHooks } from "node:module";
+
 import os from "node:os";
 import path from "node:path";
 import { mock } from "node:test";
 
-registerHooks({
-  resolve(specifier, context, nextResolve) {
-    if (specifier === "next/server")
-      return nextResolve("next/server.js", context);
-    if (specifier.startsWith("@/"))
-      return nextResolve(
-        new URL(`../src/${specifier.slice(2)}.ts`, import.meta.url).href,
-        context
-      );
-    return nextResolve(specifier, context);
-  },
-});
+registerTestModules();
 
 const fixture = await mkdtemp(path.join(os.tmpdir(), "hive-files-route-"));
 await mkdir(path.join(fixture, "hive"));
@@ -220,7 +210,7 @@ try {
   );
   assert.equal(calls[0][1].name, "hive-session-hive-files-qa-1");
   assert.equal(calls[0][1].resume, true);
-  assert.equal(calls[1][1].args[2], path.join(fixture, "hive"));
+  assert.equal(calls[1][1].args[3], path.join(fixture, "hive"));
   assert.equal((await request("kind=directory")).status, 200);
   assert.equal((await request("kind=file&path=missing")).status, 404);
 

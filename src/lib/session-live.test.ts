@@ -140,7 +140,11 @@ test("the subscription never treats a browser message as agent work", async () =
   await subscribeToTaskSession(f.socket, f.source);
   f.socket.emit(
     "message",
-    JSON.stringify({ type: "send-message", body: "start another run" })
+    JSON.stringify({
+      type: "send-message",
+      clientId: crypto.randomUUID(),
+      body: "start another run",
+    })
   );
   assert.equal(f.socket.closeCode, 1008);
   assert.equal(f.unsubscribed(), 1);

@@ -17,7 +17,7 @@ import {
   workspaceCheckpointsResponse,
   type WorkspaceCheckpointsResponse,
 } from "@/lib/workspace-files";
-import type { TaskSessionSnapshot } from "@/lib/task-session-store";
+import type { TaskSessionSnapshot } from "@/lib/task-session-contract";
 import type { RestoreWorkspaceRequest } from "@/lib/workspace-restore-state";
 import type { WorkspaceRecoveryStatus } from "@/hooks/use-workspace-recovery";
 

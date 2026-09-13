@@ -1,8 +1,12 @@
 import { randomUUID } from "node:crypto";
+import { readTaskIdleCheckpoint } from "./task-environment.ts";
+
+export { syncTaskIdleCheckpoint };
 import {
-  readTaskIdleCheckpoint,
-  refreshTaskEnvironment,
-} from "./task-environment.ts";
+  syncTaskIdleCheckpoint,
+  refreshStoredTaskEnvironment,
+} from "./task-environment-store.ts";
+import { sessionState, sessionValues } from "./task-session-row.ts";
 import { and, desc, eq, getTableColumns, sql } from "drizzle-orm";
 import { customAlphabet } from "nanoid";
 
@@ -10,7 +14,14 @@ import { db } from "@/db";
 import { taskSessionMembers, taskSessions, users } from "@/db/schema";
 import { sessionNotification } from "@/lib/session-events";
 import { normalizeTaskTitle } from "./task-title.ts";
-import { type CodingModelOption } from "./coding-models.ts";
+import {
+  publicWorkspaceFields,
+  publicRestoreFields,
+  type PrivateTaskSessionSnapshot,
+  type TaskSessionSnapshot,
+  type PublicWorkspaceState,
+} from "./task-session-contract.ts";
+import { publicTaskSessionSnapshot } from "./task-session-snapshot.ts";
 import { platformCodingModels } from "./platform-models.ts";
 import {
   assertHiveToolRun,
@@ -58,59 +69,12 @@ import {
   type TeamMember,
 } from "@/lib/task-session";
 
-export type TaskSessionSnapshot = {
-  session: TaskSessionState;
-  activeMembers: MemberId[];
-  members: TeamMember[];
-  typingMembers: MemberId[];
-  codingModels?: CodingModelOption[];
-};
 export class TaskSessionAccessError extends Error {
   constructor() {
     super("You no longer have access to this task.");
   }
 }
 const randomSuffix = customAlphabet("abcdefghijklmnopqrstuvwxyz0123456789", 6);
-
-function sessionValues(session: TaskSessionState) {
-  return {
-    archived: session.archived ?? null,
-    id: session.sessionId,
-    title: session.title,
-    createdBy: session.createdBy,
-    createdAt: new Date(session.createdAt),
-    version: session.version,
-    revision: session.revision,
-    stage: session.stage,
-    messages: session.messages,
-    annotation: session.annotation,
-    steeringQueue: session.steeringQueue,
-    activeSteer: session.activeSteer ?? null,
-    repository: session.repository ?? null,
-    workspace: session.workspace,
-    updatedAt: new Date(session.updatedAt),
-  };
-}
-
-function sessionState(row: typeof taskSessions.$inferSelect): TaskSessionState {
-  return {
-    archived: row.archived ?? undefined,
-    sessionId: row.id,
-    title: row.title,
-    createdBy: row.createdBy ?? "hive-system",
-    createdAt: row.createdAt.getTime(),
-    version: row.version,
-    revision: row.revision === 2 ? 2 : 1,
-    stage: row.stage,
-    messages: row.messages,
-    annotation: row.annotation,
-    steeringQueue: row.steeringQueue,
-    activeSteer: row.activeSteer ?? undefined,
-    repository: row.repository ?? undefined,
-    workspace: row.workspace,
-    updatedAt: row.updatedAt.getTime(),
-  };
-}
 
 // Agent tools never load code artifacts, credentials, or the native recovery checkpoint.
 const agentToolColumns = {
@@ -415,107 +379,145 @@ export async function applyTaskSessionAction(
     ...storedMembers.filter((member) => member.id !== actor.id),
   ];
 
-  const applied = await db.transaction(async (transaction) => {
-    const [storedSession] = await transaction
-      .select(getTableColumns(taskSessions))
-      .from(taskSessions)
-      .innerJoin(
-        taskSessionMembers,
-        and(
-          eq(taskSessionMembers.sessionId, taskSessions.id),
-          eq(taskSessionMembers.memberId, action.actor)
+  let prepared:
+    | {
+        version: number;
+        saved: Awaited<ReturnType<typeof readTaskIdleCheckpoint>>;
+      }
+    | undefined;
+  while (true) {
+    const applied = await db.transaction(async (transaction) => {
+      const [storedSession] = await transaction
+        .select(getTableColumns(taskSessions))
+        .from(taskSessions)
+        .innerJoin(
+          taskSessionMembers,
+          and(
+            eq(taskSessionMembers.sessionId, taskSessions.id),
+            eq(taskSessionMembers.memberId, action.actor)
+          )
         )
-      )
-      .where(eq(taskSessions.id, sessionId))
-      // Lock membership along with the task so a stale route check cannot
-      // authorize a write after membership has been revoked.
-      .for("update");
+        .where(eq(taskSessions.id, sessionId))
+        // Lock membership along with the task so a stale route check cannot
+        // authorize a write after membership has been revoked.
+        .for("update");
 
-    if (!storedSession) {
-      throw new TaskSessionAccessError();
-    }
+      if (!storedSession) {
+        throw new TaskSessionAccessError();
+      }
 
-    const previousSession = sessionState(storedSession);
-    const blocked = taskActionBlockReason(previousSession, action);
-    if (blocked) throw new WorkspaceRestoreError(409, blocked);
-    if (previousSession.workspace.restore)
-      throw new WorkspaceRestoreError(
-        409,
-        "Finish restoring the workspace before continuing."
-      );
-    const nextSession = reduceTaskSession(
-      previousSession,
-      action,
-      now,
-      members,
-      changingModel ? platformCodingModels(process.env) : undefined
-    );
-    if (nextSession === previousSession) {
-      // Return the current shared state on a no-op or stale selection. Do not
-      // broadcast a fabricated version or overwrite a teammate's newer model.
-      return { session: previousSession, startedRun: false };
-    }
-    const startedRun = didStartHiveRun(previousSession, nextSession);
-    if (startedRun) {
-      const saved = await readTaskIdleCheckpoint(previousSession, now);
-      if (saved)
-        nextSession.workspace.checkpoints = [
-          saved,
-          ...(nextSession.workspace.checkpoints ?? []).filter(
-            (entry) => entry.id !== saved.id
-          ),
-        ].slice(0, WORKSPACE_CHECKPOINT_LIMIT);
-      // A new turn may change files. Never pair its later automatic snapshot
-      // with the preceding turn's native context after a crash.
-      delete nextSession.workspace.idleCheckpoint;
-    }
-    const hasNewMessage = nextSession.messages.some(
-      (message) =>
-        !previousSession.messages.some((old) => old.id === message.id) ||
-        (message.annotations ?? []).some(
-          (reply) =>
-            !(
-              previousSession.messages.find((old) => old.id === message.id)
-                ?.annotations ?? []
-            ).some((old) => old.id === reply.id)
-        )
-    );
-    if ((startedRun || hasNewMessage) && previousSession.workspace.environment)
-      nextSession.workspace.environment = await refreshTaskEnvironment(
+      const previousSession = sessionState(storedSession);
+      const blocked = taskActionBlockReason(previousSession, action);
+      if (blocked) throw new WorkspaceRestoreError(409, blocked);
+      if (previousSession.workspace.restore)
+        throw new WorkspaceRestoreError(
+          409,
+          "Finish restoring the workspace before continuing."
+        );
+      const nextSession = reduceTaskSession(
         previousSession,
+        action,
+        now,
+        members,
+        changingModel ? platformCodingModels(process.env) : undefined
+      );
+      if (nextSession === previousSession) {
+        // Return the current shared state on a no-op or stale selection. Do not
+        // broadcast a fabricated version or overwrite a teammate's newer model.
+        return {
+          kind: "applied" as const,
+          session: previousSession,
+          startedRun: false,
+          refreshEnvironment: false,
+        };
+      }
+      const startedRun = didStartHiveRun(previousSession, nextSession);
+      if (startedRun) {
+        const pending = previousSession.workspace.idleCheckpoint;
+        if (
+          pending &&
+          now >= (previousSession.workspace.environment?.idleUntil ?? 0) &&
+          prepared?.version !== previousSession.version
+        ) {
+          // Release both row locks before contacting the provider. Re-admit only
+          // against this exact version, so intervening runs/restores cannot be paired.
+          return { kind: "prepare" as const, session: previousSession };
+        }
+        const saved =
+          prepared?.version === previousSession.version
+            ? prepared.saved
+            : undefined;
+        if (saved)
+          nextSession.workspace.checkpoints = [
+            saved,
+            ...(nextSession.workspace.checkpoints ?? []).filter(
+              (entry) => entry.id !== saved.id
+            ),
+          ].slice(0, WORKSPACE_CHECKPOINT_LIMIT);
+        // A new turn may change files. Never pair its later automatic snapshot
+        // with the preceding turn's native context after a crash.
+        delete nextSession.workspace.idleCheckpoint;
+      }
+      const previousEntries = new Set(
+        previousSession.messages.flatMap((message) => [
+          message.id,
+          ...(message.annotations ?? []).map((reply) => reply.id),
+        ])
+      );
+      const hasNewMessage = nextSession.messages.some(
+        (message) =>
+          !previousEntries.has(message.id) ||
+          message.annotations?.some((reply) => !previousEntries.has(reply.id))
+      );
+      if (startedRun) {
+        const threadId = hiveReplyThreadId(nextSession);
+        nextSession.workspace = {
+          ...nextSession.workspace,
+          liveReply: {
+            id: `agent-${randomUUID()}`,
+            threadId,
+            body: "",
+            sequence: 0,
+            startedAt: now,
+          },
+        };
+      }
+      await transaction
+        .update(taskSessions)
+        .set(sessionValues(nextSession))
+        .where(eq(taskSessions.id, sessionId));
+
+      await transaction.execute(sessionNotification(sessionId));
+
+      return {
+        kind: "applied" as const,
+        refreshEnvironment: startedRun || Boolean(hasNewMessage),
+        session: nextSession,
+        // Grant execution inside the row lock, not by comparing request timestamps.
+        startedRun,
+      };
+    });
+
+    if (applied.kind === "prepare") {
+      prepared = {
+        version: applied.session.version,
+        saved: await readTaskIdleCheckpoint(applied.session, now),
+      };
+      continue;
+    }
+    if (applied.refreshEnvironment && applied.session.workspace.environment) {
+      const environment = await refreshStoredTaskEnvironment(
+        sessionId,
+        applied.session.workspace.environment.vmId,
         now
       );
-    if (startedRun) {
-      const threadId = hiveReplyThreadId(nextSession);
-      nextSession.workspace = {
-        ...nextSession.workspace,
-        liveReply: {
-          id: `agent-${randomUUID()}`,
-          threadId,
-          body: "",
-          sequence: 0,
-          startedAt: now,
-        },
-      };
+      if (environment) applied.session.workspace.environment = environment;
     }
-    await transaction
-      .update(taskSessions)
-      .set(sessionValues(nextSession))
-      .where(eq(taskSessions.id, sessionId));
-
-    await transaction.execute(sessionNotification(sessionId));
-
     return {
-      session: nextSession,
-      // Grant execution inside the row lock, not by comparing request timestamps.
-      startedRun,
+      snapshot: await snapshotWithMembers(applied.session),
+      startedRun: applied.startedRun,
     };
-  });
-
-  return {
-    snapshot: await snapshotWithMembers(applied.session),
-    startedRun: applied.startedRun,
-  };
+  }
 }
 
 export async function appendHiveReply(
@@ -540,7 +542,7 @@ export async function appendHiveReply(
   } = {},
   now = Date.now()
 ) {
-  await db.transaction(async (transaction) => {
+  const environment = await db.transaction(async (transaction) => {
     const [storedSession] = await transaction
       .select()
       .from(taskSessions)
@@ -607,18 +609,15 @@ export async function appendHiveReply(
       const { summary: _summary, ...planning } = options.planningResult;
       nextSession.workspace = { ...nextSession.workspace, ...planning };
     }
-    if (options.runResult?.environment || options.planningResult?.environment) {
-      nextSession.workspace.environment = await refreshTaskEnvironment(
-        nextSession,
-        now
-      );
-    }
     await transaction
       .update(taskSessions)
       .set(sessionValues(nextSession))
       .where(eq(taskSessions.id, sessionId));
     await transaction.execute(sessionNotification(sessionId));
+    return nextSession.workspace.environment;
   });
+  if (environment)
+    await refreshStoredTaskEnvironment(sessionId, environment.vmId, now);
   return getPublicTaskSessionSnapshot(sessionId);
 }
 
@@ -685,34 +684,6 @@ export async function checkpointSubagents(
       .returning({ id: taskSessions.id });
     if (changed.length)
       await transaction.execute(sessionNotification(sessionId, "reply"));
-  });
-}
-
-/** Import only an exact VM/context pair; reading Checkpoints never wakes a VM. */
-export async function syncTaskIdleCheckpoint(sessionId: string) {
-  await db.transaction(async (transaction) => {
-    const [row] = await transaction
-      .select()
-      .from(taskSessions)
-      .where(eq(taskSessions.id, sessionId))
-      .for("update");
-    if (!row) throw new Error("Task not found.");
-    const session = sessionState(row);
-    const saved = await readTaskIdleCheckpoint(session);
-    if (!saved) return;
-    session.workspace.checkpoints = [
-      saved,
-      ...(session.workspace.checkpoints ?? []).filter(
-        (entry) => entry.id !== saved.id
-      ),
-    ].slice(0, WORKSPACE_CHECKPOINT_LIMIT);
-    session.workspace.idleCheckpoint = undefined;
-    session.version++;
-    await transaction
-      .update(taskSessions)
-      .set(sessionValues(session))
-      .where(eq(taskSessions.id, sessionId));
-    await transaction.execute(sessionNotification(sessionId));
   });
 }
 
@@ -906,22 +877,44 @@ export async function getPublicTaskSessionSnapshot(
   const [row] = await db
     .select({
       ...getTableColumns(taskSessions),
-      workspace: sql<
-        TaskSessionState["workspace"]
-      >`(${taskSessions.workspace} - 'checkpoints' - 'idleCheckpoint') #- '{agentSession,resumeFrom}'`.as(
-        "workspace"
-      ),
+      workspace: sql<PublicWorkspaceState>`(
+        SELECT jsonb_object_agg(field.key, CASE field.key
+          WHEN 'agentSession' THEN (
+            SELECT jsonb_object_agg(entry.key, entry.value)
+            FROM jsonb_each(field.value) AS entry
+            WHERE entry.key IN ('id', 'runtime')
+          )
+          WHEN 'restore' THEN (
+            SELECT jsonb_object_agg(entry.key, entry.value)
+            FROM jsonb_each(field.value) AS entry
+            WHERE entry.key IN (${sql.join(
+              publicRestoreFields.map((key) => sql`${key}`),
+              sql`, `
+            )})
+          )
+          ELSE field.value
+        END)
+        FROM jsonb_each(${taskSessions.workspace}) AS field
+        WHERE field.key IN (${sql.join(
+          [...publicWorkspaceFields, "agentSession", "restore"].map(
+            (key) => sql`${key}`
+          ),
+          sql`, `
+        )})
+      )`.as("workspace"),
     })
     .from(taskSessions)
     .where(eq(taskSessions.id, sessionId));
   if (!row) throw new Error(`Session ${sessionId} could not be loaded.`);
-  return snapshotWithMembers(sessionState(row));
+  return publicTaskSessionSnapshot(
+    await snapshotWithMembers(sessionState(row))
+  );
 }
 
 /** Server-only recovery readers need the complete checkpoint data. Never use for UI synchronization. */
 export async function getTaskSessionSnapshot(
   sessionId: string
-): Promise<TaskSessionSnapshot> {
+): Promise<PrivateTaskSessionSnapshot> {
   const storedSession = await db.query.taskSessions.findFirst({
     where: eq(taskSessions.id, sessionId),
   });
@@ -936,7 +929,7 @@ export async function getTaskSessionSnapshot(
 /** Durable reads contain the roster. Only live connections can assert who is online. */
 async function snapshotWithMembers(
   session: TaskSessionState
-): Promise<TaskSessionSnapshot> {
+): Promise<PrivateTaskSessionSnapshot> {
   const members = await getSessionMembers(session.sessionId);
   return {
     session,

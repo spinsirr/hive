@@ -1,43 +1,16 @@
+import { registerTestModules } from "./test-modules.mjs";
 // Mount the actual workspace, not a copied preview. Only Monaco's browser engine
 // is represented by a text fixture here; browser QA covers the real editor.
 import "./check-design-system.mjs";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
-import { registerHooks } from "node:module";
-import { mock } from "node:test";
-import { JSDOM } from "jsdom";
-import { JsxEmit, ModuleKind, transpileModule } from "typescript";
 
-const dom = new JSDOM("<!doctype html><html><body></body></html>", {
+import { mock } from "node:test";
+import { createDomFixture } from "./test-dom.mjs";
+
+const dom = createDomFixture("<!doctype html><html><body></body></html>", {
   url: "http://localhost/demo/tasks/demo-menu",
   pretendToBeVisual: true,
 });
-for (const name of [
-  "window",
-  "self",
-  "document",
-  "navigator",
-  "HTMLElement",
-  "HTMLInputElement",
-  "HTMLTextAreaElement",
-  "HTMLButtonElement",
-  "Element",
-  "Event",
-  "MouseEvent",
-  "Node",
-  "DocumentFragment",
-  "MutationObserver",
-  "getComputedStyle",
-  "requestAnimationFrame",
-  "cancelAnimationFrame",
-  "localStorage",
-]) {
-  Object.defineProperty(globalThis, name, {
-    configurable: true,
-    value: name === "window" ? dom.window : dom.window[name],
-  });
-}
-globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 globalThis.ResizeObserver = class {
   observe() {}
   unobserve() {}
@@ -62,20 +35,7 @@ globalThis.WebSocket = class {
     throw new Error("Demo mounted live transport");
   }
 };
-registerHooks({
-  resolve(specifier, context, next) {
-    if (specifier === "next/link") return next("next/link.js", context);
-    if (specifier === "next/dynamic") return next("next/dynamic.js", context);
-    if (!specifier.startsWith("@/") && !specifier.startsWith("."))
-      return next(specifier, context);
-    const base = specifier.startsWith("@/")
-      ? new URL(`../src/${specifier.slice(2)}`, import.meta.url)
-      : new URL(specifier, context.parentURL);
-    const target = [".ts", ".tsx"]
-      .map((extension) => new URL(`${base.href}${extension}`))
-      .find((url) => existsSync(url));
-    return next(target?.href ?? specifier, context);
-  },
+registerTestModules({
   load(url, context, next) {
     if (url.endsWith(".module.css"))
       return {
@@ -90,14 +50,7 @@ registerHooks({
         source:
           'import { createElement } from "react"; export default () => function CodeFixture({ path, content }) { return createElement("pre", { "aria-label": `Sample file: ${path}` }, content); };',
       };
-    if (!url.endsWith(".tsx")) return next(url, context);
-    return {
-      format: "module",
-      shortCircuit: true,
-      source: transpileModule(readFileSync(new URL(url), "utf8"), {
-        compilerOptions: { jsx: JsxEmit.ReactJSX, module: ModuleKind.ESNext },
-      }).outputText,
-    };
+    return next(url, context);
   },
 });
 const { createElement: h } = await import("react");
@@ -1611,5 +1564,5 @@ try {
 } finally {
   cleanup();
   mock.timers.reset();
-  dom.window.close();
+  dom.close();
 }

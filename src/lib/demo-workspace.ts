@@ -1,5 +1,5 @@
 import type { HiveClient } from "../components/hive/hive-client.tsx";
-import type { TaskSessionSnapshot } from "./task-session-store.ts";
+import type { PrivateTaskSessionSnapshot as TaskSessionSnapshot } from "./task-session-contract.ts";
 import type { DashboardTask } from "./task-dashboard.ts";
 import { demoTaskMessages } from "./demo-task-conversation.ts";
 import {

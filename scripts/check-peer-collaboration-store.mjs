@@ -1,55 +1,27 @@
+import { createTestDatabase } from "./test-database.mjs";
+import { registerTestModules } from "./test-modules.mjs";
 // Real Postgres + task commands + MCP. Only a uniquely named disposable local DB.
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { registerHooks } from "node:module";
-import { fileURLToPath } from "node:url";
-import { Client as PostgresClient, Pool } from "pg";
-import { drizzle } from "drizzle-orm/node-postgres";
-import { migrate } from "drizzle-orm/node-postgres/migrator";
+
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
-const url = new URL(process.env.HIVE_PEER_TEST_DATABASE_URL ?? "");
-if (
-  !["postgres:", "postgresql:"].includes(url.protocol) ||
-  !["127.0.0.1", "localhost", "[::1]"].includes(url.hostname) ||
-  url.search
-)
-  throw new Error("Use a disposable loopback Postgres, never production.");
-const databaseName = `hive_peer_test_${randomUUID().replaceAll("-", "")}`;
-const admin = new PostgresClient({ connectionString: url.toString() });
-url.pathname = `/${databaseName}`;
-process.env.DATABASE_URL = url.toString();
+const database = createTestDatabase(
+  process.env.HIVE_PEER_TEST_DATABASE_URL,
+  "hive_peer_test"
+);
 delete process.env.VERCEL;
 delete process.env.MEM0_API_KEY;
-const pool = new Pool({ connectionString: url.toString(), max: 5 });
-globalThis.__hiveDatabasePool = pool;
+
 globalThis.fetch = async () => {
   throw new Error("No external services in this acceptance check");
 };
-registerHooks({
-  resolve(specifier, context, next) {
-    if (specifier === "server-only")
-      return next("next/dist/compiled/server-only/empty.js", context);
-    if (specifier === "@/db")
-      return next(new URL("../src/db/index.ts", import.meta.url).href, context);
-    if (specifier.startsWith("@/"))
-      return next(
-        new URL(`../src/${specifier.slice(2)}.ts`, import.meta.url).href,
-        context
-      );
-    return next(specifier, context);
-  },
-});
-let created = false;
+registerTestModules();
+
 let client;
 try {
-  await admin.connect();
-  await admin.query(`CREATE DATABASE "${databaseName}"`);
-  created = true;
-  await migrate(drizzle(pool), {
-    migrationsFolder: fileURLToPath(new URL("../drizzle", import.meta.url)),
-  });
+  await database.start();
   const store = await import("../src/lib/task-session-store.ts");
   const { db } = await import("../src/db/index.ts");
   const { users } = await import("../src/db/schema.ts");
@@ -1259,7 +1231,5 @@ try {
   );
 } finally {
   await client?.close();
-  await pool.end();
-  if (created) await admin.query(`DROP DATABASE "${databaseName}"`);
-  await admin.end();
+  await database.close();
 }

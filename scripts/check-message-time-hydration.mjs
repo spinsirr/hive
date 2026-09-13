@@ -1,31 +1,11 @@
+import { registerTestModules } from "./test-modules.mjs";
 // Render a refreshed page and a client-created message through real React.
 // No services, credentials, model or application-state writes.
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { registerHooks } from "node:module";
-import { JSDOM } from "jsdom";
-import { JsxEmit, ModuleKind, transpileModule } from "typescript";
 
-registerHooks({
-  resolve(specifier, context, next) {
-    if (specifier.startsWith("@/"))
-      return next(
-        new URL(`../src/${specifier.slice(2)}.ts`, import.meta.url).href,
-        context
-      );
-    return next(specifier, context);
-  },
-  load(url, context, next) {
-    if (!url.endsWith(".tsx")) return next(url, context);
-    return {
-      format: "module",
-      shortCircuit: true,
-      source: transpileModule(readFileSync(new URL(url), "utf8"), {
-        compilerOptions: { jsx: JsxEmit.ReactJSX, module: ModuleKind.ESNext },
-      }).outputText,
-    };
-  },
-});
+import { createDomFixture } from "./test-dom.mjs";
+
+registerTestModules();
 
 const { act, createElement: h } = await import("react");
 const { renderToString } = await import("react-dom/server");
@@ -63,24 +43,13 @@ for (const { serverZone, viewerZone, iso, expected } of cases) {
     const message = { createdAt: Date.parse(iso), time: "stored label" };
     process.env.TZ = serverZone;
     const markup = renderToString(h(MessageTime, { message }));
-    dom = new JSDOM(`<div id="root">${markup}</div><div id="client"></div>`, {
-      url: "https://hive.test",
-      pretendToBeVisual: true,
-    });
-    for (const name of [
-      "window",
-      "document",
-      "navigator",
-      "HTMLElement",
-      "Element",
-      "Node",
-    ]) {
-      Object.defineProperty(globalThis, name, {
-        configurable: true,
-        value: name === "window" ? dom.window : dom.window[name],
-      });
-    }
-    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    dom = createDomFixture(
+      `<div id="root">${markup}</div><div id="client"></div>`,
+      {
+        url: "https://hive.test",
+        pretendToBeVisual: true,
+      }
+    );
     process.env.TZ = viewerZone;
     const container = document.getElementById("root");
     const serverTimeElement = container.querySelector("time");
@@ -143,7 +112,7 @@ for (const { serverZone, viewerZone, iso, expected } of cases) {
   } finally {
     if (root) await act(async () => root.unmount());
     if (clientRoot) await act(async () => clientRoot.unmount());
-    dom?.window.close();
+    dom?.close();
     if (originalTimeZone === undefined) delete process.env.TZ;
     else process.env.TZ = originalTimeZone;
   }

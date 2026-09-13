@@ -1,4 +1,5 @@
 import path from "node:path";
+import { readFile } from "node:fs/promises";
 import { Sandbox } from "@vercel/sandbox";
 import { z } from "zod";
 
@@ -13,7 +14,6 @@ import {
   type WorkspaceReadRequest,
   type WorkspaceCheckpointsResponse,
 } from "./workspace-files.ts";
-import { workspaceReadScript } from "./workspace-read-script.ts";
 import { workspaceRestoreBlockReason } from "./workspace-restore-state.ts";
 
 export class WorkspaceReadError extends Error {
@@ -53,9 +53,19 @@ export async function readWorkspace(
     sandbox.currentSession().cwd,
     repositoryDirectory(session.repository!.url)
   );
+  const workspaceReadScript = await readFile(
+    path.join(process.cwd(), "src/lib/runtime/workspace-read.mjs"),
+    "utf8"
+  );
   const result = await sandbox.runCommand({
     cmd: "node",
-    args: ["-e", workspaceReadScript, root, JSON.stringify(request.data)],
+    args: [
+      "--input-type=module",
+      "-e",
+      workspaceReadScript,
+      root,
+      JSON.stringify(request.data),
+    ],
     signal,
     timeoutMs: 15_000,
   });

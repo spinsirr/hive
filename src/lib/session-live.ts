@@ -1,7 +1,7 @@
 import type { WebSocket } from "ws";
 import type { SessionEventHub, SessionEventKind } from "./session-events.ts";
 import type { AgentReply, MemberId } from "./task-session.ts";
-import type { TaskSessionSnapshot } from "./task-session-store.ts";
+import type { TaskSessionSnapshot } from "./task-session-contract.ts";
 import { publicTaskSessionSnapshot } from "./task-session-snapshot.ts";
 import type { LivePresence } from "./session-presence.ts";
 

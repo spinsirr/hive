@@ -1,21 +1,11 @@
+import { registerTestModules } from "./test-modules.mjs";
 import assert from "node:assert/strict";
 import { mock } from "node:test";
-import { registerHooks } from "node:module";
+
 import { HarnessAgent as RealHarnessAgent } from "@ai-sdk/harness/agent";
 import { createClaudeCode as realClaudeCode } from "@ai-sdk/harness-claude-code";
 import { createCodex as realCodex } from "@ai-sdk/harness-codex";
-registerHooks({
-  resolve(specifier, context, next) {
-    if (specifier === "server-only")
-      return next("next/dist/compiled/server-only/empty.js", context);
-    if (specifier.startsWith("@/"))
-      return next(
-        new URL(`../src/${specifier.slice(2)}.ts`, import.meta.url).href,
-        context
-      );
-    return next(specifier, context);
-  },
-});
+registerTestModules();
 let settings,
   stopped = 0,
   detached = 0,

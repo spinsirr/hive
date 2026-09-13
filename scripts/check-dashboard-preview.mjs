@@ -1,36 +1,13 @@
+import { registerTestModules } from "./test-modules.mjs";
 // Exercise home/demo navigation without a database or account.
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
-import { registerHooks } from "node:module";
-import { JSDOM } from "jsdom";
-import { JsxEmit, ModuleKind, transpileModule } from "typescript";
 
-const dom = new JSDOM("<!doctype html><html><body></body></html>", {
+import { createDomFixture } from "./test-dom.mjs";
+
+const dom = createDomFixture("<!doctype html><html><body></body></html>", {
   url: "https://hive.example/demo",
   pretendToBeVisual: true,
 });
-for (const name of [
-  "window",
-  "document",
-  "navigator",
-  "HTMLElement",
-  "HTMLButtonElement",
-  "Element",
-  "Node",
-  "DocumentFragment",
-  "MutationObserver",
-  "Event",
-  "MouseEvent",
-  "KeyboardEvent",
-  "getComputedStyle",
-  "FormData",
-]) {
-  Object.defineProperty(globalThis, name, {
-    configurable: true,
-    value: name === "window" ? dom.window : dom.window[name],
-  });
-}
-globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 globalThis.self = dom.window;
 globalThis.requestAnimationFrame = dom.window.requestAnimationFrame.bind(
   dom.window
@@ -41,24 +18,13 @@ globalThis.cancelAnimationFrame = dom.window.cancelAnimationFrame.bind(
 globalThis.fetch = () => {
   throw new Error("Dashboard preview must not access a backend.");
 };
-registerHooks({
+registerTestModules({
   resolve(specifier, context, next) {
-    if (specifier === "next/link") return next("next/link.js", context);
-    if (specifier === "next/headers") return next("next/headers.js", context);
-    if (specifier === "next/navigation")
-      return next("next/navigation.js", context);
-    if (specifier === "server-only")
-      return next("next/dist/compiled/server-only/empty.js", context);
     if (specifier === "@/db")
       throw new Error(
         "Public home must not import the database without a session."
       );
-    if (!specifier.startsWith("@/")) return next(specifier, context);
-    const base = new URL(`../src/${specifier.slice(2)}`, import.meta.url);
-    const target = [".ts", ".tsx"]
-      .map((extension) => new URL(`${base.href}${extension}`))
-      .find((url) => existsSync(url));
-    return next(target?.href ?? specifier, context);
+    return next(specifier, context);
   },
   load(url, context, next) {
     if (url.endsWith("/next/navigation.js"))
@@ -75,14 +41,7 @@ registerHooks({
         source:
           "export async function cookies() { return { get() { return globalThis.__demoTestCookie; } }; }",
       };
-    if (!url.endsWith(".tsx")) return next(url, context);
-    return {
-      format: "module",
-      shortCircuit: true,
-      source: transpileModule(readFileSync(new URL(url), "utf8"), {
-        compilerOptions: { jsx: JsxEmit.ReactJSX, module: ModuleKind.ESNext },
-      }).outputText,
-    };
+    return next(url, context);
   },
 });
 
@@ -337,7 +296,7 @@ await assert.rejects(
   "A session cookie must still be verified against the database; no authentication bypass."
 );
 delete globalThis.__demoTestCookie;
-dom.window.close();
+dom.close();
 console.log(
   "PASS: the dashboard keeps real task links, team archive filters and an honest empty state."
 );

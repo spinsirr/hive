@@ -1,48 +1,29 @@
+import { createTestDatabase } from "./test-database.mjs";
+import { registerTestModules } from "./test-modules.mjs";
 // Opt-in integration check. Creates and drops only its own uniquely named local
 // database; never uses .env.local, Neon, a real account, sandbox, or model.
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { once, on } from "node:events";
-import { registerHooks } from "node:module";
-import { fileURLToPath } from "node:url";
+
 import { mock } from "node:test";
-import { drizzle } from "drizzle-orm/node-postgres";
-import { migrate } from "drizzle-orm/node-postgres/migrator";
+
 import { eq } from "drizzle-orm";
 import { Client } from "pg";
-import { createFixturePool } from "./fixture-pool.mjs";
+
 import { WebSocket, WebSocketServer } from "ws";
 
-const configured = process.env.HIVE_EGRESS_TEST_DATABASE_URL;
-if (!configured)
-  throw new Error(
-    "Set HIVE_EGRESS_TEST_DATABASE_URL to a local disposable Postgres server."
-  );
-const url = new URL(configured);
-if (
-  !["postgres:", "postgresql:"].includes(url.protocol) ||
-  !["127.0.0.1", "localhost", "[::1]"].includes(url.hostname) ||
-  url.search
-) {
-  throw new Error(
-    "This check only accepts loopback Postgres with no query overrides, never Neon."
-  );
-}
+const database = createTestDatabase(
+  process.env.HIVE_EGRESS_TEST_DATABASE_URL,
+  "hive_egress_test"
+);
+const { pool } = database;
 globalThis.fetch = async () => {
   throw new Error(
     "External HTTP services are forbidden in the egress fixture."
   );
 };
-const databaseName = `hive_egress_test_${randomUUID().replaceAll("-", "")}`;
-const admin = new Client({ connectionString: url.toString() });
-url.pathname = `/${databaseName}`;
-process.env.DATABASE_URL = url.toString();
-process.env.DATABASE_URL_DIRECT = url.toString();
-const { pool, closePool } = createFixturePool({
-  connectionString: url.toString(),
-  max: 5,
-});
-globalThis.__hiveDatabasePool = pool;
+
 const queries = [];
 const notifications = [];
 const clientQuery = Client.prototype.query;
@@ -66,21 +47,7 @@ pool.query = async (...args) => {
   });
   return result;
 };
-registerHooks({
-  resolve(specifier, context, next) {
-    if (specifier === "server-only")
-      return next("next/dist/compiled/server-only/empty.js", context);
-    if (specifier === "next/server") return next("next/server.js", context);
-    if (specifier === "@/db")
-      return next(new URL("../src/db/index.ts", import.meta.url).href, context);
-    if (specifier.startsWith("@/"))
-      return next(
-        new URL(`../src/${specifier.slice(2)}.ts`, import.meta.url).href,
-        context
-      );
-    return next(specifier, context);
-  },
-});
+registerTestModules();
 const upgrades = new WeakMap();
 mock.module("@vercel/functions", {
   namedExports: {
@@ -95,7 +62,7 @@ mock.module("@vercel/functions", {
 
 const servers = [],
   clients = [];
-let created = false;
+
 const waitFor = (target, event) =>
   once(target, event, { signal: AbortSignal.timeout(10_000) });
 const nextFrame = async (client, predicate = () => true) => {
@@ -115,16 +82,13 @@ function measure() {
 }
 
 try {
-  await admin.connect();
-  await admin.query(`CREATE DATABASE "${databaseName}"`);
-  created = true;
-  await migrate(drizzle(pool), {
-    migrationsFolder: fileURLToPath(new URL("../drizzle", import.meta.url)),
-  });
+  await database.start();
   const { db } = await import("../src/db/index.ts");
   const { users, authSessions, taskSessions, taskSessionMembers } =
     await import("../src/db/schema.ts");
   const store = await import("../src/lib/task-session-store.ts");
+  const { publicWorkspace } =
+    await import("../src/lib/task-session-contract.ts");
   const { GET: live } =
     await import("../src/app/api/sessions/[sessionId]/live/route.ts");
   const { NextRequest } = await import("next/server.js");
@@ -169,10 +133,26 @@ try {
     { path: "README.md", content: "Shared file evidence" },
   ];
   session.workspace.diff = "+ Shared diff evidence";
+  session.workspace.commands = [
+    { command: "unfinished command", output: "partial", exitCode: null },
+  ];
   await db
     .update(taskSessions)
     .set({ workspace: session.workspace })
     .where(eq(taskSessions.id, session.sessionId));
+  const publicSession = await store.getPublicTaskSessionSnapshot(
+    session.sessionId
+  );
+  assert.deepEqual(
+    publicSession.session.workspace.commands,
+    session.workspace.commands,
+    "public SQL must preserve nested null values such as unfinished command exit codes"
+  );
+  assert.deepEqual(
+    publicSession.session.workspace,
+    publicWorkspace(session.workspace),
+    "database and in-memory projections must expose the same public fields"
+  );
 
   async function connect(index) {
     assert.ok(
@@ -212,6 +192,10 @@ try {
     assert.equal(
       frame.snapshot.session.workspace.diff,
       "+ Shared diff evidence"
+    );
+    assert.deepEqual(
+      frame.snapshot.session.workspace.commands,
+      session.workspace.commands
     );
     return client;
   }
@@ -328,6 +312,10 @@ try {
     members[0]
   );
   const publicEmpty = await store.getPublicTaskSessionSnapshot(empty.sessionId);
+  assert.deepEqual(
+    publicEmpty.session.workspace,
+    publicWorkspace(empty.workspace)
+  );
   assert.deepEqual(publicEmpty.session.workspace.files, []);
   assert.equal(publicEmpty.session.workspace.agentSession, undefined);
   console.log(
@@ -573,8 +561,5 @@ try {
     for (const socket of server.clients) socket.terminate();
     await new Promise((resolve) => server.close(resolve));
   }
-  await closePool();
-  // Pool shutdown can precede socket close; FORCE would kill those closing clients.
-  if (created) await admin.query(`DROP DATABASE "${databaseName}"`);
-  await admin.end();
+  await database.close();
 }

@@ -76,6 +76,7 @@ for (const running of [false, true]) {
         session,
         {
           type: "send-message",
+          clientId: crypto.randomUUID(),
           actor: "spencer",
           body: "Check the repository",
         },

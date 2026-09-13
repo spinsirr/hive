@@ -1,6 +1,6 @@
 # Project workflow
 
-- Read [the code quality guide](docs/CODE_QUALITY.md) before changing quality tooling. Run `pnpm check` for code changes; do not hide failures with blanket ignores or regenerated lint baselines. The [full repository review](docs/CODE_QUALITY_REVIEW.md) lists existing structural debt, not approved patterns to copy.
+- Read [the code quality guide](docs/CODE_QUALITY.md) before changing quality tooling. Run `pnpm check` for code changes; do not hide failures with blanket ignores or regenerated lint baselines. The [full repository review](docs/CODE_QUALITY_REVIEW.md) records the structural findings and their fixes; preserve those module boundaries.
 
 - The `ship` skill is disabled for Hive. Do not load or invoke any `ship` skill, directly or through another workflow.
 - Do not start the automatic external-review pipeline associated with `ship`. Follow the user's requested release scope and the repository's existing GitHub/Vercel workflow instead.

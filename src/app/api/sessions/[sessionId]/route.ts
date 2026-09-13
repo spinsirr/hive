@@ -2,24 +2,17 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { getSessionMember, HIVE_SESSION_COOKIE } from "@/lib/auth-session";
 import { createReplyWriter } from "@/lib/agent-stream";
-import { codeReferenceSchema } from "@/lib/code-reference";
-import { isCodingEffort } from "@/lib/coding-effort";
 import { HiveAgentError } from "@/lib/hive-agent";
 import { runHiveConversation } from "@/lib/hive-conversation";
 import { hiveErrorCopy } from "@/lib/hive-error-copy";
-import { isClientSubmissionId } from "@/lib/message-draft";
 import { runHiveCodingTask } from "@/lib/hive-runner";
 import { readCodexSubscription } from "@/lib/codex-subscription-store";
 import { usesPlatformSubscriptions } from "@/lib/platform-models";
 import { buildHiveRunInput } from "@/lib/hive-prompt";
 import { createHiveToolToken, hiveToolEndpoint } from "@/lib/hive-tool-token";
-import {
-  MESSAGE_BODY_LIMIT,
-  MessageEditError,
-  type TaskSessionAction,
-} from "@/lib/task-session";
+import { MessageEditError, type TaskSessionAction } from "@/lib/task-session";
 import { isTaskSessionId } from "@/lib/task-session-id";
-import { normalizeTaskTitle } from "@/lib/task-title";
+import { clientTaskSessionActionSchema } from "@/lib/task-session-actions";
 import { publicTaskSessionSnapshot } from "@/lib/task-session-snapshot";
 import { WorkspaceRestoreError } from "@/lib/workspace-restore-state";
 import { subagentCapability } from "@/lib/subagent-control";
@@ -33,7 +26,7 @@ import {
   isTaskSessionMember,
   TaskSessionAccessError,
 } from "@/lib/task-session-store";
-import type { TaskSessionSnapshot } from "@/lib/task-session-store";
+import type { TaskSessionSnapshot } from "@/lib/task-session-contract";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -92,283 +85,14 @@ export async function POST(
   const vercelOidcToken =
     request.headers.get("x-vercel-oidc-token")?.trim() || undefined;
   const payload: unknown = await request.json().catch(() => null);
-  if (!payload || typeof payload !== "object" || !("type" in payload)) {
+  const parsed = clientTaskSessionActionSchema.safeParse(payload);
+  if (!parsed.success) {
     return NextResponse.json(
-      { error: "Invalid session action" },
+      { error: parsed.error.issues[0]?.message ?? "Invalid session action" },
       { status: 400 }
     );
   }
-
-  if (
-    payload.type !== "rename-task" &&
-    payload.type !== "archive-task" &&
-    payload.type !== "restore-task" &&
-    payload.type !== "send-message" &&
-    payload.type !== "edit-message" &&
-    payload.type !== "answer-question" &&
-    payload.type !== "resolve-peer-review" &&
-    payload.type !== "continue-peer-response" &&
-    payload.type !== "select-harness" &&
-    payload.type !== "set-coding-effort" &&
-    payload.type !== "annotate-message" &&
-    payload.type !== "annotate-code" &&
-    payload.type !== "steer-message-annotation" &&
-    payload.type !== "steer-thread" &&
-    payload.type !== "apply-next-steer" &&
-    payload.type !== "remove-queued-steer" &&
-    payload.type !== "reorder-queued-steer" &&
-    payload.type !== "steer-agent" &&
-    payload.type !== "recover-stalled-run" &&
-    payload.type !== "reset"
-  ) {
-    return NextResponse.json(
-      { error: "Unknown session action" },
-      { status: 400 }
-    );
-  }
-
-  if (
-    payload.type === "edit-message" &&
-    (!("messageId" in payload) ||
-      typeof payload.messageId !== "string" ||
-      !payload.messageId ||
-      !("body" in payload) ||
-      typeof payload.body !== "string" ||
-      !payload.body.trim() ||
-      payload.body.trim().length > MESSAGE_BODY_LIMIT ||
-      !("expectedRevision" in payload) ||
-      typeof payload.expectedRevision !== "number" ||
-      !Number.isSafeInteger(payload.expectedRevision) ||
-      payload.expectedRevision < 0 ||
-      ("queuedSteerId" in payload &&
-        (typeof payload.queuedSteerId !== "string" || !payload.queuedSteerId)))
-  )
-    return NextResponse.json(
-      {
-        error:
-          "Choose a message and enter up to 8,000 characters with its current revision.",
-      },
-      { status: 400 }
-    );
-  if (
-    payload.type === "rename-task" &&
-    (!("title" in payload) ||
-      typeof payload.title !== "string" ||
-      !normalizeTaskTitle(payload.title))
-  ) {
-    return NextResponse.json(
-      { error: "Use a task name between 1 and 120 characters." },
-      { status: 400 }
-    );
-  }
-
-  if (
-    payload.type === "answer-question" &&
-    (!("messageId" in payload) ||
-      typeof payload.messageId !== "string" ||
-      payload.messageId.length > 200 ||
-      ("replyThreadId" in payload &&
-        payload.replyThreadId !== undefined &&
-        (typeof payload.replyThreadId !== "string" ||
-          !payload.replyThreadId ||
-          payload.replyThreadId.length > 200)) ||
-      !("body" in payload) ||
-      typeof payload.body !== "string" ||
-      !payload.body.trim() ||
-      payload.body.trim().length > 4000 ||
-      !("clientId" in payload) ||
-      !isClientSubmissionId(payload.clientId))
-  ) {
-    return NextResponse.json(
-      {
-        error: "Choose a question and provide an answer with a submission ID.",
-      },
-      { status: 400 }
-    );
-  }
-  if (
-    payload.type === "continue-peer-response" &&
-    (!("steerId" in payload) ||
-      typeof payload.steerId !== "string" ||
-      payload.steerId.length > 200)
-  ) {
-    return NextResponse.json(
-      { error: "Choose a queued answer." },
-      { status: 400 }
-    );
-  }
-  if (
-    payload.type === "resolve-peer-review" &&
-    (!("messageId" in payload) ||
-      typeof payload.messageId !== "string" ||
-      payload.messageId.length > 200 ||
-      !("revision" in payload) ||
-      typeof payload.revision !== "string" ||
-      !payload.revision ||
-      payload.revision.length > 200)
-  ) {
-    return NextResponse.json(
-      { error: "Choose the code revision you reviewed." },
-      { status: 400 }
-    );
-  }
-
-  if (
-    payload.type === "select-harness" &&
-    (!("runtime" in payload) ||
-      (payload.runtime !== "codex" && payload.runtime !== "claude-code"))
-  ) {
-    return NextResponse.json(
-      { error: "Choose Codex or Claude Code" },
-      { status: 400 }
-    );
-  }
-
-  if (
-    payload.type === "set-coding-effort" &&
-    (!("effort" in payload) || !isCodingEffort(payload.effort))
-  ) {
-    return NextResponse.json(
-      { error: "Choose a supported thinking effort" },
-      { status: 400 }
-    );
-  }
-  if (
-    (payload.type === "select-harness" ||
-      payload.type === "set-coding-effort") &&
-    "modelId" in payload &&
-    (typeof payload.modelId !== "string" ||
-      !payload.modelId ||
-      payload.modelId.length > 120)
-  ) {
-    return NextResponse.json(
-      { error: "Choose a supported model" },
-      { status: 400 }
-    );
-  }
-
-  if (
-    (payload.type === "send-message" ||
-      payload.type === "annotate-message" ||
-      payload.type === "annotate-code") &&
-    (!("clientId" in payload) || !isClientSubmissionId(payload.clientId))
-  ) {
-    return NextResponse.json(
-      { error: "A valid submission ID is required" },
-      { status: 400 }
-    );
-  }
-
-  if (
-    (payload.type === "send-message" ||
-      payload.type === "annotate-message" ||
-      payload.type === "annotate-code") &&
-    (!("body" in payload) ||
-      typeof payload.body !== "string" ||
-      !payload.body.trim())
-  ) {
-    return NextResponse.json(
-      { error: "Message body is required" },
-      { status: 400 }
-    );
-  }
-  if (
-    payload.type === "send-message" &&
-    "body" in payload &&
-    typeof payload.body === "string" &&
-    payload.body.trim().length > MESSAGE_BODY_LIMIT
-  ) {
-    return NextResponse.json(
-      {
-        error: `Messages can contain up to ${MESSAGE_BODY_LIMIT.toLocaleString("en-US")} characters.`,
-      },
-      { status: 400 }
-    );
-  }
-
-  if (
-    (payload.type === "annotate-message" ||
-      payload.type === "steer-message-annotation" ||
-      payload.type === "steer-thread") &&
-    (!("messageId" in payload) || typeof payload.messageId !== "string")
-  ) {
-    return NextResponse.json(
-      { error: "Message ID is required" },
-      { status: 400 }
-    );
-  }
-
-  if (
-    payload.type === "steer-thread" &&
-    (!("throughReplyId" in payload) ||
-      typeof payload.throughReplyId !== "string")
-  ) {
-    return NextResponse.json(
-      { error: "Select the replies to include in this steer." },
-      { status: 400 }
-    );
-  }
-  if (
-    payload.type === "annotate-message" &&
-    "body" in payload &&
-    typeof payload.body === "string" &&
-    payload.body.trim().length > 4000
-  ) {
-    return NextResponse.json(
-      { error: "Thread replies can contain up to 4,000 characters." },
-      { status: 400 }
-    );
-  }
-
-  if (
-    payload.type === "steer-message-annotation" &&
-    (!("annotationId" in payload) || typeof payload.annotationId !== "string")
-  ) {
-    return NextResponse.json(
-      { error: "Annotation ID is required" },
-      { status: 400 }
-    );
-  }
-
-  if (
-    (payload.type === "remove-queued-steer" ||
-      payload.type === "reorder-queued-steer") &&
-    (!("steerId" in payload) || typeof payload.steerId !== "string")
-  ) {
-    return NextResponse.json(
-      { error: "Steer ID is required" },
-      { status: 400 }
-    );
-  }
-
-  if (
-    payload.type === "reorder-queued-steer" &&
-    (!("direction" in payload) ||
-      (payload.direction !== "up" && payload.direction !== "down"))
-  ) {
-    return NextResponse.json(
-      { error: "Invalid queue direction" },
-      { status: 400 }
-    );
-  }
-
-  if (
-    payload.type === "annotate-code" &&
-    (!("reference" in payload) ||
-      !codeReferenceSchema.safeParse(payload.reference).success ||
-      !("body" in payload) ||
-      typeof payload.body !== "string" ||
-      payload.body.length > 500)
-  )
-    return NextResponse.json(
-      {
-        error:
-          "Select up to 100 lines and write an annotation of up to 500 characters.",
-      },
-      { status: 400 }
-    );
-
-  const action = { ...payload, actor: member.id } as TaskSessionAction;
+  const action: TaskSessionAction = { ...parsed.data, actor: member.id };
   const actionAt = Date.now();
   let applied;
   try {
@@ -393,39 +117,6 @@ export async function POST(
   }
   const { snapshot, startedRun } = applied;
   if (!startedRun) return sessionResponse(snapshot);
-
-  const messageAnnotation =
-    action.type === "steer-message-annotation"
-      ? snapshot.session.messages
-          .find((message) => message.id === action.messageId)
-          ?.annotations?.find(
-            (annotation) => annotation.id === action.annotationId
-          )
-      : undefined;
-  const sourceMessageId =
-    action.type === "send-message"
-      ? snapshot.session.messages.findLast(
-          (message) =>
-            message.id.startsWith(`human-${actionAt}-`) &&
-            message.memberId === action.actor
-        )?.id
-      : undefined;
-  const sourceSteerAt = action.type === "steer-agent" ? actionAt : undefined;
-  const sourceMessageAnnotation =
-    action.type === "steer-message-annotation" && messageAnnotation
-      ? {
-          messageId: action.messageId,
-          annotationId: action.annotationId,
-          steeredAt: actionAt,
-        }
-      : undefined;
-  const activeSteer =
-    action.type === "apply-next-steer" ||
-    action.type === "steer-thread" ||
-    action.type === "answer-question" ||
-    action.type === "continue-peer-response"
-      ? snapshot.session.activeSteer
-      : undefined;
 
   const replyId = snapshot.session.workspace.liveReply!.id;
   // Progress checkpoints are best effort; the completed reply is saved below.
@@ -510,10 +201,6 @@ export async function POST(
         await appendHiveReply(sessionId, result.summary, {
           ...("agentSession" in result ? { planningResult: result } : {}),
           forReplyId: replyId,
-          forMessageId: sourceMessageId,
-          forMessageAnnotation: sourceMessageAnnotation,
-          forActiveSteerAt: activeSteer?.appliedAt,
-          forSteerAt: sourceSteerAt,
         })
       );
     }
@@ -549,10 +236,6 @@ export async function POST(
     return sessionResponse(
       await appendHiveReply(sessionId, runResult.summary, {
         forReplyId: replyId,
-        forMessageId: sourceMessageId,
-        forMessageAnnotation: sourceMessageAnnotation,
-        forActiveSteerAt: activeSteer?.appliedAt,
-        forSteerAt: sourceSteerAt,
         runResult,
         subagents,
       })
@@ -570,10 +253,6 @@ export async function POST(
     return sessionResponse(
       await appendHiveReply(sessionId, message, {
         forReplyId: replyId,
-        forMessageId: sourceMessageId,
-        forMessageAnnotation: sourceMessageAnnotation,
-        forActiveSteerAt: activeSteer?.appliedAt,
-        forSteerAt: sourceSteerAt,
         status: "error",
         subagents,
         runError: message,

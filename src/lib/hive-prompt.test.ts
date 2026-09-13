@@ -62,6 +62,7 @@ test("Codex receives attributed team context and an attributed active task", () 
         createInitialTaskSessionState(1),
         {
           type: "send-message",
+          clientId: crypto.randomUUID(),
           actor: "spencer",
           body: "Prefer the compact menu",
         },
@@ -70,7 +71,12 @@ test("Codex receives attributed team context and an attributed active task", () 
       "Ready for the next request",
       2.5
     ),
-    { type: "send-message", actor: "maya", body: "Keep keyboard navigation" },
+    {
+      type: "send-message",
+      clientId: crypto.randomUUID(),
+      actor: "maya",
+      body: "Keep keyboard navigation",
+    },
     3
   );
 
@@ -90,6 +96,7 @@ test("pre-repository conversation frames intent as discussion, not execution", (
     createInitialTaskSessionState(1),
     {
       type: "send-message",
+      clientId: crypto.randomUUID(),
       actor: "spencer",
       body: "Help us define the acceptance criteria",
     },
@@ -114,6 +121,7 @@ for (const mode of ["planning", "coding"] as const) {
       createInitialTaskSessionState(1),
       {
         type: "send-message",
+        clientId: crypto.randomUUID(),
         actor: "spencer",
         body: "Keep the earlier keyboard requirement",
       },
@@ -124,6 +132,7 @@ for (const mode of ["planning", "coding"] as const) {
       session,
       {
         type: "send-message",
+        clientId: crypto.randomUUID(),
         actor: "maya",
         body: "CURRENT_REQUEST_ONCE",
       },
@@ -148,6 +157,7 @@ test("resumed coding uses native agent history without reinserting its public re
     createInitialTaskSessionState(1),
     {
       type: "send-message",
+      clientId: crypto.randomUUID(),
       actor: "spencer",
       body: "Keep keyboard support",
     },
@@ -162,6 +172,7 @@ test("resumed coding uses native agent history without reinserting its public re
     session,
     {
       type: "send-message",
+      clientId: crypto.randomUUID(),
       actor: "maya",
       body: "Continue the label fix",
     },
@@ -200,6 +211,7 @@ test("applying another teammate's queued annotation does not transfer its author
     createInitialTaskSessionState(1),
     {
       type: "send-message",
+      clientId: crypto.randomUUID(),
       actor: "spencer",
       body: "Check the accessible label",
     },
@@ -210,6 +222,7 @@ test("applying another teammate's queued annotation does not transfer its author
     running,
     {
       type: "annotate-message",
+      clientId: crypto.randomUUID(),
       actor: "maya",
       messageId: message.id,
       body: "Preserve the annotation author's name when queued",
@@ -287,6 +300,7 @@ for (const queued of [false, true]) {
       createInitialTaskSessionState(1),
       {
         type: "send-message",
+        clientId: crypto.randomUUID(),
         actor: "github-101",
         body: "Check the queue label",
       },
@@ -299,6 +313,7 @@ for (const queued of [false, true]) {
       session,
       {
         type: "annotate-message",
+        clientId: crypto.randomUUID(),
         actor: "github-202",
         messageId: message.id,
         body: "Keep the annotation author's name",
@@ -366,6 +381,7 @@ test("a queued message remains the selected task even after its author sends som
     createInitialTaskSessionState(1),
     {
       type: "send-message",
+      clientId: crypto.randomUUID(),
       actor: "github-101",
       body: "Check the existing diff",
     },
@@ -376,6 +392,7 @@ test("a queued message remains the selected task even after its author sends som
     session,
     {
       type: "send-message",
+      clientId: crypto.randomUUID(),
       actor: "github-202",
       body: "First: check author names",
     },
@@ -386,6 +403,7 @@ test("a queued message remains the selected task even after its author sends som
     session,
     {
       type: "send-message",
+      clientId: crypto.randomUUID(),
       actor: "github-202",
       body: "Second: check keyboard labels",
     },
@@ -429,6 +447,7 @@ test("unpromoted comments are not injected as executable steering", () => {
     createInitialTaskSessionState(1),
     {
       type: "send-message",
+      clientId: crypto.randomUUID(),
       actor: "github-101",
       body: "Discuss the label",
     },
@@ -440,6 +459,7 @@ test("unpromoted comments are not injected as executable steering", () => {
     session,
     {
       type: "annotate-message",
+      clientId: crypto.randomUUID(),
       actor: "github-202",
       messageId: message.id,
       body: "Do not execute this discussion",
@@ -449,7 +469,12 @@ test("unpromoted comments are not injected as executable steering", () => {
   );
   const input = buildHiveRunInput(
     session,
-    { type: "send-message", actor: "github-101", body: message.body },
+    {
+      type: "send-message",
+      clientId: crypto.randomUUID(),
+      actor: "github-101",
+      body: message.body,
+    },
     githubMembers
   );
   assert.equal(input.memoryQuery, "Discuss the label");
@@ -473,7 +498,7 @@ test("a missing steering source cannot silently become another task", () => {
         },
         githubMembers
       ),
-    /steered annotation is no longer available/
+    /accepted command is no longer available/
   );
   assert.throws(
     () =>
@@ -485,7 +510,7 @@ test("a missing steering source cannot silently become another task", () => {
         },
         githubMembers
       ),
-    /selected steer is no longer available/i
+    /accepted command is no longer available/i
   );
 });
 
@@ -496,6 +521,7 @@ test("whole-thread memory recall uses the task title rather than uploading the d
     }),
     {
       type: "send-message",
+      clientId: crypto.randomUUID(),
       actor: "github-101",
       body: "PARENT_CONTEXT_NOT_A_MEMORY_QUERY",
     },
@@ -508,6 +534,7 @@ test("whole-thread memory recall uses the task title rather than uploading the d
     session,
     {
       type: "annotate-message",
+      clientId: crypto.randomUUID(),
       actor: "github-202",
       messageId: parent.id,
       body: "THREAD_REPLY_NOT_A_MEMORY_QUERY",

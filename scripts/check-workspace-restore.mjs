@@ -1,19 +1,10 @@
+import { registerTestModules } from "./test-modules.mjs";
 // Real restore routes + state transitions + SDK orchestration; only the external
 // auth, database transport and sandbox provider are deterministic doubles.
 import assert from "node:assert/strict";
-import { registerHooks } from "node:module";
+
 import { mock } from "node:test";
-registerHooks({
-  resolve(specifier, context, next) {
-    if (specifier === "next/server") return next("next/server.js", context);
-    if (specifier.startsWith("@/"))
-      return next(
-        new URL(`../src/${specifier.slice(2)}.ts`, import.meta.url).href,
-        context
-      );
-    return next(specifier, context);
-  },
-});
+registerTestModules();
 const {
   assertWorkspaceRestoreAttempt,
   beginWorkspaceRestore,

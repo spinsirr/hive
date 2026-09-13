@@ -16,7 +16,10 @@ import {
   workspaceReadRequest,
   workspaceReadResponse,
 } from "./workspace-files.ts";
-import { workspaceReadScript } from "./workspace-read-script.ts";
+const workspaceReadScript = await readFile(
+  new URL("./runtime/workspace-read.mjs", import.meta.url),
+  "utf8"
+);
 
 let fixture: string;
 let root: string;
@@ -25,6 +28,7 @@ function read(relative: string, kind = "file", offset = 0, directory = root) {
     execFileSync(
       process.execPath,
       [
+        "--input-type=module",
         "-e",
         workspaceReadScript,
         directory,

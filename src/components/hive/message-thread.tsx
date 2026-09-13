@@ -13,6 +13,7 @@ import { MentionInput } from "@/components/hive/mention-input";
 import { MessageTime } from "@/components/hive/message-time";
 import { ThreadReply } from "@/components/hive/thread-reply";
 import { PeerRequestSummary } from "@/components/hive/peer-request-summary";
+import { ThreadReviewActions } from "./thread-review-actions";
 import { QuestionAnswer } from "@/components/hive/question-answer";
 import { ConversationMessage } from "@/components/hive/conversation-message";
 import { Button } from "@/components/ui/button";
@@ -78,25 +79,6 @@ export function MessageThread({
     message.interaction?.kind === "question" ? message.interaction : undefined;
   const review =
     message.interaction?.kind === "review" ? message.interaction : undefined;
-  const reviewHint =
-    !review || review.resolved
-      ? null
-      : disabled
-        ? "Reviewing is paused for this task."
-        : reviewReady
-          ? null
-          : review.status === "preparing"
-            ? "Waiting for Hive to finish these changes."
-            : review.status === "unavailable"
-              ? "No completed changes to review. Ask Hive to try again."
-              : runActive
-                ? "Waiting for Hive to finish."
-                : !reviewCurrent
-                  ? "These changes are out of date. Ask Hive for a new review."
-                  : review.targetMemberId &&
-                      review.targetMemberId !== currentMember
-                    ? `Waiting for ${resolveMember(review.targetMemberId, members).shortName} to review.`
-                    : "Finish pending work and feedback before marking as reviewed.";
   const waitingFor =
     question &&
     !question.answer &&
@@ -124,7 +106,6 @@ export function MessageThread({
     send
   );
   const [steering, setSteering] = useState(false);
-  const [resolving, setResolving] = useState(false);
   const [error, setError] = useState("");
   const sending = draft?.status === "sending";
   const lastReply = replies?.at(-1);
@@ -166,20 +147,6 @@ export function MessageThread({
         );
     } finally {
       setSteering(false);
-    }
-  };
-  const resolveReview = async () => {
-    if (!review?.revision || !reviewReady || !onResolveReview || resolving)
-      return;
-    setResolving(true);
-    setError("");
-    try {
-      if (!(await onResolveReview(message.id, review.revision)))
-        setError(
-          "The review changed. Check the latest changes and replies before marking it reviewed."
-        );
-    } finally {
-      setResolving(false);
     }
   };
 
@@ -254,41 +221,18 @@ export function MessageThread({
               </div>
             ) : null}
             {review ? (
-              <div
-                className="mt-3 space-y-2"
-                role="group"
-                aria-label="Review actions"
-              >
-                {reviewHint ? (
-                  <p className="text-xs leading-5 text-muted-foreground">
-                    {reviewHint}
-                  </p>
-                ) : null}
-                <div className="flex flex-wrap gap-1.5">
-                  {onViewChanges ? (
-                    <Button
-                      className="h-7 px-2.5 text-xs"
-                      size="sm"
-                      variant="outline"
-                      onClick={onViewChanges}
-                    >
-                      View changes
-                    </Button>
-                  ) : null}
-                  {onResolveReview && !review.resolved ? (
-                    <Button
-                      className="h-7 px-2.5 text-xs"
-                      size="sm"
-                      variant="secondary"
-                      title="Records your review only; does not approve or merge a pull request."
-                      disabled={disabled || !reviewReady || resolving}
-                      onClick={() => void resolveReview()}
-                    >
-                      {resolving ? "Saving…" : "Mark as reviewed"}
-                    </Button>
-                  ) : null}
-                </div>
-              </div>
+              <ThreadReviewActions
+                messageId={message.id}
+                review={review}
+                members={members}
+                currentMember={currentMember}
+                disabled={disabled}
+                runActive={runActive}
+                ready={reviewReady}
+                current={reviewCurrent}
+                onViewChanges={onViewChanges}
+                onResolve={onResolveReview}
+              />
             ) : null}
           </article>
           {!(replies?.length || requests.length) ? (

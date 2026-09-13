@@ -533,6 +533,7 @@ test("review keys still produce a new revision-bound review in a later run", () 
     ready,
     {
       type: "send-message",
+      clientId: crypto.randomUUID(),
       actor: "spencer",
       body: "Implement the next change",
     },

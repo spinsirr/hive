@@ -1,18 +1,8 @@
+import { registerTestModules } from "./test-modules.mjs";
 import assert from "node:assert/strict";
 import { mock } from "node:test";
-import { registerHooks } from "node:module";
 
-registerHooks({
-  resolve(specifier, context, next) {
-    if (specifier === "next/server") return next("next/server.js", context);
-    if (specifier.startsWith("@/"))
-      return next(
-        new URL(`../src/${specifier.slice(2)}.ts`, import.meta.url).href,
-        context
-      );
-    return next(specifier, context);
-  },
-});
+registerTestModules();
 let admitted = true,
   member = { id: "github-101" },
   foreign = false,

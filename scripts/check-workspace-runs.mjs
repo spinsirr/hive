@@ -1,33 +1,13 @@
+import { registerTestModules } from "./test-modules.mjs";
 // Render the production Runs pane with invented command evidence. No model,
 // shell command, account, or live workspace is invoked by these checks.
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
-import { registerHooks } from "node:module";
+
 import { JSDOM } from "jsdom";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { JsxEmit, ModuleKind, transpileModule } from "typescript";
 
-registerHooks({
-  resolve(specifier, context, next) {
-    if (!specifier.startsWith("@/")) return next(specifier, context);
-    const base = new URL(`../src/${specifier.slice(2)}`, import.meta.url);
-    const target = [".ts", ".tsx"]
-      .map((extension) => new URL(`${base.href}${extension}`))
-      .find((url) => existsSync(url));
-    return next(target?.href ?? specifier, context);
-  },
-  load(url, context, next) {
-    if (!url.endsWith(".tsx")) return next(url, context);
-    return {
-      format: "module",
-      shortCircuit: true,
-      source: transpileModule(readFileSync(new URL(url), "utf8"), {
-        compilerOptions: { jsx: JsxEmit.ReactJSX, module: ModuleKind.ESNext },
-      }).outputText,
-    };
-  },
-});
+registerTestModules();
 
 const { RunsPane } = await import("../src/components/hive/workspace-runs.tsx");
 const command = (extra) => ({

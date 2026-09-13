@@ -1,4 +1,10 @@
-import type { TaskSessionSnapshot } from "./task-session-store.ts";
+import {
+  publicWorkspace,
+  publicSessionFields,
+  pickFields,
+  type TaskSessionSnapshot,
+  type PrivateTaskSessionSnapshot,
+} from "./task-session-contract.ts";
 import type { AgentReply } from "./task-session.ts";
 
 function mergeReply(previous: AgentReply, incoming: AgentReply): AgentReply {
@@ -16,23 +22,16 @@ function mergeReply(previous: AgentReply, incoming: AgentReply): AgentReply {
 
 /** The same public projection is used by the initial page and live updates. */
 export function publicTaskSessionSnapshot(
-  snapshot: TaskSessionSnapshot
+  snapshot: PrivateTaskSessionSnapshot
 ): TaskSessionSnapshot {
-  const session = snapshot.session.workspace.agentSession;
   return {
-    ...snapshot,
+    members: snapshot.members,
+    activeMembers: snapshot.activeMembers,
+    typingMembers: snapshot.typingMembers,
+    codingModels: snapshot.codingModels,
     session: {
-      ...snapshot.session,
-      workspace: {
-        ...snapshot.session.workspace,
-        // Saved snapshots include private native-harness recovery data. The
-        // checkpoint endpoint exposes only task-scoped display metadata.
-        checkpoints: undefined,
-        idleCheckpoint: undefined,
-        agentSession: session
-          ? { id: session.id, runtime: session.runtime }
-          : undefined,
-      },
+      ...pickFields(snapshot.session, publicSessionFields),
+      workspace: publicWorkspace(snapshot.session.workspace),
     },
   };
 }

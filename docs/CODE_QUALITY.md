@@ -25,7 +25,7 @@ Prettier owns formatting. ESLint owns errors and maintainability rules; `eslint-
 
 Two rule choices are deliberate: registering `node:test` tests does not require awaiting the runner-owned registration promise (promises inside the tests still do); unused object properties deliberately removed with rest destructuring are allowed. `void` marks deliberate fire-and-forget work, but does **not** handle rejection. Review the called function's error handling before using it.
 
-Generated Next files, Monaco bundles, coverage and deployment output are excluded. Prettier additionally skips the package-manager lockfile and generated Drizzle metadata. Authored application code, test scripts, documentation and configuration remain in scope. Code inside JavaScript strings is not analyzed as executable code; see the runtime-asset finding in the review.
+Generated Next files, Monaco bundles, coverage and deployment output are excluded. Prettier additionally skips the package-manager lockfile and generated Drizzle metadata. Authored application code, test scripts, documentation and configuration remain in scope. The sandbox file reader is an authored `.mjs` asset under `src/lib/runtime`, so the same lint and formatting gates cover the code that actually runs.
 
 ## Before committing
 
@@ -37,14 +37,14 @@ CI runs format/lint/types, database tests and a production build. The workflow d
 
 ## Structural review remains required
 
-Lint passing does not prove that a state model or abstraction is good. Apply the [Thermo-Nuclear Code Quality Review skill](https://github.com/cursor/plugins/blob/main/cursor-team-kit/skills/thermo-nuclear-code-quality-review/SKILL.md) to meaningful changes. In particular, avoid adding cases to the session reducer, duplicating action contracts, performing provider calls under row locks, or adding more responsibilities to the workspace component.
+Lint passing does not prove that a state model or abstraction is good. Apply the [Thermo-Nuclear Code Quality Review skill](https://github.com/cursor/plugins/blob/main/cursor-team-kit/skills/thermo-nuclear-code-quality-review/SKILL.md) to meaningful changes. Keep action validation in `task-session-actions`, execution admission in `task-session-commands`, and provider I/O outside task/membership row locks. The reducer dispatches to focused domain transitions; it should not grow another execution-start path. Keep navigation in `use-workspace-navigation` and presentation in the shared workspace components.
 
-The [September 13 review](CODE_QUALITY_REVIEW.md) records current hotspots. It intentionally does not suppress them behind a generated baseline or turn existing structural problems into accepted thresholds. To reproduce its structural scan:
+The [September 13 review and fixes](CODE_QUALITY_REVIEW.md) record the original findings, new boundaries and validation. Complexity is still a diagnostic, not an accepted-debt baseline. To reproduce the structural scan:
 
 ```sh
 pnpm exec eslint src --rule 'complexity:[warn,20]' --rule 'max-lines:[warn,{max:1000,skipBlankLines:true,skipComments:true}]'
 ```
 
-These diagnostic rules report existing debt; they are not the zero-warning lint gate. Complexity includes optional chaining, default parameters and JSX branches, so inspect the implementation before treating a number as a defect. A file crossing 1,000 lines through new responsibilities requires decomposition or a concrete structural justification. The repository-wide formatter expansion in this change exposes pre-existing compressed code; it does not claim to resolve it.
+These diagnostic rules report existing debt; they are not the zero-warning lint gate. Complexity includes optional chaining, default parameters and JSX branches, so inspect the implementation before treating a number as a defect. A file crossing 1,000 lines through new responsibilities requires decomposition or a concrete structural justification. Assess file size together with ownership and branching. Splitting a function into files is useful only when the responsibilities and invariants become clearer.
 
 When an exception is necessary, keep it local and explain the invariant. For example, workspace path validation intentionally matches ASCII control characters, so the `no-control-regex` exception sits at that expression. Do not disable a rule for an entire directory to make a check pass.

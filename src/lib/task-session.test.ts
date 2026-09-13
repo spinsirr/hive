@@ -73,6 +73,7 @@ test("a new task stays empty until a member sends the first message", () => {
       initial,
       {
         type: "send-message",
+        clientId: crypto.randomUUID(),
         actor: "spencer",
         body: "Help us plan navigation",
       },
@@ -110,7 +111,12 @@ test("the team can select Claude before coding, then keep that engine through re
   assert.equal(didStartHiveRun(connectedSession(), selected), false);
   const running = reduceTaskSession(
     selected,
-    { type: "send-message", actor: "spencer", body: "Inspect files" },
+    {
+      type: "send-message",
+      clientId: crypto.randomUUID(),
+      actor: "spencer",
+      body: "Inspect files",
+    },
     20
   );
   const finished = finishInspection(running);
@@ -200,7 +206,12 @@ test("coding effort changes at idle boundaries without replacing native history 
   assert.equal(didStartHiveRun(initial, selected), false);
   const running = reduceTaskSession(
     selected,
-    { type: "send-message", actor: "spencer", body: "Inspect files" },
+    {
+      type: "send-message",
+      clientId: crypto.randomUUID(),
+      actor: "spencer",
+      body: "Inspect files",
+    },
     20
   );
   const finished = finishInspection(running);
@@ -232,7 +243,12 @@ test("coding effort changes at idle boundaries without replacing native history 
   );
   const queued = reduceTaskSession(
     running,
-    { type: "send-message", actor: "maya", body: "Check tests too" },
+    {
+      type: "send-message",
+      clientId: crypto.randomUUID(),
+      actor: "maya",
+      body: "Check tests too",
+    },
     25
   );
   for (const busy of [running, queued, finishInspection(queued)]) {
@@ -291,7 +307,12 @@ test("model selection preserves native history, normalizes effort, and respects 
   );
   const running = reduceTaskSession(
     state,
-    { type: "send-message", actor: "spencer", body: "Inspect files" },
+    {
+      type: "send-message",
+      clientId: crypto.randomUUID(),
+      actor: "spencer",
+      body: "Inspect files",
+    },
     52
   );
   const finished = finishInspection(running);
@@ -354,7 +375,12 @@ test("model selection preserves native history, normalizes effort, and respects 
   );
   const queued = reduceTaskSession(
     running,
-    { type: "send-message", actor: "maya", body: "Check tests" },
+    {
+      type: "send-message",
+      clientId: crypto.randomUUID(),
+      actor: "maya",
+      body: "Check tests",
+    },
     53
   );
   for (const busy of [running, queued, finishInspection(queued)])
@@ -371,6 +397,7 @@ test("a successful read-only run returns to waiting without approval", () => {
     connectedSession(),
     {
       type: "send-message",
+      clientId: crypto.randomUUID(),
       actor: "spencer",
       body: "Inspect navigation only",
     },
@@ -387,6 +414,7 @@ test("the retired global approval action cannot change a task or its history", (
     connectedSession(),
     {
       type: "send-message",
+      clientId: crypto.randomUUID(),
       actor: "spencer",
       body: "Update navigation",
     },
@@ -442,6 +470,7 @@ test("removing the final steer after a read-only run returns to ready, not revie
     connectedSession(),
     {
       type: "send-message",
+      clientId: crypto.randomUUID(),
       actor: "spencer",
       body: "Inspect navigation only",
     },
@@ -451,6 +480,7 @@ test("removing the final steer after a read-only run returns to ready, not revie
     running,
     {
       type: "send-message",
+      clientId: crypto.randomUUID(),
       actor: "maya",
       body: "Also check the footer",
     },
@@ -504,6 +534,7 @@ test("retrying the same annotation preserves one attributed comment", () => {
     connectedSession(),
     {
       type: "send-message",
+      clientId: crypto.randomUUID(),
       actor: "spencer",
       body: "@maya thoughts?",
     },
@@ -546,12 +577,22 @@ test("team messages stay in discussion while Hive tasks start one shared run", (
   const connected = connectedSession();
   const discussion = reduceTaskSession(
     connected,
-    { type: "send-message", actor: "spencer", body: "@maya thoughts?" },
+    {
+      type: "send-message",
+      clientId: crypto.randomUUID(),
+      actor: "spencer",
+      body: "@maya thoughts?",
+    },
     20
   );
   const task = reduceTaskSession(
     discussion,
-    { type: "send-message", actor: "maya", body: "Inspect the navigation" },
+    {
+      type: "send-message",
+      clientId: crypto.randomUUID(),
+      actor: "maya",
+      body: "Inspect the navigation",
+    },
     30
   );
 
@@ -571,6 +612,7 @@ test("a task can begin with Hive before a repository is attached", () => {
     initial,
     {
       type: "send-message",
+      clientId: crypto.randomUUID(),
       actor: "spencer",
       body: "Help us define the acceptance criteria.",
     },
@@ -650,7 +692,12 @@ test("attaching a repository preserves discussion but never treats the planning 
 test("historically approved tasks remain open for discussion and another steer", () => {
   const running = reduceTaskSession(
     connectedSession(),
-    { type: "send-message", actor: "spencer", body: "Update navigation" },
+    {
+      type: "send-message",
+      clientId: crypto.randomUUID(),
+      actor: "spencer",
+      body: "Update navigation",
+    },
     20
   );
   const finished = finishInspection(running, "+ keyboard support");
@@ -661,6 +708,7 @@ test("historically approved tasks remain open for discussion and another steer",
     approved,
     {
       type: "annotate-message",
+      clientId: crypto.randomUUID(),
       actor: "maya",
       messageId: parent.id,
       body: "Also check touch targets",
@@ -726,7 +774,12 @@ test("authenticated GitHub members keep real attribution and mentions human-only
   );
   const discussion = reduceTaskSession(
     connected,
-    { type: "send-message", actor: members[0].id, body: "@ghopper thoughts?" },
+    {
+      type: "send-message",
+      clientId: crypto.randomUUID(),
+      actor: members[0].id,
+      body: "@ghopper thoughts?",
+    },
     20,
     members
   );
@@ -739,7 +792,12 @@ test("authenticated GitHub members keep real attribution and mentions human-only
 test("an annotation created during a run waits for an explicit safe boundary", () => {
   const running = reduceTaskSession(
     connectedSession(),
-    { type: "send-message", actor: "spencer", body: "Update the menu" },
+    {
+      type: "send-message",
+      clientId: crypto.randomUUID(),
+      actor: "spencer",
+      body: "Update the menu",
+    },
     20
   );
   const sourceMessage = running.messages.at(-1);
@@ -749,6 +807,7 @@ test("an annotation created during a run waits for an explicit safe boundary", (
     running,
     {
       type: "annotate-message",
+      clientId: crypto.randomUUID(),
       actor: "maya",
       messageId: sourceMessage.id,
       body: "Keep the interaction keyboard accessible",
@@ -770,7 +829,7 @@ test("an annotation created during a run waits for an explicit safe boundary", (
   );
 
   assert.equal(queued.steeringQueue.length, 1);
-  assert.equal(queued.activeSteer, undefined);
+  assert.equal(queued.activeSteer?.source.kind, "message");
   assert.equal(queued.messages.at(-1)?.annotations?.[0]?.status, "queued");
 
   const premature = reduceTaskSession(
@@ -814,13 +873,19 @@ test("an annotation created during a run waits for an explicit safe boundary", (
 test("a failed run releases the next queued steer without losing its author or context", () => {
   const running = reduceTaskSession(
     connectedSession(),
-    { type: "send-message", actor: "spencer", body: "Inspect the navigation" },
+    {
+      type: "send-message",
+      clientId: crypto.randomUUID(),
+      actor: "spencer",
+      body: "Inspect the navigation",
+    },
     20
   );
   const queued = reduceTaskSession(
     running,
     {
       type: "send-message",
+      clientId: crypto.randomUUID(),
       actor: "maya",
       body: "Keep keyboard navigation intact",
     },
@@ -852,6 +917,7 @@ test("messages arriving after a failed run stay behind the existing queue", () =
     connectedSession(),
     {
       type: "send-message",
+      clientId: crypto.randomUUID(),
       actor: "spencer",
       body: "Inspect navigation",
     },
@@ -861,6 +927,7 @@ test("messages arriving after a failed run stay behind the existing queue", () =
     running,
     {
       type: "send-message",
+      clientId: crypto.randomUUID(),
       actor: "maya",
       body: "Keep keyboard navigation",
     },
@@ -871,6 +938,7 @@ test("messages arriving after a failed run stay behind the existing queue", () =
     failed,
     {
       type: "send-message",
+      clientId: crypto.randomUUID(),
       actor: "spencer",
       body: "Also check focus styling",
     },
@@ -899,6 +967,7 @@ test("two messages in the same millisecond grant only one run start", () => {
     connected,
     {
       type: "send-message",
+      clientId: crypto.randomUUID(),
       actor: "spencer",
       body: "Inspect navigation",
     },
@@ -908,6 +977,7 @@ test("two messages in the same millisecond grant only one run start", () => {
     first,
     {
       type: "send-message",
+      clientId: crypto.randomUUID(),
       actor: "maya",
       body: "Keep keyboard navigation",
     },
@@ -932,6 +1002,7 @@ test("planning turns release queued steers after success as well as failure", ()
     createInitialTaskSessionState(1),
     {
       type: "send-message",
+      clientId: crypto.randomUUID(),
       actor: "spencer",
       body: "Define the task",
     },
@@ -941,6 +1012,7 @@ test("planning turns release queued steers after success as well as failure", ()
     running,
     {
       type: "send-message",
+      clientId: crypto.randomUUID(),
       actor: "maya",
       body: "Include keyboard acceptance criteria",
     },
@@ -970,7 +1042,12 @@ test("planning turns release queued steers after success as well as failure", ()
 test("a review annotation can start the next turn in the same Codex session", () => {
   const running = reduceTaskSession(
     connectedSession(),
-    { type: "send-message", actor: "spencer", body: "Update the menu" },
+    {
+      type: "send-message",
+      clientId: crypto.randomUUID(),
+      actor: "spencer",
+      body: "Update the menu",
+    },
     20
   );
   const sourceMessage = running.messages.at(-1);
@@ -992,6 +1069,7 @@ test("a review annotation can start the next turn in the same Codex session", ()
     review,
     {
       type: "annotate-message",
+      clientId: crypto.randomUUID(),
       actor: "maya",
       messageId: sourceMessage.id,
       body: "Keep the parent item expanded",
@@ -1066,6 +1144,7 @@ test("removing the final pending steer after a completed run returns to review",
     connectedSession(),
     {
       type: "send-message",
+      clientId: crypto.randomUUID(),
       actor: "spencer",
       body: "Update the menu",
     },
@@ -1075,6 +1154,7 @@ test("removing the final pending steer after a completed run returns to review",
     running,
     {
       type: "send-message",
+      clientId: crypto.randomUUID(),
       actor: "maya",
       body: "Check focus styling",
     },
@@ -1146,13 +1226,23 @@ test("reset preserves the repository but clears run artifacts", () => {
 test("a second task sent during a run joins the attributed steering queue", () => {
   const running = reduceTaskSession(
     connectedSession(),
-    { type: "send-message", actor: "spencer", body: "Update the menu" },
+    {
+      type: "send-message",
+      clientId: crypto.randomUUID(),
+      actor: "spencer",
+      body: "Update the menu",
+    },
     20
   );
   const sessionId = running.workspace.agentSession?.id;
   const queued = reduceTaskSession(
     running,
-    { type: "send-message", actor: "maya", body: "Keep it compact" },
+    {
+      type: "send-message",
+      clientId: crypto.randomUUID(),
+      actor: "maya",
+      body: "Keep it compact",
+    },
     30
   );
 
@@ -1225,7 +1315,12 @@ test("a failed turn persists the latest Codex checkpoint", () => {
 test("reset needs an idle task: never during a run, an applied steer, or with queued input", () => {
   const running = reduceTaskSession(
     connectedSession(),
-    { type: "send-message", actor: "spencer", body: "Update navigation" },
+    {
+      type: "send-message",
+      clientId: crypto.randomUUID(),
+      actor: "spencer",
+      body: "Update navigation",
+    },
     20
   );
   assert.equal(
@@ -1235,7 +1330,12 @@ test("reset needs an idle task: never during a run, an applied steer, or with qu
   );
   const queued = reduceTaskSession(
     running,
-    { type: "send-message", actor: "maya", body: "Also the footer" },
+    {
+      type: "send-message",
+      clientId: crypto.randomUUID(),
+      actor: "maya",
+      body: "Also the footer",
+    },
     31
   );
   const finished = finishInspection(queued);
@@ -1259,7 +1359,12 @@ test("reset needs an idle task: never during a run, an applied steer, or with qu
   const idle = finishInspection(
     reduceTaskSession(
       connectedSession(),
-      { type: "send-message", actor: "spencer", body: "Inspect" },
+      {
+        type: "send-message",
+        clientId: crypto.randomUUID(),
+        actor: "spencer",
+        body: "Inspect",
+      },
       20
     )
   );
@@ -1273,12 +1378,22 @@ test("reset needs an idle task: never during a run, an applied steer, or with qu
 test("a run that outlives its request can be marked lost without losing discussion or the queue", () => {
   let running = reduceTaskSession(
     connectedSession(),
-    { type: "send-message", actor: "spencer", body: "Long task" },
+    {
+      type: "send-message",
+      clientId: crypto.randomUUID(),
+      actor: "spencer",
+      body: "Long task",
+    },
     20
   );
   running = reduceTaskSession(
     running,
-    { type: "send-message", actor: "maya", body: "Queued follow-up" },
+    {
+      type: "send-message",
+      clientId: crypto.randomUUID(),
+      actor: "maya",
+      body: "Queued follow-up",
+    },
     25
   );
   running = {
@@ -1350,7 +1465,12 @@ test("a run that outlives its request can be marked lost without losing discussi
 test("conversation messages carry a machine timestamp alongside the legacy label", () => {
   const running = reduceTaskSession(
     connectedSession(),
-    { type: "send-message", actor: "spencer", body: "Update navigation" },
+    {
+      type: "send-message",
+      clientId: crypto.randomUUID(),
+      actor: "spencer",
+      body: "Update navigation",
+    },
     20
   );
   assert.equal(running.messages.at(-1)?.createdAt, 20);
@@ -1387,6 +1507,7 @@ test("oversized conversation messages are ignored rather than stored or executed
     connected,
     {
       type: "send-message",
+      clientId: crypto.randomUUID(),
       actor: "spencer",
       body: "x".repeat(MESSAGE_BODY_LIMIT + 1),
     },
@@ -1397,6 +1518,7 @@ test("oversized conversation messages are ignored rather than stored or executed
     connected,
     {
       type: "send-message",
+      clientId: crypto.randomUUID(),
       actor: "spencer",
       body: "x".repeat(MESSAGE_BODY_LIMIT),
     },

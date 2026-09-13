@@ -1,50 +1,15 @@
+import { registerTestModules } from "./test-modules.mjs";
 // Purpose: confirm completed recovery promptly, keep confirming after a lost
 // status response, and never turn a status check into a second restore.
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
-import { registerHooks } from "node:module";
-import { mock } from "node:test";
-import { JSDOM } from "jsdom";
-import { JsxEmit, ModuleKind, transpileModule } from "typescript";
 
-const dom = new JSDOM("<!doctype html><html><body></body></html>", {
+import { mock } from "node:test";
+import { createDomFixture } from "./test-dom.mjs";
+
+const dom = createDomFixture("<!doctype html><html><body></body></html>", {
   url: "https://hive.test",
 });
-for (const name of [
-  "window",
-  "document",
-  "navigator",
-  "HTMLElement",
-  "Element",
-  "Node",
-])
-  Object.defineProperty(globalThis, name, {
-    configurable: true,
-    value: name === "window" ? dom.window : dom.window[name],
-  });
-globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-registerHooks({
-  resolve(specifier, context, next) {
-    if (!specifier.startsWith("@/")) return next(specifier, context);
-    const base = new URL(`../src/${specifier.slice(2)}`, import.meta.url);
-    return next(
-      [".ts", ".tsx"]
-        .map((ext) => new URL(`${base.href}${ext}`))
-        .find(existsSync).href,
-      context
-    );
-  },
-  load(url, context, next) {
-    if (!url.endsWith(".tsx")) return next(url, context);
-    return {
-      format: "module",
-      shortCircuit: true,
-      source: transpileModule(readFileSync(new URL(url), "utf8"), {
-        compilerOptions: { jsx: JsxEmit.ReactJSX, module: ModuleKind.ESNext },
-      }).outputText,
-    };
-  },
-});
+registerTestModules();
 const { createElement: h } = await import("react");
 const { act, renderHook, cleanup } = await import("@testing-library/react");
 const { HiveClientContext } =
@@ -124,5 +89,5 @@ try {
 } finally {
   cleanup();
   mock.timers.reset();
-  dom.window.close();
+  dom.close();
 }

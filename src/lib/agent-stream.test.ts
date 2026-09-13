@@ -161,6 +161,7 @@ function streamingSession() {
     createInitialTaskSessionState(1, "streaming-task"),
     {
       type: "send-message",
+      clientId: crypto.randomUUID(),
       actor: "spencer",
       body: "Clarify the task",
     },

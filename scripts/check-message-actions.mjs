@@ -1,36 +1,13 @@
+import { registerTestModules } from "./test-modules.mjs";
 // Real UI controls and state reducer; only browser services are doubled. No accounts/model calls.
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
-import { registerHooks } from "node:module";
-import { JSDOM } from "jsdom";
-import { JsxEmit, ModuleKind, transpileModule } from "typescript";
 
-const dom = new JSDOM("<!doctype html><body></body>", {
+import { createDomFixture } from "./test-dom.mjs";
+
+const dom = createDomFixture("<!doctype html><body></body>", {
   url: "https://hive.test",
   pretendToBeVisual: true,
 });
-for (const name of [
-  "window",
-  "document",
-  "navigator",
-  "HTMLElement",
-  "HTMLInputElement",
-  "HTMLTextAreaElement",
-  "HTMLButtonElement",
-  "Element",
-  "Event",
-  "Node",
-  "MutationObserver",
-  "getComputedStyle",
-  "requestAnimationFrame",
-  "cancelAnimationFrame",
-]) {
-  Object.defineProperty(globalThis, name, {
-    configurable: true,
-    value: name === "window" ? dom.window : dom.window[name],
-  });
-}
-globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 globalThis.fetch = async () => {
   throw new Error("Unexpected network request in the message UI fixture");
 };
@@ -43,17 +20,7 @@ Object.defineProperty(navigator, "clipboard", {
     },
   },
 });
-registerHooks({
-  resolve(specifier, context, next) {
-    if (["next/link", "next/image"].includes(specifier))
-      return next(`${specifier}.js`, context);
-    if (!specifier.startsWith("@/")) return next(specifier, context);
-    const base = new URL(`../src/${specifier.slice(2)}`, import.meta.url);
-    const target = [".ts", ".tsx"]
-      .map((extension) => new URL(`${base.href}${extension}`))
-      .find((url) => existsSync(url));
-    return next(target?.href ?? specifier, context);
-  },
+registerTestModules({
   load(url, context, next) {
     if (url.endsWith(".css"))
       return {
@@ -61,14 +28,7 @@ registerHooks({
         shortCircuit: true,
         source: "export default {};",
       };
-    if (!url.endsWith(".tsx")) return next(url, context);
-    return {
-      format: "module",
-      shortCircuit: true,
-      source: transpileModule(readFileSync(new URL(url), "utf8"), {
-        compilerOptions: { jsx: JsxEmit.ReactJSX, module: ModuleKind.ESNext },
-      }).outputText,
-    };
+    return next(url, context);
   },
 });
 const { createElement: h } = await import("react");
@@ -477,5 +437,5 @@ try {
   );
 } finally {
   await act(async () => cleanup());
-  dom.window.close();
+  dom.close();
 }

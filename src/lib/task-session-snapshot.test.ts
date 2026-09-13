@@ -12,7 +12,7 @@ import {
   receiveAgentReply,
   receiveTaskSessionSnapshot,
 } from "./task-session-snapshot.ts";
-import type { TaskSessionSnapshot } from "./task-session-store.ts";
+import type { PrivateTaskSessionSnapshot as TaskSessionSnapshot } from "./task-session-contract.ts";
 import { codingModelOptions, CODEX_GATEWAY_MODEL } from "./coding-models.ts";
 
 function snapshot(sessionId = "shared-task"): TaskSessionSnapshot {
@@ -60,7 +60,12 @@ test("late reconnect snapshots and action responses cannot roll back team messag
     ...before,
     session: reduceTaskSession(
       before.session,
-      { type: "send-message", actor: "spencer", body: "Fix the navigation" },
+      {
+        type: "send-message",
+        clientId: crypto.randomUUID(),
+        actor: "spencer",
+        body: "Fix the navigation",
+      },
       2
     ),
   };
@@ -223,7 +228,12 @@ test("reset advances the synchronization version even without an attached reposi
   const before = snapshot();
   const asked = reduceTaskSession(
     before.session,
-    { type: "send-message", actor: "spencer", body: "Discuss the task" },
+    {
+      type: "send-message",
+      clientId: crypto.randomUUID(),
+      actor: "spencer",
+      body: "Discuss the task",
+    },
     2
   );
   assert.equal(

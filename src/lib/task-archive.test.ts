@@ -149,13 +149,23 @@ test("archives reject every task mutation and checkpoint rollback until restored
 test("active work, pending instructions and uncertain recovery must finish before archiving", () => {
   const running = reduceTaskSession(
     initial,
-    { type: "send-message", actor, body: "Inspect the project" },
+    {
+      type: "send-message",
+      clientId: crypto.randomUUID(),
+      actor,
+      body: "Inspect the project",
+    },
     3,
     members
   );
   const queued = reduceTaskSession(
     running,
-    { type: "send-message", actor: other, body: "Check tests" },
+    {
+      type: "send-message",
+      clientId: crypto.randomUUID(),
+      actor: other,
+      body: "Check tests",
+    },
     4,
     members
   );
@@ -217,7 +227,11 @@ test("archived demo uses production read-only rules, keeps files visible and sup
     ).status,
     409
   );
-  await demo.dispatch({ type: "send-message", body: "Should not run" });
+  await demo.dispatch({
+    type: "send-message",
+    clientId: crypto.randomUUID(),
+    body: "Should not run",
+  });
   assert.equal(demo.getSnapshot(), initial);
   demo.setMember(demoMembers[1].id);
   await demo.dispatch({ type: "restore-task" });

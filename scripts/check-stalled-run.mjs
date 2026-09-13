@@ -1,64 +1,22 @@
+import { createTestDatabase } from "./test-database.mjs";
+import { registerTestModules } from "./test-modules.mjs";
 // Actual auth, session routes and row-locked Postgres transitions; only the
 // execution engines are blocked. No .env.local, Neon, Sandbox, model or Mem0.
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { registerHooks } from "node:module";
-import { fileURLToPath } from "node:url";
+
 import { mock } from "node:test";
 import { eq } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/node-postgres";
-import { migrate } from "drizzle-orm/node-postgres/migrator";
-import { Client } from "pg";
-import { createFixturePool } from "./fixture-pool.mjs";
 
-const configured = process.env.HIVE_RECOVERY_TEST_DATABASE_URL;
-if (!configured)
-  throw new Error(
-    "Set HIVE_RECOVERY_TEST_DATABASE_URL to disposable loopback Postgres."
-  );
-const url = new URL(configured);
-if (
-  !["postgres:", "postgresql:"].includes(url.protocol) ||
-  !["127.0.0.1", "localhost", "[::1]"].includes(url.hostname) ||
-  url.search
-) {
-  throw new Error(
-    "Only loopback Postgres without query overrides is allowed, never Neon."
-  );
-}
+const database = createTestDatabase(
+  process.env.HIVE_RECOVERY_TEST_DATABASE_URL,
+  "hive_recovery_test"
+);
 globalThis.fetch = async () => {
   throw new Error("External HTTP is forbidden in this fixture.");
 };
-const databaseName = `hive_recovery_test_${randomUUID().replaceAll("-", "")}`;
-assert.match(databaseName, /^hive_recovery_test_[a-f0-9]{32}$/);
-const admin = new Client({
-  connectionString: url.toString(),
-  connectionTimeoutMillis: 5000,
-});
-url.pathname = `/${databaseName}`;
-process.env.DATABASE_URL = url.toString();
-process.env.DATABASE_URL_DIRECT = url.toString();
-const { pool, closePool } = createFixturePool({
-  connectionString: url.toString(),
-  max: 5,
-  connectionTimeoutMillis: 5000,
-});
-globalThis.__hiveDatabasePool = pool;
-registerHooks({
-  resolve(specifier, context, next) {
-    if (specifier === "server-only")
-      return next("next/dist/compiled/server-only/empty.js", context);
-    if (specifier === "next/server") return next("next/server.js", context);
-    if (specifier === "@/db")
-      return next(new URL("../src/db/index.ts", import.meta.url).href, context);
-    if (specifier.startsWith("@/"))
-      return next(
-        new URL(`../src/${specifier.slice(2)}.ts`, import.meta.url).href,
-        context
-      );
-    return next(specifier, context);
-  },
-});
+
+registerTestModules();
 let executionAttempts = 0;
 const forbiddenExecution = async () => {
   executionAttempts += 1;
@@ -71,14 +29,9 @@ mock.module(new URL("../src/lib/hive-conversation.ts", import.meta.url).href, {
   namedExports: { runHiveConversation: forbiddenExecution },
 });
 mock.module("@vercel/functions", { namedExports: { attachDatabasePool() {} } });
-let created = false;
+
 try {
-  await admin.connect();
-  await admin.query(`CREATE DATABASE "${databaseName}"`);
-  created = true;
-  await migrate(drizzle(pool), {
-    migrationsFolder: fileURLToPath(new URL("../drizzle", import.meta.url)),
-  });
+  await database.start();
   const { db } = await import("../src/db/index.ts");
   const { taskSessions } = await import("../src/db/schema.ts");
   const { createUserSession, HIVE_SESSION_COOKIE } =
@@ -404,21 +357,5 @@ try {
     "PASS: concurrent text/subagent JSON patches preserve both; stale child results cannot overwrite a recovered or newer run."
   );
 } finally {
-  await closePool();
-  if (created) {
-    // Pool shutdown can precede socket close; FORCE would kill those closing clients.
-    await admin.query(`DROP DATABASE "${databaseName}"`);
-    assert.equal(
-      (
-        await admin.query("SELECT 1 FROM pg_database WHERE datname = $1", [
-          databaseName,
-        ])
-      ).rowCount,
-      0
-    );
-    console.log(
-      "CLEANUP: removed only this run's disposable local fixture database."
-    );
-  }
-  await admin.end();
+  await database.close();
 }

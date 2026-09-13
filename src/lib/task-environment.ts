@@ -16,7 +16,10 @@ import {
   type TaskEnvironment,
 } from "./task-environment-policy.ts";
 
-function assertTaskSandbox(task: TaskSessionState, sandbox: Sandbox) {
+function assertTaskSandbox(
+  task: Pick<TaskSessionState, "sessionId">,
+  sandbox: Sandbox
+) {
   if (sandbox.tags?.session !== task.sessionId)
     throw new Error("Environment does not belong to this task.");
 }
@@ -91,9 +94,21 @@ export function createTaskEnvironment(
   };
 }
 
-/** Call while holding the task row lock: concurrent messages must not add time twice. */
+export type TaskEnvironmentContext = Pick<TaskSessionState, "sessionId"> & {
+  workspace: Pick<
+    TaskSessionState["workspace"],
+    "environment" | "sandboxName" | "restore"
+  > & {
+    agentSession?: Pick<
+      NonNullable<TaskSessionState["workspace"]["agentSession"]>,
+      "id"
+    >;
+  };
+};
+
+/** Caller serializes renewals by VM, independently of task/membership row locks. */
 export async function refreshTaskEnvironment(
-  task: TaskSessionState,
+  task: TaskEnvironmentContext,
   now = Date.now()
 ): Promise<TaskEnvironment | undefined> {
   if (

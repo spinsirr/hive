@@ -18,7 +18,12 @@ test("a new unnamed task takes its title from its first accepted message only", 
   assert.equal(
     reduceTaskSession(
       initial,
-      { type: "send-message", actor, body: "   " },
+      {
+        type: "send-message",
+        clientId: crypto.randomUUID(),
+        actor,
+        body: "   ",
+      },
       2,
       members
     ),
@@ -57,7 +62,12 @@ test("automatic task labels stay short without splitting Chinese or emoji", () =
   });
   const next = reduceTaskSession(
     initial,
-    { type: "send-message", actor, body: "修复👩🏽‍💻".repeat(40) },
+    {
+      type: "send-message",
+      clientId: crypto.randomUUID(),
+      actor,
+      body: "修复👩🏽‍💻".repeat(40),
+    },
     2,
     members
   );
@@ -95,7 +105,12 @@ test("a member can rename without running the agent or changing the conversation
   assert.equal(renamed.steeringQueue, initial.steeringQueue);
   const first = reduceTaskSession(
     renamed,
-    { type: "send-message", actor, body: "Do not replace my chosen name" },
+    {
+      type: "send-message",
+      clientId: crypto.randomUUID(),
+      actor,
+      body: "Do not replace my chosen name",
+    },
     3,
     members
   );

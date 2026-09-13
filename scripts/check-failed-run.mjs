@@ -1,21 +1,12 @@
+import { registerTestModules } from "./test-modules.mjs";
 // Deterministic runner regression: external services are doubles; Hive's runner,
 // stream handling, and task-state transition are the production implementations.
 // Run with: node --experimental-test-module-mocks scripts/check-failed-run.mjs
 import assert from "node:assert/strict";
-import { registerHooks } from "node:module";
+
 import { mock } from "node:test";
 
-registerHooks({
-  resolve(specifier, context, nextResolve) {
-    if (specifier.startsWith("@/")) {
-      return nextResolve(
-        new URL(`../src/${specifier.slice(2)}.ts`, import.meta.url).href,
-        context
-      );
-    }
-    return nextResolve(specifier, context);
-  },
-});
+registerTestModules();
 
 const diff =
   "diff --git a/nav.tsx b/nav.tsx\n--- a/nav.tsx\n+++ b/nav.tsx\n@@ -1 +1 @@\n-export const label = 'Steer';\n+export const label = 'Queue steer';\n";
@@ -65,11 +56,13 @@ const sandbox = {
     const stdout =
       command === "git rev-parse --show-toplevel"
         ? "/vercel/sandbox/hive\n"
-        : command.startsWith("git diff --name-only")
-          ? "nav.tsx\n"
-          : command.startsWith("git diff --no-ext-diff")
-            ? diff
-            : "";
+        : command.includes("--diff-filter=D")
+          ? ""
+          : command.startsWith("git diff --name-only")
+            ? "nav.tsx\0"
+            : command.startsWith("git diff --no-ext-diff")
+              ? diff
+              : "";
     return { exitCode: 0, stdout, stderr: "" };
   },
   async readTextFile() {
@@ -400,7 +393,7 @@ for (const options of [
   );
   assert.equal(
     state.workspace.diff,
-    options.artifactFailure ? previousSnapshot.diff : diff.trimEnd(),
+    options.artifactFailure ? previousSnapshot.diff : diff,
     "Files / Diff must retain available changes without inserting an error as code"
   );
   assert.deepEqual(

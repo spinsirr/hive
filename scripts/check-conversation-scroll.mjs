@@ -1,32 +1,15 @@
+import { registerTestModules } from "./test-modules.mjs";
 // Exercise the real Conversation and use-stick-to-bottom with a deterministic
 // browser clock and layout measurements. No messages, APIs, or accounts are used.
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
-import { registerHooks } from "node:module";
-import { mock } from "node:test";
-import { JSDOM } from "jsdom";
-import { JsxEmit, ModuleKind, transpileModule } from "typescript";
 
-const dom = new JSDOM("<!doctype html><html><body></body></html>", {
+import { mock } from "node:test";
+import { createDomFixture } from "./test-dom.mjs";
+
+const dom = createDomFixture("<!doctype html><html><body></body></html>", {
   url: "https://hive.example",
   pretendToBeVisual: true,
 });
-for (const name of [
-  "window",
-  "document",
-  "navigator",
-  "HTMLElement",
-  "Element",
-  "Node",
-  "Event",
-  "getComputedStyle",
-]) {
-  Object.defineProperty(globalThis, name, {
-    configurable: true,
-    value: name === "window" ? dom.window : dom.window[name],
-  });
-}
-globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 let reducedMotion = false;
 const mediaListeners = new Set();
 window.matchMedia = () => ({
@@ -60,26 +43,7 @@ globalThis.ResizeObserver = class {
   }
 };
 
-registerHooks({
-  resolve(specifier, context, next) {
-    if (!specifier.startsWith("@/")) return next(specifier, context);
-    const base = new URL(`../src/${specifier.slice(2)}`, import.meta.url);
-    const target = [".ts", ".tsx"]
-      .map((extension) => new URL(`${base.href}${extension}`))
-      .find((url) => existsSync(url));
-    return next(target?.href ?? specifier, context);
-  },
-  load(url, context, next) {
-    if (!url.endsWith(".tsx")) return next(url, context);
-    return {
-      format: "module",
-      shortCircuit: true,
-      source: transpileModule(readFileSync(new URL(url), "utf8"), {
-        compilerOptions: { jsx: JsxEmit.ReactJSX, module: ModuleKind.ESNext },
-      }).outputText,
-    };
-  },
-});
+registerTestModules();
 const { createElement: h } = await import("react");
 const { act, cleanup, fireEvent, render } =
   await import("@testing-library/react");
@@ -263,5 +227,5 @@ try {
   cleanup();
   mock.restoreAll();
   mock.timers.reset();
-  dom.window.close();
+  dom.close();
 }

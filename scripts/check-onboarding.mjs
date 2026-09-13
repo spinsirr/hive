@@ -1,38 +1,18 @@
+import { createTestDatabase } from "./test-database.mjs";
+import { registerTestModules } from "./test-modules.mjs";
 // Real route/auth/store behavior against a disposable, loopback-only Postgres DB.
 // Only GitHub HTTP and the framework request-cookie boundary are doubled.
 import assert from "node:assert/strict";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { generateKeyPairSync, randomUUID } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
-import { registerHooks } from "node:module";
-import { mock } from "node:test";
-import { fileURLToPath } from "node:url";
-import { drizzle } from "drizzle-orm/node-postgres";
-import { migrate } from "drizzle-orm/node-postgres/migrator";
-import { Client } from "pg";
-import { createFixturePool } from "./fixture-pool.mjs";
-import { transpileModule, JsxEmit, ModuleKind } from "typescript";
 
-const configured = process.env.HIVE_ONBOARDING_TEST_DATABASE_URL;
-if (!configured)
-  throw new Error(
-    "Set HIVE_ONBOARDING_TEST_DATABASE_URL to a local Postgres server."
-  );
-const url = new URL(configured);
-if (
-  !["postgres:", "postgresql:"].includes(url.protocol) ||
-  !["127.0.0.1", "localhost", "[::1]"].includes(url.hostname) ||
-  url.search
-) {
-  throw new Error(
-    "Onboarding checks only accept loopback Postgres with no query overrides, never Neon."
-  );
-}
-const databaseName = `hive_onboarding_test_${randomUUID().replaceAll("-", "")}`;
-const admin = new Client({ connectionString: url.toString() });
-url.pathname = `/${databaseName}`;
-process.env.DATABASE_URL = url.toString();
-process.env.DATABASE_URL_DIRECT = url.toString();
+import { mock } from "node:test";
+
+const database = createTestDatabase(
+  process.env.HIVE_ONBOARDING_TEST_DATABASE_URL,
+  "hive_onboarding_test"
+);
+const { pool } = database;
 process.env.GITHUB_APP_CLIENT_ID = "fixture-client";
 process.env.GITHUB_APP_CLIENT_SECRET =
   "onboarding-local-fixture-not-a-real-secret";
@@ -41,40 +21,9 @@ process.env.GITHUB_APP_ID = "1";
 process.env.GITHUB_APP_PRIVATE_KEY = generateKeyPairSync("rsa", {
   modulusLength: 2048,
 }).privateKey.export({ type: "pkcs8", format: "pem" });
-const { pool, closePool } = createFixturePool({
-  connectionString: url.toString(),
-  max: 5,
-});
-globalThis.__hiveDatabasePool = pool;
+
 const requestCookies = new AsyncLocalStorage();
-registerHooks({
-  resolve(specifier, context, next) {
-    if (specifier === "server-only")
-      return next("next/dist/compiled/server-only/empty.js", context);
-    if (specifier === "next/server") return next("next/server.js", context);
-    if (specifier === "next/headers") return next("next/headers.js", context);
-    if (specifier === "next/navigation")
-      return next("next/navigation.js", context);
-    if (["next/link", "next/dynamic", "next/image"].includes(specifier))
-      return next(`${specifier}.js`, context);
-    if (specifier === "@/db")
-      return next(new URL("../src/db/index.ts", import.meta.url).href, context);
-    if (specifier.startsWith("@/")) {
-      const base = new URL(`../src/${specifier.slice(2)}`, import.meta.url);
-      const target = ["", ".ts", ".tsx"]
-        .map((extension) => new URL(`${base.href}${extension}`))
-        .find((candidate) => existsSync(candidate));
-      return next(target?.href ?? specifier, context);
-    }
-    if (specifier.startsWith(".") && context.parentURL?.includes("/src/")) {
-      const base = new URL(specifier, context.parentURL);
-      const target = ["", ".ts", ".tsx"]
-        .map((extension) => new URL(`${base.href}${extension}`))
-        .find((candidate) => existsSync(candidate));
-      return next(target?.href ?? specifier, context);
-    }
-    return next(specifier, context);
-  },
+registerTestModules({
   load(url, context, next) {
     if (url.endsWith(".css"))
       return {
@@ -82,14 +31,7 @@ registerHooks({
         shortCircuit: true,
         source: "export default {};",
       };
-    if (!url.endsWith(".tsx")) return next(url, context);
-    return {
-      format: "module",
-      shortCircuit: true,
-      source: transpileModule(readFileSync(new URL(url), "utf8"), {
-        compilerOptions: { jsx: JsxEmit.ReactJSX, module: ModuleKind.ESNext },
-      }).outputText,
-    };
+    return next(url, context);
   },
 });
 mock.module("next/headers.js", {
@@ -183,14 +125,8 @@ globalThis.fetch = async (input, init) => {
   );
 };
 
-let created = false;
 try {
-  await admin.connect();
-  await admin.query(`CREATE DATABASE "${databaseName}"`);
-  created = true;
-  await migrate(drizzle(pool), {
-    migrationsFolder: fileURLToPath(new URL("../drizzle", import.meta.url)),
-  });
+  await database.start();
   const { NextRequest } = await import("next/server.js");
   const { GET: login } = await import("../src/app/api/github/login/route.ts");
   const { GET: callback } =
@@ -1139,8 +1075,5 @@ try {
     "PASS: logout revokes this login and clears GitHub access without signing out another account."
   );
 } finally {
-  await closePool();
-  // Pool shutdown can precede socket close; FORCE would kill those closing clients.
-  if (created) await admin.query(`DROP DATABASE "${databaseName}"`);
-  await admin.end();
+  await database.close();
 }

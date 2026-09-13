@@ -1,18 +1,9 @@
+import { registerTestModules } from "./test-modules.mjs";
 // Production runner/state, with only external Harness/Sandbox/GitHub services doubled.
 import assert from "node:assert/strict";
 import { mock } from "node:test";
-import { registerHooks } from "node:module";
 
-registerHooks({
-  resolve(specifier, context, next) {
-    if (specifier.startsWith("@/"))
-      return next(
-        new URL(`../src/${specifier.slice(2)}.ts`, import.meta.url).href,
-        context
-      );
-    return next(specifier, context);
-  },
-});
+registerTestModules();
 let subscription = false,
   fail = false,
   expectedResume;

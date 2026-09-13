@@ -1,40 +1,18 @@
+import { registerTestModules } from "./test-modules.mjs";
 // Exercise the real Files UI, read hook, SWR provider, and Monaco React lifecycle.
 // Only the network and Monaco rendering engine are doubled; no live workspace is read.
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
-import { createRequire, registerHooks } from "node:module";
-import { mock } from "node:test";
-import { JSDOM } from "jsdom";
-import { JsxEmit, ModuleKind, transpileModule } from "typescript";
 
-const dom = new JSDOM("<!doctype html><html><body></body></html>", {
+import { createRequire } from "node:module";
+import { mock } from "node:test";
+import { createDomFixture } from "./test-dom.mjs";
+
+const dom = createDomFixture("<!doctype html><html><body></body></html>", {
   url: "https://hive.example",
   pretendToBeVisual: true,
 });
-for (const name of [
-  "window",
-  "document",
-  "navigator",
-  "HTMLElement",
-  "HTMLButtonElement",
-  "Element",
-  "Node",
-  "DocumentFragment",
-  "MutationObserver",
-  "Event",
-  "MouseEvent",
-  "KeyboardEvent",
-  "getComputedStyle",
-]) {
-  Object.defineProperty(globalThis, name, {
-    configurable: true,
-    value: name === "window" ? dom.window : dom.window[name],
-  });
-}
-globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-registerHooks({
+registerTestModules({
   resolve(specifier, context, next) {
-    if (specifier === "next/dynamic") return next("next/dynamic.js", context);
     if (specifier === "@monaco-editor/react")
       return next(
         new URL(
@@ -43,15 +21,7 @@ registerHooks({
         ).href,
         context
       );
-    if (!specifier.startsWith("@/") && !specifier.startsWith("."))
-      return next(specifier, context);
-    const base = specifier.startsWith("@/")
-      ? new URL(`../src/${specifier.slice(2)}`, import.meta.url)
-      : new URL(specifier, context.parentURL);
-    const target = [".ts", ".tsx"]
-      .map((extension) => new URL(`${base.href}${extension}`))
-      .find((url) => existsSync(url));
-    return next(target?.href ?? specifier, context);
+    return next(specifier, context);
   },
   load(url, context, next) {
     if (url.endsWith(".module.css"))
@@ -61,14 +31,7 @@ registerHooks({
         source:
           'export default { browser: "browser", body: "body", explorer: "explorer", editor: "editor" };',
       };
-    if (!url.endsWith(".tsx")) return next(url, context);
-    return {
-      format: "module",
-      shortCircuit: true,
-      source: transpileModule(readFileSync(new URL(url), "utf8"), {
-        compilerOptions: { jsx: JsxEmit.ReactJSX, module: ModuleKind.ESNext },
-      }).outputText,
-    };
+    return next(url, context);
   },
 });
 const { StrictMode, createElement: h } = await import("react");
@@ -567,5 +530,5 @@ try {
   );
 } finally {
   cleanup();
-  dom.window.close();
+  dom.close();
 }

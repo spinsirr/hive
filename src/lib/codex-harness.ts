@@ -96,6 +96,10 @@ export function createHiveCodex(
       // Use the public, self-contained bridge runtime. It depends only on Node
       // and ws, already installed by the unchanged, pinned sandbox recipe.
       const assets = [
+        ...["app-server-connection.mjs", "turn-collector.mjs"].map((name) => [
+          name,
+          path.join(process.cwd(), "src/lib/codex-bridge", name),
+        ]),
         [
           "runtime.mjs",
           path.join(process.cwd(), "node_modules/.cache/hive/codex-bridge.mjs"),

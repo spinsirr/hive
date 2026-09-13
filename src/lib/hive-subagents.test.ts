@@ -10,7 +10,7 @@ import {
   receiveAgentReply,
   receiveTaskSessionSnapshot,
 } from "./task-session-snapshot.ts";
-import type { TaskSessionSnapshot } from "./task-session-store.ts";
+import type { TaskSessionSnapshot } from "./task-session-contract.ts";
 
 const task: HiveSubagent = {
   id: "610b5182-9342-4f44-9864-82cfeee5a14d",

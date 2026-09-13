@@ -13,12 +13,22 @@ import { buildHivePrompt, buildHiveRunInput } from "./hive-prompt.ts";
 function fixture() {
   const running = reduceTaskSession(
     createInitialTaskSessionState(1),
-    { type: "send-message", actor: "spencer", body: "Inspect navigation" },
+    {
+      type: "send-message",
+      clientId: crypto.randomUUID(),
+      actor: "spencer",
+      body: "Inspect navigation",
+    },
     2
   );
   const queued = reduceTaskSession(
     running,
-    { type: "send-message", actor: "maya", body: "Check keyboard focus" },
+    {
+      type: "send-message",
+      clientId: crypto.randomUUID(),
+      actor: "maya",
+      body: "Check keyboard focus",
+    },
     3
   );
   const message = queued.messages.at(-1)!;
@@ -105,7 +115,12 @@ test("editing completed discussion preserves execution evidence and marks subseq
   assert.equal(didStartHiveRun(finished, next), false);
   const later = reduceTaskSession(
     next,
-    { type: "send-message", actor: "maya", body: "Summarize the changes" },
+    {
+      type: "send-message",
+      clientId: crypto.randomUUID(),
+      actor: "maya",
+      body: "Summarize the changes",
+    },
     5
   );
   assert.match(
@@ -187,6 +202,7 @@ test("editing a parent never rewrites the frozen whole-thread steer", () => {
     running,
     {
       type: "annotate-message",
+      clientId: crypto.randomUUID(),
       actor: "maya",
       messageId: parent.id,
       body: "Keep it small",

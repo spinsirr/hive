@@ -47,6 +47,7 @@ process.stdin.on("keypress", (_input, key) => {
   if (key.name === "m")
     state = reduceTaskSession(state, {
       type: "send-message",
+      clientId: crypto.randomUUID(),
       actor,
       body: "I agree with the proposed behavior.",
     });

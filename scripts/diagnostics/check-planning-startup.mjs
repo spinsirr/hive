@@ -1,7 +1,8 @@
+import { registerTestModules } from "../test-modules.mjs";
 // Opt-in real infrastructure check: compare cold-per-turn startup with the
 // Harness bootstrap cache. No prompts, model calls, repository or model auth.
 import assert from "node:assert/strict";
-import { registerHooks } from "node:module";
+
 import { randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import { spawn } from "node:child_process";
@@ -17,18 +18,7 @@ assert.ok(
 for (const key of ["VERCEL_TOKEN", "VERCEL_TEAM_ID", "VERCEL_PROJECT_ID"]) {
   assert.ok(process.env[key], `${key} is required.`);
 }
-registerHooks({
-  resolve(specifier, context, next) {
-    if (specifier === "server-only")
-      return next("next/dist/compiled/server-only/empty.js", context);
-    if (specifier.startsWith("@/"))
-      return next(
-        new URL(`../../src/${specifier.slice(2)}.ts`, import.meta.url).href,
-        context
-      );
-    return next(specifier, context);
-  },
-});
+registerTestModules();
 const { createHiveCodex } = await import("../../src/lib/codex-harness.ts");
 const { ensureCodexBridgeDependencies } =
   await import("../../src/lib/hive-runner.ts");

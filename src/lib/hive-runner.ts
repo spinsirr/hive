@@ -39,13 +39,12 @@ import {
   type MemberId,
   type TaskSessionState,
   type WorkspaceCommand,
-  type WorkspaceFile,
 } from "@/lib/task-session";
+
+import { collectArtifacts } from "./workspace-artifacts.ts";
 
 const HARNESS_BRIDGE_PORT = 4319;
 const MAX_OUTPUT_CHARS = 20_000;
-const MAX_DIFF_CHARS = 60_000;
-const MAX_CHANGED_FILES = 12;
 const CODEX_BRIDGE_DEPENDENCY_CHECK =
   "node --input-type=module -e \"await import('ws'); await import('@openai/codex-sdk')\"";
 
@@ -53,27 +52,6 @@ function truncate(value: string, max = MAX_OUTPUT_CHARS) {
   return value.length <= max
     ? value
     : `${value.slice(0, max)}\n\n[output truncated by Hive]`;
-}
-
-async function commandOutput(
-  sandbox: Experimental_SandboxSession,
-  command: string,
-  workingDirectory: string,
-  abortSignal = AbortSignal.timeout(120_000)
-) {
-  const startedAt = Date.now();
-  const result = await sandbox.run({
-    command,
-    workingDirectory,
-    abortSignal,
-  });
-  return {
-    exitCode: result.exitCode,
-    output: truncate(
-      [result.stdout, result.stderr].filter(Boolean).join("\n").trim()
-    ),
-    durationMs: Date.now() - startedAt,
-  };
 }
 
 export async function ensureCodexBridgeDependencies(
@@ -160,58 +138,6 @@ async function ensureRepositoryWorkingCopy(
       )}`
     );
   }
-}
-
-async function collectArtifacts(
-  sandbox: Experimental_SandboxSession,
-  commands: WorkspaceCommand[],
-  workingDirectory: string,
-  abortSignal?: AbortSignal
-) {
-  const changedFileResult = await commandOutput(
-    sandbox,
-    "git diff --name-only --diff-filter=ACMRTUXB HEAD && git ls-files --others --exclude-standard",
-    workingDirectory,
-    abortSignal
-  );
-  if (changedFileResult.exitCode !== 0) {
-    throw new Error("Could not list changed repository files.");
-  }
-  const changedFiles = [
-    ...new Set(
-      changedFileResult.output
-        .split("\n")
-        .map((line) => line.trim())
-        .filter(Boolean)
-    ),
-  ].slice(0, MAX_CHANGED_FILES);
-
-  const diffResult = await commandOutput(
-    sandbox,
-    'git diff --no-ext-diff HEAD && while IFS= read -r file; do git diff --no-index -- /dev/null "$file" || true; done < <(git ls-files --others --exclude-standard)',
-    workingDirectory,
-    abortSignal
-  );
-  if (diffResult.exitCode !== 0) {
-    throw new Error("Could not capture the repository diff.");
-  }
-
-  const files: WorkspaceFile[] = [];
-  for (const filePath of changedFiles) {
-    const content = await sandbox.readTextFile({
-      path: path.posix.join(workingDirectory, filePath),
-      abortSignal,
-    });
-    if (content == null) continue;
-    files.push({ path: filePath, content: truncate(content) });
-  }
-
-  return {
-    changedFiles,
-    files,
-    diff: truncate(diffResult.output, MAX_DIFF_CHARS),
-    commands,
-  };
 }
 
 function toolOutput(value: unknown) {

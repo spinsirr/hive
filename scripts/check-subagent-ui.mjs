@@ -1,46 +1,13 @@
+import { registerTestModules } from "./test-modules.mjs";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
-import { registerHooks } from "node:module";
-import { JsxEmit, ModuleKind, transpileModule } from "typescript";
-import { JSDOM } from "jsdom";
 
-const dom = new JSDOM("<!doctype html><html><body></body></html>", {
+import { createDomFixture } from "./test-dom.mjs";
+
+const dom = createDomFixture("<!doctype html><html><body></body></html>", {
   url: "https://hive.test",
   pretendToBeVisual: true,
 });
-for (const name of [
-  "window",
-  "document",
-  "navigator",
-  "HTMLElement",
-  "Element",
-  "Node",
-])
-  Object.defineProperty(globalThis, name, {
-    configurable: true,
-    value: name === "window" ? dom.window : dom.window[name],
-  });
-globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-registerHooks({
-  resolve(specifier, context, next) {
-    if (!specifier.startsWith("@/")) return next(specifier, context);
-    const base = new URL(`../src/${specifier.slice(2)}`, import.meta.url);
-    const target = [".ts", ".tsx"]
-      .map((extension) => new URL(base.href + extension))
-      .find(existsSync);
-    return next(target?.href ?? specifier, context);
-  },
-  load(url, context, next) {
-    if (!url.endsWith(".tsx")) return next(url, context);
-    return {
-      format: "module",
-      shortCircuit: true,
-      source: transpileModule(readFileSync(new URL(url), "utf8"), {
-        compilerOptions: { jsx: JsxEmit.ReactJSX, module: ModuleKind.ESNext },
-      }).outputText,
-    };
-  },
-});
+registerTestModules();
 const { createElement: h } = await import("react");
 const { cleanup, fireEvent, render, screen, waitFor, act } =
   await import("@testing-library/react");
@@ -158,5 +125,5 @@ try {
   );
 } finally {
   cleanup();
-  dom.window.close();
+  dom.close();
 }
