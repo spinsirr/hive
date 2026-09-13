@@ -13,6 +13,7 @@ import type { HarnessV1 } from "@ai-sdk/harness";
 import type { Experimental_SandboxSession } from "ai";
 
 import { hiveAgentFailureMessage, HiveAgentError } from "@/lib/hive-agent";
+import { hiveErrorCopy } from "@/lib/hive-error-copy";
 import { consumeAgentText } from "@/lib/agent-stream";
 import { createHiveCodex } from "@/lib/codex-harness";
 import { createHiveClaude } from "@/lib/claude-harness";
@@ -331,31 +332,42 @@ export async function runHiveCodingTask(
   let sessionEnded = false;
 
   try {
-    const cloneCredentials = await getRepositoryCloneCredentials(
-      taskSession.repository,
-    );
-    persistentSandbox = resumeFrom ? await Sandbox.get({ name: sandboxName }) : await Sandbox.getOrCreate({
-      name: sandboxName,
-      runtime: "node24",
-      ports: [HARNESS_BRIDGE_PORT],
-      source: {
-        type: "git",
-        url: taskSession.repository.url,
-        ...cloneCredentials,
-        depth: 20,
-      },
-      timeout: TASK_ENVIRONMENT_IDLE_MS,
-      persistent: true,
-      snapshotExpiration: 0,
-      keepLastSnapshots: { count: WORKSPACE_CHECKPOINT_LIMIT, expiration: 0 },
-      // The pinned Claude bootstrap OOMs at 2 GiB; 2 vCPUs provide 4 GiB.
-      resources: { vcpus: runtime === "claude-code" ? 2 : 1 },
-      tags: {
-        app: "hive",
-        session: taskSession.sessionId,
-        runtime,
-      },
-    });
+    if (resumeFrom) {
+      // Saved environments already contain the repository. Token issuance must
+      // not become a dependency of resuming their files and native context.
+      persistentSandbox = await Sandbox.get({ name: sandboxName });
+    } else {
+      let cloneCredentials;
+      try {
+        cloneCredentials = await getRepositoryCloneCredentials(taskSession.repository);
+      } catch (error) {
+        // Keep the original cause/request ID for server diagnostics, without
+        // misclassifying GitHub authorization as a model subscription failure.
+        throw new HiveAgentError(hiveErrorCopy.repositoryAccess, error);
+      }
+      persistentSandbox = await Sandbox.getOrCreate({
+        name: sandboxName,
+        runtime: "node24",
+        ports: [HARNESS_BRIDGE_PORT],
+        source: {
+          type: "git",
+          url: taskSession.repository.url,
+          ...cloneCredentials,
+          depth: 20,
+        },
+        timeout: TASK_ENVIRONMENT_IDLE_MS,
+        persistent: true,
+        snapshotExpiration: 0,
+        keepLastSnapshots: { count: WORKSPACE_CHECKPOINT_LIMIT, expiration: 0 },
+        // The pinned Claude bootstrap OOMs at 2 GiB; 2 vCPUs provide 4 GiB.
+        resources: { vcpus: runtime === "claude-code" ? 2 : 1 },
+        tags: {
+          app: "hive",
+          session: taskSession.sessionId,
+          runtime,
+        },
+      });
+    }
     if (persistentSandbox.keepLastSnapshots?.count !== WORKSPACE_CHECKPOINT_LIMIT) {
       await persistentSandbox.update({ keepLastSnapshots: { count: WORKSPACE_CHECKPOINT_LIMIT, expiration: 0 } });
     }
