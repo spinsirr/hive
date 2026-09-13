@@ -37,7 +37,18 @@ function threadSettings(start, workdir, subscription = false) {
     model_reasoning_summary: "detailed",
     // Hive owns bounded delegation so native children cannot bypass its limits.
     features: { ...start.codexConfig?.features, multi_agent: false, multi_agent_v2: false },
-    ...(subscription ? { model_provider: "openai", cli_auth_credentials_store: "ephemeral" } : {}),
+    ...(subscription ? {
+      model_provider: "hive_chatgpt", cli_auth_credentials_store: "ephemeral",
+      // Sandbox credential transformations support HTTP, not WebSocket
+      // upgrades. Keep native ChatGPT auth without paying failed WS retries.
+      model_providers: {
+        hive_chatgpt: {
+          base_url: "https://chatgpt.com/backend-api/codex",
+          ...nativeConfig.model_providers?.hive_chatgpt,
+          name: "OpenAI", requires_openai_auth: true, supports_websockets: false,
+        },
+      },
+    } : {}),
   };
   if (gateway && model?.startsWith("openai/")) config.model_supports_reasoning_summaries = true;
   if (baseUrl) {

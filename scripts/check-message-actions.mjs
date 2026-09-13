@@ -25,7 +25,7 @@ registerHooks({ resolve(specifier, context, next) {
   return { format: "module", shortCircuit: true, source: transpileModule(readFileSync(new URL(url), "utf8"), { compilerOptions: { jsx: JsxEmit.ReactJSX, module: ModuleKind.ESNext } }).outputText };
 } });
 const { createElement: h } = await import("react");
-const { act, render, screen, fireEvent, cleanup, waitFor } = await import("@testing-library/react");
+const { act, render, screen, fireEvent, cleanup, waitFor, within } = await import("@testing-library/react");
 const { ConversationMessage } = await import("../src/components/hive/conversation-message.tsx");
 const { MessageEditComposer } = await import("../src/components/hive/message-edit-composer.tsx");
 const { SteeringQueue } = await import("../src/components/hive/steering-queue.tsx");
@@ -103,4 +103,53 @@ try {
   assert.equal(applied, 0);
   cleanup();
   console.log("PASS: compact queue actions edit/remove the selected item and cannot interrupt a running agent.");
+
+  // Purpose: mixed queue sources remain recognizable, without exposing internal
+  // handoff prompts or falsely previewing discussion added after a frozen Steer.
+  session = reduceTaskSession(session, { type: "annotate-message", actor: "casey", messageId: message.id, body: "Keep the focus ring visible." }, 5, members);
+  const boundary = session.messages.at(-1).annotations.at(-1).id;
+  session = reduceTaskSession(session, { type: "steer-thread", actor: "alex", messageId: message.id, throughReplyId: boundary }, 6, members);
+  const threadItem = session.steeringQueue.at(-1);
+  assert.equal(threadItem.source.kind, "message-thread");
+  session = reduceTaskSession(session, { type: "annotate-message", actor: "casey", messageId: message.id, body: "Later discussion is not queued." }, 7, members);
+  const queueProps = { items: session.steeringQueue, messages: session.messages, members, currentMember: "alex", disabled: false, canApply: true, onApply() { applied++; }, onMove() {}, onRemove() {}, onEdit() {}, onOpenThread(id) { opened = id; } };
+  const mixed = render(h(SteeringQueue, queueProps));
+  const rows = within(screen.getByRole("region", { name: "Queued steering" })).getAllByRole("listitem");
+  assert.equal(rows.length, 2);
+  assert.ok(within(rows[0]).getByText("Message · Alex"));
+  assert.ok(within(rows[1]).getByText("Thread · 1 reply · Alex"));
+  assert.ok(within(rows[1]).getByText("Casey: Keep the focus ring visible."));
+  assert.ok(!rows[1].textContent.includes("Later discussion"));
+  assert.ok(!rows[1].outerHTML.includes("Steer using this complete thread"), "internal prompts must not leak through a hover title");
+  fireEvent.click(within(rows[1]).getByRole("button", { name: "Actions for queued steer 2" }));
+  await screen.findByRole("menu");
+  assert.equal(screen.queryByRole("menuitem", { name: "Edit message" }), null, "a frozen Thread is not an editable queued message");
+  fireEvent.click(screen.getByRole("menuitem", { name: "Open thread" }));
+  assert.equal(opened, message.id);
+  assert.equal(applied, 0, "opening the source never starts work");
+  await waitFor(() => assert.equal(screen.queryByRole("menu"), null));
+  mixed.rerender(h(SteeringQueue, { ...queueProps, items: [], activeSteer: { ...threadItem, appliedAt: 8 } }));
+  assert.ok(screen.getByText("Casey: Keep the focus ring visible."));
+  assert.ok(screen.getByText("Thread · 1 reply · Alex"));
+  assert.match(screen.getByRole("status").textContent, /Applying/);
+  assert.equal(screen.queryByRole("button", { name: /Actions for queued steer/ }), null);
+  mixed.rerender(h(SteeringQueue, { ...queueProps, items: [], activeSteer: { ...session.steeringQueue[0], appliedAt: 8 } }));
+  assert.ok(screen.getByText("Message · Alex"));
+  assert.ok(screen.getByText("排队的修订 Keep keyboard focus"));
+  mixed.rerender(h(SteeringQueue, { ...queueProps, messages: [], items: [threadItem], disabled: true }));
+  assert.ok(screen.getByText("Thread discussion"));
+  assert.equal(screen.getByRole("button", { name: "Actions for queued steer 1" }).disabled, true);
+  assert.equal(screen.getByRole("button", { name: "Run next" }).disabled, true);
+  assert.ok(!screen.getByRole("region", { name: "Queued steering" }).outerHTML.includes("Steer using this complete thread"));
+  // Answer payloads are also structured input, not user-facing queue copy.
+  const question = { ...message, id: "question", body: "Which theme?", role: "agent", annotations: [{ id: "answer", body: "Dark theme", authorId: "casey", createdAt: 9, status: "queued" }] };
+  const answer = { id: "answer-steer", authorId: "casey", queuedAt: 9, body: JSON.stringify({ question: "Which theme?", answer: "Dark theme", answeredBy: "Casey" }), source: { kind: "peer-response", messageId: question.id, annotationId: "answer" }, sourceLabel: "Answer · Casey" };
+  mixed.rerender(h(SteeringQueue, { ...queueProps, messages: [question], items: [answer] }));
+  assert.ok(screen.getByText("Dark theme"));
+  assert.ok(screen.getByText("Answer · Casey"));
+  assert.ok(!screen.getByRole("region", { name: "Queued steering" }).outerHTML.includes("answeredBy"));
+  mixed.rerender(h(SteeringQueue, { ...queueProps, items: [] }));
+  assert.equal(screen.queryByRole("region", { name: "Queued steering" }), null);
+  cleanup();
+  console.log("PASS: unified queue previews preserve frozen boundaries and applying context; source navigation, read-only, missing-source, answer and empty states stay safe.");
 } finally { await act(async () => cleanup()); dom.window.close(); }

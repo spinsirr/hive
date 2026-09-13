@@ -61,7 +61,14 @@ for (const scenario of ["success", "background-refresh", "inference-refresh", "a
           if (r.method === "thread/resume" || r.method === "thread/start") {
             threadId = r.params.threadId ?? "portable-thread";
             assert.equal(r.params.model, subscription ? "gpt-5.6-luna" : "openai/gpt-5.1-codex-mini");
-            assert.equal(r.params.config.model_provider, subscription ? "openai" : "agent_bridge_openai");
+            assert.equal(r.params.config.model_provider, subscription ? "hive_chatgpt" : "agent_bridge_openai");
+            if (subscription) {
+              const provider = r.params.config.model_providers.hive_chatgpt;
+              assert.equal(provider.base_url, "https://chatgpt.com/backend-api/codex");
+              assert.equal(provider.requires_openai_auth, true, "Preserve native subscription authentication");
+              assert.equal(provider.supports_websockets, false, "Brokered credentials require HTTP streaming");
+              assert.equal(provider.env_key, undefined, "Never change subscription auth to API-key billing");
+            }
             respond({ id: r.id, result: { thread: { id: threadId } } });
           }
           if (r.method === "turn/start") {

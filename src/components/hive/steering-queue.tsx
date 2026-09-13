@@ -1,9 +1,43 @@
 "use client";
 
 import { ArrowDown, ArrowUp, CornerDownRight, LoaderCircle, MessageSquare, MoreHorizontal, Pencil, Play, Trash2 } from "lucide-react";
+import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { canEditMessage, resolveMember, type ActiveSteer, type ChatMessage, type SteeringQueueItem, type TeamMember } from "@/lib/task-session";
+
+function steerPreview(item: SteeringQueueItem, message: ChatMessage | undefined, members: TeamMember[]) {
+  const source = item.source;
+  if (source.kind === "message-thread") {
+    const replies = message?.annotations ?? [];
+    const boundary = replies.findIndex((reply) => reply.id === source.throughReplyId);
+    // The saved boundary, not the live Thread's latest reply, is what was sent.
+    const reply = boundary < 0 ? undefined : replies.slice(0, boundary + 1).findLast((entry) => entry.role !== "agent");
+    return { label: item.sourceLabel, body: reply ? `${resolveMember(reply.authorId, members).shortName}: ${reply.body}` : "Thread discussion" };
+  }
+  if (source.kind === "peer-response") {
+    return { label: "Answer", body: message?.annotations?.find((reply) => reply.id === source.annotationId)?.body ?? "Question answer" };
+  }
+  return { label: source.kind === "message" ? "Message" : source.kind === "message-annotation" ? "Reply" : "Code comment", body: item.body };
+}
+
+function SteerRow({ item, message, members, applying = false, children }: {
+  item: SteeringQueueItem;
+  message?: ChatMessage;
+  members: TeamMember[];
+  applying?: boolean;
+  children?: ReactNode;
+}) {
+  const preview = steerPreview(item, message, members);
+  return <li className="flex min-w-0 items-center gap-2 border-t border-border px-3 py-2">
+    <CornerDownRight aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
+    <div className="min-w-0 flex-1">
+      <p className="line-clamp-2 break-words text-sm leading-5" title={preview.body}>{preview.body}</p>
+      <p className="mt-0.5 truncate text-xs text-muted-foreground">{preview.label} · {resolveMember(item.authorId, members).shortName}</p>
+    </div>
+    {applying ? <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground" role="status"><LoaderCircle aria-hidden="true" className="size-3 animate-spin motion-reduce:animate-none" /> Applying</span> : children}
+  </li>;
+}
 
 export function SteeringQueue({ activeSteer, canApply, disabled, items, messages, currentMember, members, onApply, onMove, onRemove, onEdit, onOpenThread }: {
   activeSteer?: ActiveSteer;
@@ -25,16 +59,13 @@ export function SteeringQueue({ activeSteer, canApply, disabled, items, messages
       <span>{items.length ? `${items.length} queued` : "Current steer"}</span>
       {items.length ? <Button disabled={disabled || !canApply} onClick={onApply} size="xs" title="Starts the next steer only after the current run finishes" type="button" variant="ghost"><Play aria-hidden="true" className="size-3" /> {canApply ? "Run next" : "After current run"}</Button> : null}
     </div>
-    {activeSteer ? <p className="flex items-center gap-2 border-t border-border px-3 py-2 text-xs text-muted-foreground" role="status"><LoaderCircle aria-hidden="true" className="size-3 animate-spin motion-reduce:animate-none" /> Applying {resolveMember(activeSteer.authorId, members).shortName}’s steer</p> : null}
-    <div className="max-h-40 overflow-y-auto">
+    <ul aria-label="Agent work" className="max-h-48 overflow-y-auto">
+      {activeSteer ? <SteerRow applying item={activeSteer} members={members} message={messages.find((message) => "messageId" in activeSteer.source && message.id === activeSteer.source.messageId)} /> : null}
       {items.map((item, index) => {
-        const member = resolveMember(item.authorId, members);
         const messageId = "messageId" in item.source ? item.source.messageId : undefined;
         const message = messages.find((entry) => entry.id === messageId);
         const editable = item.source.kind === "message" && message && canEditMessage(message, currentMember);
-        return <div className="group/queue flex min-w-0 items-center gap-2 border-t border-border px-3 py-2" key={item.id}>
-          <CornerDownRight aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
-          <div className="min-w-0 flex-1"><p className="truncate text-xs" title={item.body}>{item.source.kind === "message-thread" ? item.sourceLabel : item.body}</p><p className="mt-0.5 text-xs text-muted-foreground">{member.shortName}</p></div>
+        return <SteerRow item={item} message={message} members={members} key={item.id}>
           <DropdownMenu>
             <DropdownMenuTrigger aria-label={`Actions for queued steer ${index + 1}`} disabled={disabled} render={<Button size="icon-sm" variant="ghost" />}><MoreHorizontal aria-hidden="true" className="size-4" /></DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48" finalFocus={() => document.getElementById(`message-editor-${messageId}`)?.querySelector<HTMLElement>("textarea") ?? true}>
@@ -46,8 +77,8 @@ export function SteeringQueue({ activeSteer, canApply, disabled, items, messages
               <DropdownMenuItem onClick={() => onRemove(item.id)}><Trash2 aria-hidden="true" /> Remove from queue</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        </div>;
+        </SteerRow>;
       })}
-    </div>
+    </ul>
   </section>;
 }
