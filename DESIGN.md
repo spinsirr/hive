@@ -25,12 +25,12 @@ production UI is the design reference; demos are not alternate designs.
 
 ### Typography (existing contract, retained)
 
-| Role | Font and size | Tailwind utility |
-| --- | --- | --- |
-| Message bodies, thread replies, editable text | Geist, 14px | `text-sm`; body copy uses `leading-6` |
-| Names, compact controls, labels, timestamps, statuses, paths, IDs | Geist, 12px | `text-xs` |
-| Headings | Geist, 16–24px | `text-base` through `text-2xl` |
-| Code, diffs, commands, terminal output | Geist Mono, 12px | `font-mono text-xs` |
+| Role                                                              | Font and size    | Tailwind utility                      |
+| ----------------------------------------------------------------- | ---------------- | ------------------------------------- |
+| Message bodies, thread replies, editable text                     | Geist, 14px      | `text-sm`; body copy uses `leading-6` |
+| Names, compact controls, labels, timestamps, statuses, paths, IDs | Geist, 12px      | `text-xs`                             |
+| Headings                                                          | Geist, 16–24px   | `text-base` through `text-2xl`        |
+| Code, diffs, commands, terminal output                            | Geist Mono, 12px | `font-mono text-xs`                   |
 
 Use regular weight for reading, medium for names/controls, semibold for headings.
 Ordinary interface text has a 12px floor, including avatars and number badges.

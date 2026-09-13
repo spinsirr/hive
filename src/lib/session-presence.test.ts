@@ -1,21 +1,44 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { SessionPresence, PRESENCE_EXPIRY_MS, PRESENCE_RENEW_MS, isPresenceAnnouncement, type LivePresence, type PresenceAnnouncement } from "./session-presence.ts";
+import {
+  SessionPresence,
+  PRESENCE_EXPIRY_MS,
+  PRESENCE_RENEW_MS,
+  isPresenceAnnouncement,
+  type LivePresence,
+  type PresenceAnnouncement,
+} from "./session-presence.ts";
 
 function fixture() {
   const queue: PresenceAnnouncement[] = [];
   const frames: PresenceAnnouncement[] = [];
-  const changes: Array<Array<{ sessionId: string; presence: LivePresence }>> = [[], []];
-  const instances = changes.map((events) => new SessionPresence((event) => {
-    queue.push(event); frames.push(event);
-  }, (sessionId, presence) => events.push({ sessionId, presence })));
+  const changes: Array<Array<{ sessionId: string; presence: LivePresence }>> = [
+    [],
+    [],
+  ];
+  const instances = changes.map(
+    (events) =>
+      new SessionPresence(
+        (event) => {
+          queue.push(event);
+          frames.push(event);
+        },
+        (sessionId, presence) => events.push({ sessionId, presence })
+      )
+  );
   const flush = () => {
     while (queue.length) {
       const event = queue.shift()!;
       for (const instance of instances) instance.receive(event);
     }
   };
-  return { instances, changes, frames, flush, dispose: () => instances.forEach((instance) => instance.dispose()) };
+  return {
+    instances,
+    changes,
+    frames,
+    flush,
+    dispose: () => instances.forEach((instance) => instance.dispose()),
+  };
 }
 
 test("different instances agree on membership, deduplicate tabs, and retain another tab's typing", () => {
@@ -27,21 +50,33 @@ test("different instances agree on membership, deduplicate tabs, and retain anot
     f.flush();
     const anotherTab = f.instances[1].join("presence-qa", "github-101");
     f.flush();
-    for (const changes of f.changes) assert.deepEqual(changes.at(-1)?.presence.activeMembers, ["github-101", "github-102"]);
+    for (const changes of f.changes)
+      assert.deepEqual(changes.at(-1)?.presence.activeMembers, [
+        "github-101",
+        "github-102",
+      ]);
     first.setTyping(true);
     f.flush();
     anotherTab.setTyping(false);
     f.flush();
-    for (const changes of f.changes) assert.deepEqual(changes.at(-1)?.presence.typingMembers, ["github-101"]);
+    for (const changes of f.changes)
+      assert.deepEqual(changes.at(-1)?.presence.typingMembers, ["github-101"]);
     first.leave();
     f.flush();
-    assert.deepEqual(f.changes[1].at(-1)?.presence, { activeMembers: ["github-101", "github-102"], typingMembers: [] });
+    assert.deepEqual(f.changes[1].at(-1)?.presence, {
+      activeMembers: ["github-101", "github-102"],
+      typingMembers: [],
+    });
     anotherTab.leave();
     f.flush();
-    assert.deepEqual(f.changes[1].at(-1)?.presence.activeMembers, ["github-102"]);
+    assert.deepEqual(f.changes[1].at(-1)?.presence.activeMembers, [
+      "github-102",
+    ]);
     second.leave();
     f.flush();
-  } finally { f.dispose(); }
+  } finally {
+    f.dispose();
+  }
 });
 
 test("tabs on the same instance count once and survive another tab closing", () => {
@@ -52,14 +87,25 @@ test("tabs on the same instance count once and survive another tab closing", () 
     first.setTyping(true);
     second.setTyping(true);
     first.leave();
-    assert.deepEqual(f.changes[0].at(-1)?.presence, { activeMembers: ["github-101"], typingMembers: ["github-101"] });
+    assert.deepEqual(f.changes[0].at(-1)?.presence, {
+      activeMembers: ["github-101"],
+      typingMembers: ["github-101"],
+    });
     second.leave();
-    assert.deepEqual(f.changes[0].at(-1)?.presence, { activeMembers: [], typingMembers: [] });
-  } finally { f.dispose(); }
+    assert.deepEqual(f.changes[0].at(-1)?.presence, {
+      activeMembers: [],
+      typingMembers: [],
+    });
+  } finally {
+    f.dispose();
+  }
 });
 
 test("idle renewal is per instance/task, never per tab, and creates no viewer updates", (t) => {
-  t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"], now: 1_000 });
+  t.mock.timers.enable({
+    apis: ["setTimeout", "setInterval", "Date"],
+    now: 1_000,
+  });
   const f = fixture();
   try {
     f.instances[0].join("presence-qa", "github-101");
@@ -71,13 +117,23 @@ test("idle renewal is per instance/task, never per tab, and creates no viewer up
     t.mock.timers.tick(PRESENCE_RENEW_MS);
     f.flush();
     assert.equal(f.frames.length, 2);
-    assert.deepEqual(f.changes.map((events) => events.length), before);
-    assert.ok(f.frames.every((frame) => Buffer.byteLength(JSON.stringify(frame)) < 300));
-  } finally { f.dispose(); }
+    assert.deepEqual(
+      f.changes.map((events) => events.length),
+      before
+    );
+    assert.ok(
+      f.frames.every((frame) => Buffer.byteLength(JSON.stringify(frame)) < 300)
+    );
+  } finally {
+    f.dispose();
+  }
 });
 
 test("a crashed instance expires without a table query or another user action", (t) => {
-  t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"], now: 1_000 });
+  t.mock.timers.enable({
+    apis: ["setTimeout", "setInterval", "Date"],
+    now: 1_000,
+  });
   const f = fixture();
   try {
     f.instances[0].join("presence-qa", "github-101");
@@ -86,8 +142,13 @@ test("a crashed instance expires without a table query or another user action", 
     f.instances[0].dispose(); // No graceful leave message.
     t.mock.timers.tick(PRESENCE_EXPIRY_MS);
     f.flush();
-    assert.deepEqual(f.changes[1].at(-1)?.presence, { activeMembers: ["github-102"], typingMembers: [] });
-  } finally { f.dispose(); }
+    assert.deepEqual(f.changes[1].at(-1)?.presence, {
+      activeMembers: ["github-102"],
+      typingMembers: [],
+    });
+  } finally {
+    f.dispose();
+  }
 });
 
 test("presence does not leak into another task and malformed notifications are rejected", () => {
@@ -96,9 +157,22 @@ test("presence does not leak into another task and malformed notifications are r
     f.instances[0].join("presence-one", "github-101");
     f.instances[1].join("presence-two", "github-102");
     f.flush();
-    assert.deepEqual(f.changes[1].at(-1)?.presence.activeMembers, ["github-102"]);
+    assert.deepEqual(f.changes[1].at(-1)?.presence.activeMembers, [
+      "github-102",
+    ]);
     assert.equal(isPresenceAnnouncement(f.frames[0]), true);
-    assert.equal(isPresenceAnnouncement({ ...f.frames[0], members: [["github-101", "yes"]] }), false);
-    assert.equal(isPresenceAnnouncement({ kind: "presence", sessionId: "presence-one" }), false);
-  } finally { f.dispose(); }
+    assert.equal(
+      isPresenceAnnouncement({
+        ...f.frames[0],
+        members: [["github-101", "yes"]],
+      }),
+      false
+    );
+    assert.equal(
+      isPresenceAnnouncement({ kind: "presence", sessionId: "presence-one" }),
+      false
+    );
+  } finally {
+    f.dispose();
+  }
 });

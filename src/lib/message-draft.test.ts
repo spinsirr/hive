@@ -22,53 +22,100 @@ test("a submission keeps its Chinese draft until delivery is acknowledged", () =
   const failed = failMessageSubmission(sending, FIRST);
   assert.equal(failed.body, draft.body);
   assert.equal(failed.status, "unconfirmed");
-  assert.deepEqual(acknowledgeMessageSubmission(failed, FIRST), emptyMessageDraft());
+  assert.deepEqual(
+    acknowledgeMessageSubmission(failed, FIRST),
+    emptyMessageDraft()
+  );
 });
 
 test("a retry reuses the original submission identity even if a new ID was generated", () => {
-  const first = beginMessageSubmission(editMessageDraft(emptyMessageDraft(), "Keep this"), FIRST);
-  const retry = beginMessageSubmission(failMessageSubmission(first, FIRST), SECOND);
+  const first = beginMessageSubmission(
+    editMessageDraft(emptyMessageDraft(), "Keep this"),
+    FIRST
+  );
+  const retry = beginMessageSubmission(
+    failMessageSubmission(first, FIRST),
+    SECOND
+  );
   assert.equal(retry.submission?.clientId, FIRST);
   assert.equal(retry.body, first.body);
 });
 
 test("double submission and edits during acknowledgement wait are ignored", () => {
-  const sending = beginMessageSubmission(editMessageDraft(emptyMessageDraft(), "One request"), FIRST);
+  const sending = beginMessageSubmission(
+    editMessageDraft(emptyMessageDraft(), "One request"),
+    FIRST
+  );
   assert.equal(beginMessageSubmission(sending, SECOND), sending);
   assert.equal(editMessageDraft(sending, "Another request"), sending);
 });
 
 test("refresh restores an uncertain submission without resending or changing its ID", () => {
-  const sending = beginMessageSubmission(editMessageDraft(emptyMessageDraft(), "Refresh me"), FIRST);
-  const restored = restoreMessageDraft(JSON.stringify({ version: 1, ...sending }));
+  const sending = beginMessageSubmission(
+    editMessageDraft(emptyMessageDraft(), "Refresh me"),
+    FIRST
+  );
+  const restored = restoreMessageDraft(
+    JSON.stringify({ version: 1, ...sending })
+  );
   assert.equal(restored.status, "unconfirmed");
   assert.equal(restored.body, sending.body);
   assert.deepEqual(restored.submission, sending.submission);
-  assert.equal(beginMessageSubmission(restored, SECOND).submission?.clientId, FIRST);
+  assert.equal(
+    beginMessageSubmission(restored, SECOND).submission?.clientId,
+    FIRST
+  );
 });
 
 test("an old response cannot clear a newer draft after polling has confirmed delivery", () => {
-  const first = beginMessageSubmission(editMessageDraft(emptyMessageDraft(), "First"), FIRST);
+  const first = beginMessageSubmission(
+    editMessageDraft(emptyMessageDraft(), "First"),
+    FIRST
+  );
   const confirmed = acknowledgeMessageSubmission(first, FIRST);
-  const second = beginMessageSubmission(editMessageDraft(confirmed, "Second"), SECOND);
+  const second = beginMessageSubmission(
+    editMessageDraft(confirmed, "Second"),
+    SECOND
+  );
   assert.equal(acknowledgeMessageSubmission(second, FIRST), second);
   assert.equal(failMessageSubmission(second, FIRST), second);
 });
 
 test("editing an unconfirmed message creates a new intent instead of reusing its identity", () => {
-  const first = beginMessageSubmission(editMessageDraft(emptyMessageDraft(), "First"), FIRST);
-  const edited = editMessageDraft(failMessageSubmission(first, FIRST), "Different intent");
+  const first = beginMessageSubmission(
+    editMessageDraft(emptyMessageDraft(), "First"),
+    FIRST
+  );
+  const edited = editMessageDraft(
+    failMessageSubmission(first, FIRST),
+    "Different intent"
+  );
   assert.equal(edited.submission, undefined);
-  assert.equal(beginMessageSubmission(edited, SECOND).submission?.clientId, SECOND);
+  assert.equal(
+    beginMessageSubmission(edited, SECOND).submission?.clientId,
+    SECOND
+  );
   assert.equal(acknowledgeMessageSubmission(edited, FIRST), edited);
 });
 
 test("malformed stored drafts do not restore submission identities", () => {
-  for (const value of [null, "broken", "null", "{}", '{"version":2,"body":"old"}']) {
+  for (const value of [
+    null,
+    "broken",
+    "null",
+    "{}",
+    '{"version":2,"body":"old"}',
+  ]) {
     assert.deepEqual(restoreMessageDraft(value), emptyMessageDraft());
   }
-  for (const submission of [null, { clientId: "bad", body: "Keep" }, { clientId: FIRST, body: "Different" }]) {
-    const restored = restoreMessageDraft(JSON.stringify({ version: 1, body: "Keep", submission }));
+  for (const submission of [
+    null,
+    { clientId: "bad", body: "Keep" },
+    { clientId: FIRST, body: "Different" },
+  ]) {
+    const restored = restoreMessageDraft(
+      JSON.stringify({ version: 1, body: "Keep", submission })
+    );
     assert.equal(restored.body, "Keep");
     assert.equal(restored.status, "editing");
     assert.equal(restored.submission, undefined);

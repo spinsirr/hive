@@ -27,10 +27,19 @@ export function annotateUnifiedDiff(diff: string): DiffLine[] {
       newLine = Number(hunk[2]);
       return { text, change: "meta" };
     }
-    if (oldLine === undefined || newLine === undefined) return { text, change: "meta" };
-    if (text.startsWith("+")) return { text, change: "added", newLine: newLine++ };
-    if (text.startsWith("-")) return { text, change: "removed", oldLine: oldLine++ };
-    if (text.startsWith(" ")) return { text, change: "context", oldLine: oldLine++, newLine: newLine++ };
+    if (oldLine === undefined || newLine === undefined)
+      return { text, change: "meta" };
+    if (text.startsWith("+"))
+      return { text, change: "added", newLine: newLine++ };
+    if (text.startsWith("-"))
+      return { text, change: "removed", oldLine: oldLine++ };
+    if (text.startsWith(" "))
+      return {
+        text,
+        change: "context",
+        oldLine: oldLine++,
+        newLine: newLine++,
+      };
     // "\ No newline at end of file", Hive's truncation notice, blank separators.
     return { text, change: "meta" };
   });

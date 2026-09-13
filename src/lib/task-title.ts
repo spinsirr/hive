@@ -3,7 +3,9 @@ export const UNTITLED_TASK_LABEL = "Untitled task";
 
 export function normalizeTaskTitle(value: string): string | null {
   const trimmed = value.trim();
-  return trimmed && trimmed.length <= TASK_TITLE_LIMIT ? trimmed.replace(/\s+/gu, " ") : null;
+  return trimmed && trimmed.length <= TASK_TITLE_LIMIT
+    ? trimmed.replace(/\s+/gu, " ")
+    : null;
 }
 
 export function taskTitleLabel(title: string): string {
@@ -16,7 +18,10 @@ export function taskTitleLabel(title: string): string {
  */
 export function taskTitleFromMessage(body: string): string {
   const text = body.trim().replace(/\s+/gu, " ");
-  const characters = Array.from(new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(text), ({ segment }) => segment);
+  const characters = Array.from(
+    new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(text),
+    ({ segment }) => segment
+  );
   if (characters.length <= 72 && text.length <= TASK_TITLE_LIMIT) return text;
   let excerpt = "";
   for (const character of characters.slice(0, 71)) {

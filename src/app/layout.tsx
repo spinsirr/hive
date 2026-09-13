@@ -17,7 +17,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Hive — A coding agent your team owns together",
-  description: "A multiplayer coding session where teammates prompt, annotate, and steer the same agent.",
+  description:
+    "A multiplayer coding session where teammates prompt, annotate, and steer the same agent.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

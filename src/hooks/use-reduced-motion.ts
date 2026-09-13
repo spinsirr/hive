@@ -11,5 +11,9 @@ const subscribe = (notify: () => void) => {
 
 /** Keep JavaScript scrolling in step with the same preference as CSS motion. */
 export function useReducedMotion() {
-  return useSyncExternalStore(subscribe, () => window.matchMedia(query).matches, () => false);
+  return useSyncExternalStore(
+    subscribe,
+    () => window.matchMedia(query).matches,
+    () => false
+  );
 }

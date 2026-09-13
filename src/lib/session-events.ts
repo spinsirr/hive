@@ -2,7 +2,11 @@ import { sql } from "drizzle-orm";
 import { Client, type Notification } from "pg";
 
 import { isTaskSessionId } from "./task-session-id.ts";
-import { isPresenceAnnouncement, SessionPresence, type LivePresence } from "./session-presence.ts";
+import {
+  isPresenceAnnouncement,
+  SessionPresence,
+  type LivePresence,
+} from "./session-presence.ts";
 import type { MemberId } from "./task-session.ts";
 
 export type SessionEventKind = "snapshot" | "reply";
@@ -17,19 +21,29 @@ type Subscription = {
 const CHANNEL = "hive_session_events";
 
 /** Execute inside the mutation transaction: delivery happens only after commit. */
-export function sessionNotification(sessionId: string, kind: SessionEventKind = "snapshot") {
+export function sessionNotification(
+  sessionId: string,
+  kind: SessionEventKind = "snapshot"
+) {
   return sql`select pg_notify(${CHANNEL}, ${JSON.stringify({ sessionId, kind })})`;
 }
 
 function createListener() {
   const connectionString = process.env.DATABASE_URL;
-  if (!connectionString) throw new Error("DATABASE_URL is required for live sessions.");
+  if (!connectionString)
+    throw new Error("DATABASE_URL is required for live sessions.");
   const url = new URL(connectionString);
   // Neon uses the same credentials/database on its pooled and direct endpoints.
   // LISTEN needs a session-bound connection, not PgBouncer's transaction pool.
   url.hostname = url.hostname.replace(/-pooler\./, ".");
-  if (url.searchParams.get("sslmode") === "require") url.searchParams.set("sslmode", "verify-full");
-  return new Client({ connectionString: url.toString(), connectionTimeoutMillis: 10_000, query_timeout: 10_000, keepAlive: true });
+  if (url.searchParams.get("sslmode") === "require")
+    url.searchParams.set("sslmode", "verify-full");
+  return new Client({
+    connectionString: url.toString(),
+    connectionTimeoutMillis: 10_000,
+    query_timeout: 10_000,
+    keepAlive: true,
+  });
 }
 
 /** One direct LISTEN connection per active function instance, shared by its viewers. */
@@ -56,7 +70,10 @@ export class SessionEventHub {
         let published: Promise<unknown> = Promise.resolve();
         this.finish = () => {
           // The final socket's leave must reach other instances before ending LISTEN.
-          void published.catch(() => undefined).then(() => client.end()).catch(() => undefined);
+          void published
+            .catch(() => undefined)
+            .then(() => client.end())
+            .catch(() => undefined);
         };
         const fail = () => {
           if (this.client !== client) return;
@@ -65,36 +82,66 @@ export class SessionEventHub {
           this.disconnect();
           for (const listener of listeners) listener.onDisconnect();
         };
-        const presence = new SessionPresence((event) => {
-          const payload = JSON.stringify(event);
-          if (Buffer.byteLength(payload) >= 8_000) { fail(); return; }
-          published = published.then(() => client.query("select pg_notify($1, $2)", [CHANNEL, payload]));
-          void published.catch(fail);
-        }, (sessionId, current) => {
-          for (const listener of this.subscriptions) {
-            if (listener.sessionId === sessionId) listener.onPresence(current);
+        const presence = new SessionPresence(
+          (event) => {
+            const payload = JSON.stringify(event);
+            if (Buffer.byteLength(payload) >= 8_000) {
+              fail();
+              return;
+            }
+            published = published.then(() =>
+              client.query("select pg_notify($1, $2)", [CHANNEL, payload])
+            );
+            void published.catch(fail);
+          },
+          (sessionId, current) => {
+            for (const listener of this.subscriptions) {
+              if (listener.sessionId === sessionId)
+                listener.onPresence(current);
+            }
           }
-        });
+        );
         this.presence = presence;
         client.on("notification", (notification: Notification) => {
           if (notification.channel !== CHANNEL || !notification.payload) return;
           let event: { sessionId?: unknown; kind?: unknown };
-          try { event = JSON.parse(notification.payload); } catch { return; }
+          try {
+            event = JSON.parse(notification.payload);
+          } catch {
+            return;
+          }
           if (!event || typeof event !== "object") return;
-          if (isPresenceAnnouncement(event)) { presence.receive(event); return; }
-          if (!isTaskSessionId(event.sessionId) || (event.kind !== "snapshot" && event.kind !== "reply")) return;
+          if (isPresenceAnnouncement(event)) {
+            presence.receive(event);
+            return;
+          }
+          if (
+            !isTaskSessionId(event.sessionId) ||
+            (event.kind !== "snapshot" && event.kind !== "reply")
+          )
+            return;
           for (const listener of this.subscriptions) {
-            if (listener.sessionId === event.sessionId) listener.onChange(event.kind);
+            if (listener.sessionId === event.sessionId)
+              listener.onChange(event.kind);
           }
         });
         client.on("error", fail);
         client.on("end", fail);
-        this.ready = client.connect().then(async () => { await client.query(`LISTEN ${CHANNEL}`); });
+        this.ready = client.connect().then(async () => {
+          await client.query(`LISTEN ${CHANNEL}`);
+        });
       }
       await this.ready;
-      if (!this.presence || !this.subscriptions.has(subscription)) throw new Error("Live subscription closed during setup.");
-      connection = this.presence.join(subscription.sessionId, subscription.memberId);
-      return { unsubscribe, setTyping: (typing: boolean) => connection?.setTyping(typing) };
+      if (!this.presence || !this.subscriptions.has(subscription))
+        throw new Error("Live subscription closed during setup.");
+      connection = this.presence.join(
+        subscription.sessionId,
+        subscription.memberId
+      );
+      return {
+        unsubscribe,
+        setTyping: (typing: boolean) => connection?.setTyping(typing),
+      };
     } catch (error) {
       unsubscribe();
       throw error;
@@ -112,5 +159,8 @@ export class SessionEventHub {
   }
 }
 
-const globals = globalThis as typeof globalThis & { __hiveSessionEvents?: SessionEventHub };
-export const sessionEvents = globals.__hiveSessionEvents ??= new SessionEventHub();
+const globals = globalThis as typeof globalThis & {
+  __hiveSessionEvents?: SessionEventHub;
+};
+export const sessionEvents = (globals.__hiveSessionEvents ??=
+  new SessionEventHub());

@@ -17,12 +17,12 @@ Keeping the existing path is defensible for the bounded demonstration while its 
 
 ## What Workflow would add
 
-| Concern | Concrete gain | Boundary Hive still owns |
-| --- | --- | --- |
-| Execution recovery | Completed step results are recorded and replayed; failed work can be scheduled again rather than depending on the original request staying alive. | Defining safe step boundaries and reconciling a partially executed external operation. |
-| Interactive input | Reusable hooks accept multiple events over time; workflows can suspend until input or approval arrives. | Membership authorization, who authored a steer, queue ordering, and when Apply is allowed. |
-| Output delivery | Persisted streams can be reattached from an index independently of the producer. | Task-to-run mapping, authorized readers, sanitized public output, and how stream output becomes the canonical shared transcript. |
-| Operations | Run/step history, retries, and deployment-pinned execution provide an inspectable lifecycle. | A recovery policy for failed runs, old deployments, and the product state shown to teammates. |
+| Concern            | Concrete gain                                                                                                                                     | Boundary Hive still owns                                                                                                         |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Execution recovery | Completed step results are recorded and replayed; failed work can be scheduled again rather than depending on the original request staying alive. | Defining safe step boundaries and reconciling a partially executed external operation.                                           |
+| Interactive input  | Reusable hooks accept multiple events over time; workflows can suspend until input or approval arrives.                                           | Membership authorization, who authored a steer, queue ordering, and when Apply is allowed.                                       |
+| Output delivery    | Persisted streams can be reattached from an index independently of the producer.                                                                  | Task-to-run mapping, authorized readers, sanitized public output, and how stream output becomes the canonical shared transcript. |
+| Operations         | Run/step history, retries, and deployment-pinned execution provide an inspectable lifecycle.                                                      | A recovery policy for failed runs, old deployments, and the product state shown to teammates.                                    |
 
 These gains follow from the official [steps](https://useworkflow.dev/docs/foundations/workflows-and-steps), [hooks](https://useworkflow.dev/docs/foundations/hooks), [streaming](https://useworkflow.dev/docs/foundations/streaming), and [versioning](https://useworkflow.dev/docs/foundations/versioning) documentation. The right-hand column is the application-design implication for Hive.
 

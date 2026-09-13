@@ -4,7 +4,8 @@ export const hiveErrorCopy = {
   disconnected: "AI Gateway isn’t connected.",
   claudeDisconnected: "Reconnect the Claude subscription.",
   codexDisconnected: "Reconnect the Codex subscription.",
-  subscriptionLimit: "Subscription limit reached. Try again after the limit resets.",
+  subscriptionLimit:
+    "Subscription limit reached. Try again after the limit resets.",
   generic: "Run failed. Try again.",
   lost: "Hive's execution process was lost. Partial output and queued steers were kept; nothing was rerun.",
   model: "Model unavailable on this plan.",
@@ -13,11 +14,16 @@ export const hiveErrorCopy = {
 
 export function displayHiveErrorMessage(message: string) {
   const normalized = message.toLowerCase();
-  if (normalized === "start a new claude task to change its authentication.") return message;
-  if (normalized.includes("reconnect the claude subscription")) return hiveErrorCopy.claudeDisconnected;
-  if (normalized.includes("reconnect the codex subscription")) return hiveErrorCopy.codexDisconnected;
-  if (normalized.includes("subscription limit reached")) return hiveErrorCopy.subscriptionLimit;
-  if (normalized.includes("execution process was lost")) return hiveErrorCopy.lost;
+  if (normalized === "start a new claude task to change its authentication.")
+    return message;
+  if (normalized.includes("reconnect the claude subscription"))
+    return hiveErrorCopy.claudeDisconnected;
+  if (normalized.includes("reconnect the codex subscription"))
+    return hiveErrorCopy.codexDisconnected;
+  if (normalized.includes("subscription limit reached"))
+    return hiveErrorCopy.subscriptionLimit;
+  if (normalized.includes("execution process was lost"))
+    return hiveErrorCopy.lost;
   if (normalized.includes("billing verification")) return hiveErrorCopy.billing;
   if (
     normalized.includes("not available on this account tier") ||

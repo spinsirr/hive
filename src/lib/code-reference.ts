@@ -2,12 +2,21 @@ import { z } from "zod";
 
 import { workspaceReadRequest } from "./workspace-files.ts";
 
-export const codeReferenceSchema = z.object({
-  path: z.string().refine((path) => workspaceReadRequest.safeParse({ kind: "file", path }).success),
-  startLine: z.number().int().min(1),
-  endLine: z.number().int().min(1),
-  quote: z.string().min(1).max(8_000),
-}).refine((value) => value.endLine >= value.startLine && value.endLine - value.startLine < 100);
+export const codeReferenceSchema = z
+  .object({
+    path: z
+      .string()
+      .refine(
+        (path) => workspaceReadRequest.safeParse({ kind: "file", path }).success
+      ),
+    startLine: z.number().int().min(1),
+    endLine: z.number().int().min(1),
+    quote: z.string().min(1).max(8_000),
+  })
+  .refine(
+    (value) =>
+      value.endLine >= value.startLine && value.endLine - value.startLine < 100
+  );
 
 export type CodeReference = z.infer<typeof codeReferenceSchema>;
 

@@ -1,14 +1,17 @@
 /** Only public assistant text belongs in the conversation, never tool output or reasoning. */
-export async function consumeAgentText<TPart extends { type: string; text?: string; error?: unknown }>(
+export async function consumeAgentText<
+  TPart extends { type: string; text?: string; error?: unknown },
+>(
   stream: AsyncIterable<TPart>,
   onText: (body: string) => void,
-  onPart?: (part: TPart) => void,
+  onPart?: (part: TPart) => void
 ) {
   let body = "";
   let separator = false;
   for await (const part of stream) {
     onPart?.(part);
-    if (part.type === "error") throw part.error ?? new Error("Agent stream failed.");
+    if (part.type === "error")
+      throw part.error ?? new Error("Agent stream failed.");
     if (part.type === "abort") throw new Error("Agent stream was interrupted.");
     if (part.type === "text-start") separator = body.length > 0;
     if (part.type !== "text-delta" || !part.text) continue;
@@ -28,7 +31,7 @@ export async function consumeAgentText<TPart extends { type: string; text?: stri
 export function createReplyWriter(
   save: (body: string, sequence: number) => Promise<void>,
   intervalMs = 250,
-  onSaveError: (error: unknown) => void = () => undefined,
+  onSaveError: (error: unknown) => void = () => undefined
 ) {
   let latest = "";
   let saved = "";
@@ -44,13 +47,20 @@ export function createReplyWriter(
       const body = latest;
       const nextSequence = ++sequence;
       let failed = false;
-      pending = Promise.resolve().then(() => save(body, nextSequence))
-        .then(() => { saved = body; })
-        .catch((error: unknown) => { failed = true; onSaveError(error); })
+      pending = Promise.resolve()
+        .then(() => save(body, nextSequence))
+        .then(() => {
+          saved = body;
+        })
+        .catch((error: unknown) => {
+          failed = true;
+          onSaveError(error);
+        })
         .finally(() => {
           pending = undefined;
           // After a failure, wait for the next delta instead of retrying in a loop.
-          if (!closed && !failed && latest !== saved) timer ??= setTimeout(() => void flush(), intervalMs);
+          if (!closed && !failed && latest !== saved)
+            timer ??= setTimeout(() => void flush(), intervalMs);
         });
     }
     return pending;

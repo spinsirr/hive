@@ -9,7 +9,7 @@ import { createTaskSession as createStoredTaskSession } from "@/lib/task-session
 export async function createTaskSession(formData: FormData) {
   const cookieStore = await cookies();
   const member = await getSessionMember(
-    cookieStore.get(HIVE_SESSION_COOKIE)?.value,
+    cookieStore.get(HIVE_SESSION_COOKIE)?.value
   );
   if (!member) throw new Error("Unauthorized");
 

@@ -2,8 +2,9 @@
 
 Commands, test boundaries and dated live evidence. For current release gaps, see [release status](ROADMAP.md).
 
-For a fresh end-to-end release pass, start with the [ordered production acceptance script](RELEASE_ACCEPTANCE.md). `pnpm test:release --plan` lists the existing local checks; `HIVE_QA_DATABASE_URL=postgres://localhost/postgres pnpm test:release` runs them with per-stage logs and a revision-stamped report. Use an isolated worktree without `.env` files and a disposable loopback Postgres role that can create databases. The runner refuses remote databases, does not pass application credentials to child processes, and never marks production acceptance as passed. It includes `test:peer-store` as well as `test:integration`, matching the full CI boundary.
+Run `pnpm check` for formatting, zero-warning lint, types, shared UI ownership and the regression suite. [Code quality](CODE_QUALITY.md) defines the editor, pre-commit and CI checks; the [full repository review](CODE_QUALITY_REVIEW.md) records remaining structural issues.
 
+For a fresh end-to-end release pass, start with the [ordered production acceptance script](RELEASE_ACCEPTANCE.md). `pnpm test:release --plan` lists the existing local checks; `HIVE_QA_DATABASE_URL=postgres://localhost/postgres pnpm test:release` runs them with per-stage logs and a revision-stamped report. Use an isolated worktree without `.env` files and a disposable loopback Postgres role that can create databases. The runner refuses remote databases, does not pass application credentials to child processes, and never marks production acceptance as passed. It includes `test:peer-store` as well as `test:integration`, matching the full CI boundary.
 
 ```bash
 pnpm test

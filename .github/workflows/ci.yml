@@ -15,6 +15,7 @@ concurrency:
 
 env:
   NEXT_TELEMETRY_DISABLED: "1"
+  HUSKY: "0"
 
 jobs:
   checks:
@@ -31,6 +32,7 @@ jobs:
           cache: true
           install: false
       - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
       - run: pnpm lint
       - name: Shared UI ownership
         run: pnpm test:design-system

@@ -1,8 +1,14 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 import { getSessionMember, HIVE_SESSION_COOKIE } from "@/lib/auth-session";
-import { GitHubUserAuthorizationError, listGitHubUserRepositories } from "@/lib/github-oauth";
-import { GITHUB_USER_COOKIE, readGitHubUserToken } from "@/lib/github-user-session";
+import {
+  GitHubUserAuthorizationError,
+  listGitHubUserRepositories,
+} from "@/lib/github-oauth";
+import {
+  GITHUB_USER_COOKIE,
+  readGitHubUserToken,
+} from "@/lib/github-user-session";
 import { isTaskSessionId } from "@/lib/task-session-id";
 import { ARCHIVED_TASK_MESSAGE } from "@/lib/task-session";
 import { WorkspaceRestoreError } from "@/lib/workspace-restore-state";
@@ -20,12 +26,15 @@ async function authenticatedRequest(request: NextRequest) {
   const sessionId = request.nextUrl.searchParams.get("session_id");
   if (!isTaskSessionId(sessionId)) {
     return {
-      response: NextResponse.json({ error: "Invalid session" }, { status: 400 }),
+      response: NextResponse.json(
+        { error: "Invalid session" },
+        { status: 400 }
+      ),
     };
   }
 
   const member = await getSessionMember(
-    request.cookies.get(HIVE_SESSION_COOKIE)?.value,
+    request.cookies.get(HIVE_SESSION_COOKIE)?.value
   );
   if (!member) {
     return {
@@ -35,7 +44,10 @@ async function authenticatedRequest(request: NextRequest) {
 
   if (!(await isTaskSessionMember(sessionId, member.id))) {
     return {
-      response: NextResponse.json({ error: "Session not found" }, { status: 404 }),
+      response: NextResponse.json(
+        { error: "Session not found" },
+        { status: 404 }
+      ),
     };
   }
 
@@ -44,20 +56,20 @@ async function authenticatedRequest(request: NextRequest) {
     return {
       response: NextResponse.json(
         { error: "This Hive session is not linked to GitHub." },
-        { status: 409 },
+        { status: 409 }
       ),
     };
   }
 
   const accessToken = await readGitHubUserToken(
     request.cookies.get(GITHUB_USER_COOKIE)?.value,
-    request.cookies.get(HIVE_SESSION_COOKIE)?.value,
+    request.cookies.get(HIVE_SESSION_COOKIE)?.value
   );
   return { accessToken, githubUserId, member, sessionId };
 }
 
 function publicRepositories(
-  repositories: Awaited<ReturnType<typeof listGitHubUserRepositories>>,
+  repositories: Awaited<ReturnType<typeof listGitHubUserRepositories>>
 ) {
   return repositories.map((repository) => ({
     id: repository.id,
@@ -68,9 +80,17 @@ function publicRepositories(
 }
 
 function reconnectResponse() {
-  return NextResponse.json({ needsAuthorization: true, repositories: [], error: "Reconnect GitHub to choose a repository." }, {
-    status: 409, headers: { "Cache-Control": "private, no-store" },
-  });
+  return NextResponse.json(
+    {
+      needsAuthorization: true,
+      repositories: [],
+      error: "Reconnect GitHub to choose a repository.",
+    },
+    {
+      status: 409,
+      headers: { "Cache-Control": "private, no-store" },
+    }
+  );
 }
 
 export async function GET(request: NextRequest) {
@@ -81,15 +101,19 @@ export async function GET(request: NextRequest) {
   try {
     const repositories = await listGitHubUserRepositories(auth.accessToken);
     return NextResponse.json(
-      { needsInstallation: repositories.length === 0, repositories: publicRepositories(repositories) },
-      { headers: { "Cache-Control": "no-store" } },
+      {
+        needsInstallation: repositories.length === 0,
+        repositories: publicRepositories(repositories),
+      },
+      { headers: { "Cache-Control": "no-store" } }
     );
   } catch (error) {
-    if (error instanceof GitHubUserAuthorizationError) return reconnectResponse();
+    if (error instanceof GitHubUserAuthorizationError)
+      return reconnectResponse();
     console.error("GitHub repository list failed", error);
     return NextResponse.json(
       { error: "Hive could not load your GitHub repositories." },
-      { status: 502 },
+      { status: 502 }
     );
   }
 }
@@ -116,22 +140,26 @@ export async function POST(request: NextRequest) {
 
   try {
     const snapshot = await getPublicTaskSessionSnapshot(auth.sessionId);
-    if (snapshot.session.archived) return NextResponse.json({ error: ARCHIVED_TASK_MESSAGE }, { status: 409 });
+    if (snapshot.session.archived)
+      return NextResponse.json(
+        { error: ARCHIVED_TASK_MESSAGE },
+        { status: 409 }
+      );
     if (snapshot.session.repository) {
       return NextResponse.json(
         { error: "This task already has a repository." },
-        { status: 409 },
+        { status: 409 }
       );
     }
 
     const repositories = await listGitHubUserRepositories(auth.accessToken);
     const repository = repositories.find(
-      (candidate) => candidate.id === repositoryId,
+      (candidate) => candidate.id === repositoryId
     );
     if (!repository) {
       return NextResponse.json(
         { error: "That repository is not authorized for your GitHub account." },
-        { status: 403 },
+        { status: 403 }
       );
     }
 
@@ -149,21 +177,30 @@ export async function POST(request: NextRequest) {
         githubUserId: auth.githubUserId,
         githubLogin: auth.member.githubLogin ?? auth.member.shortName,
       },
-      auth.member,
+      auth.member
     );
 
     return NextResponse.json(
       { repository: publicRepositories([repository])[0] },
-      { headers: { "Cache-Control": "no-store" } },
+      { headers: { "Cache-Control": "no-store" } }
     );
   } catch (error) {
-    if (error instanceof GitHubUserAuthorizationError) return reconnectResponse();
-    if (error instanceof TaskSessionAccessError) return NextResponse.json({ error: error.message }, { status: 403, headers: { "Cache-Control": "private, no-store" } });
-    if (error instanceof WorkspaceRestoreError) return NextResponse.json({ error: error.message }, { status: error.status });
+    if (error instanceof GitHubUserAuthorizationError)
+      return reconnectResponse();
+    if (error instanceof TaskSessionAccessError)
+      return NextResponse.json(
+        { error: error.message },
+        { status: 403, headers: { "Cache-Control": "private, no-store" } }
+      );
+    if (error instanceof WorkspaceRestoreError)
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.status }
+      );
     console.error("GitHub repository attachment failed", error);
     return NextResponse.json(
       { error: "Hive could not attach that repository." },
-      { status: 502 },
+      { status: 502 }
     );
   }
 }

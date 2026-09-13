@@ -5,9 +5,13 @@
  */
 export function formatMessageTime(
   message: { time: string; createdAt?: number },
-  options: { locale?: string; timeZone?: string } = {},
+  options: { locale?: string; timeZone?: string } = {}
 ) {
-  if (typeof message.createdAt !== "number" || !Number.isFinite(message.createdAt)) return message.time;
+  if (
+    typeof message.createdAt !== "number" ||
+    !Number.isFinite(message.createdAt)
+  )
+    return message.time;
   return new Intl.DateTimeFormat(options.locale, {
     hour: "numeric",
     minute: "2-digit",

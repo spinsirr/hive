@@ -29,7 +29,10 @@ export const users = pgTable("users", {
   shortName: text("short_name").notNull(),
   initials: text("initials").notNull(),
   avatarUrl: text("avatar_url"),
-  updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true }).notNull(),
+  updatedAt: timestamp("updated_at", {
+    mode: "date",
+    withTimezone: true,
+  }).notNull(),
 });
 
 export const authSessions = pgTable("auth_sessions", {
@@ -37,8 +40,14 @@ export const authSessions = pgTable("auth_sessions", {
   userId: text("user_id")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
-  createdAt: timestamp("created_at", { mode: "date", withTimezone: true }).notNull(),
-  expiresAt: timestamp("expires_at", { mode: "date", withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", {
+    mode: "date",
+    withTimezone: true,
+  }).notNull(),
+  expiresAt: timestamp("expires_at", {
+    mode: "date",
+    withTimezone: true,
+  }).notNull(),
 });
 
 export const taskSessions = pgTable("task_sessions", {
@@ -71,17 +80,17 @@ export const taskSessions = pgTable("task_sessions", {
     .default([]),
   activeSteer: jsonb("active_steer").$type<ActiveSteer>(),
   repository: jsonb("repository").$type<RepositoryState>(),
-  workspace: jsonb("workspace")
-    .$type<WorkspaceState>()
-    .notNull()
-    .default({
-      status: "disconnected",
-      diff: "",
-      files: [],
-      commands: [],
-      changedFiles: [],
-    }),
-  updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true }).notNull(),
+  workspace: jsonb("workspace").$type<WorkspaceState>().notNull().default({
+    status: "disconnected",
+    diff: "",
+    files: [],
+    commands: [],
+    changedFiles: [],
+  }),
+  updatedAt: timestamp("updated_at", {
+    mode: "date",
+    withTimezone: true,
+  }).notNull(),
 });
 
 export const taskSessionMembers = pgTable(
@@ -101,7 +110,7 @@ export const taskSessionMembers = pgTable(
   (table) => [
     primaryKey({ columns: [table.sessionId, table.memberId] }),
     index("task_session_members_member_id_idx").on(table.memberId),
-  ],
+  ]
 );
 
 // Private credential vault. Never include this table in task snapshots or backups
@@ -117,7 +126,9 @@ export const codexSubscriptions = pgTable("codex_subscriptions", {
   // A failed/abandoned refresh stays fenced until explicit reseeding. Never
   // expire this lock and silently replay an older, possibly rotated token.
   refreshLock: text("refresh_lock"),
-  updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true })
+    .notNull()
+    .defaultNow(),
 });
 
 // Historical installation records; no longer an authorization source. Keep data intact.
@@ -146,8 +157,11 @@ export const taskSessionPresence = pgTable(
       .$type<MemberId>()
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    lastSeen: timestamp("last_seen", { mode: "date", withTimezone: true }).notNull(),
+    lastSeen: timestamp("last_seen", {
+      mode: "date",
+      withTimezone: true,
+    }).notNull(),
     typing: boolean("typing").notNull().default(false),
   },
-  (table) => [primaryKey({ columns: [table.sessionId, table.memberId] })],
+  (table) => [primaryKey({ columns: [table.sessionId, table.memberId] })]
 );

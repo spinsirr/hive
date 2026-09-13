@@ -5,13 +5,20 @@ import { getSessionMember, HIVE_SESSION_COOKIE } from "@/lib/auth-session";
 import { sessionEvents } from "@/lib/session-events";
 import { subscribeToTaskSession } from "@/lib/session-live";
 import { isTaskSessionId } from "@/lib/task-session-id";
-import { getAgentReply, getPublicTaskSessionSnapshot, isTaskSessionMember } from "@/lib/task-session-store";
+import {
+  getAgentReply,
+  getPublicTaskSessionSnapshot,
+  isTaskSessionMember,
+} from "@/lib/task-session-store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-export async function GET(request: NextRequest, context: { params: Promise<{ sessionId: string }> }) {
+export async function GET(
+  request: NextRequest,
+  context: { params: Promise<{ sessionId: string }> }
+) {
   const { sessionId } = await context.params;
   if (!isTaskSessionId(sessionId)) return new Response(null, { status: 404 });
   if (request.headers.get("origin") !== new URL(request.url).origin) {
@@ -19,18 +26,23 @@ export async function GET(request: NextRequest, context: { params: Promise<{ ses
   }
   const token = request.cookies.get(HIVE_SESSION_COOKIE)?.value;
   const member = await getSessionMember(token);
-  if (!member || !await isTaskSessionMember(sessionId, member.id)) return new Response(null, { status: 401 });
+  if (!member || !(await isTaskSessionMember(sessionId, member.id)))
+    return new Response(null, { status: 401 });
   async function authorized() {
     const member = await getSessionMember(token);
-    return Boolean(member && await isTaskSessionMember(sessionId, member.id));
+    return Boolean(member && (await isTaskSessionMember(sessionId, member.id)));
   }
 
-  return experimental_upgradeWebSocket((socket) => subscribeToTaskSession(socket, {
-    sessionId,
-    memberId: member.id,
-    authorized,
-    snapshot: () => getPublicTaskSessionSnapshot(sessionId),
-    reply: () => getAgentReply(sessionId),
-    events: sessionEvents,
-  }), { maxPayload: 1024 });
+  return experimental_upgradeWebSocket(
+    (socket) =>
+      subscribeToTaskSession(socket, {
+        sessionId,
+        memberId: member.id,
+        authorized,
+        snapshot: () => getPublicTaskSessionSnapshot(sessionId),
+        reply: () => getAgentReply(sessionId),
+        events: sessionEvents,
+      }),
+    { maxPayload: 1024 }
+  );
 }

@@ -15,10 +15,21 @@ class Socket extends EventEmitter {
   closeCode?: number;
   pings = 0;
   terminated = false;
-  ping() { this.pings++; }
-  terminate() { this.terminated = true; this.close(); }
-  send(data: unknown) { this.sent.push(String(data)); }
-  close(code?: number) { this.closeCode = code; this.readyState = 3; this.emit("close"); }
+  ping() {
+    this.pings++;
+  }
+  terminate() {
+    this.terminated = true;
+    this.close();
+  }
+  send(data: unknown) {
+    this.sent.push(String(data));
+  }
+  close(code?: number) {
+    this.closeCode = code;
+    this.readyState = 3;
+    this.emit("close");
+  }
 }
 
 async function settle() {
@@ -29,10 +40,21 @@ function fixture() {
   const socket = new Socket();
   const session = createInitialTaskSessionState(1, "live-test");
   session.workspace.agentSession = {
-    id: "codex-id", runtime: "codex",
-    resumeFrom: { type: "resume-session", specificationVersion: "harness-v1", harnessId: "codex", data: { secret: "private-checkpoint" } },
+    id: "codex-id",
+    runtime: "codex",
+    resumeFrom: {
+      type: "resume-session",
+      specificationVersion: "harness-v1",
+      harnessId: "codex",
+      data: { secret: "private-checkpoint" },
+    },
   };
-  const reply = { id: "reply-1", body: "Streaming text", startedAt: 2, sequence: 1 };
+  const reply = {
+    id: "reply-1",
+    body: "Streaming text",
+    startedAt: 2,
+    sequence: 1,
+  };
   let allowed = true;
   let unsubscribed = 0;
   let change: (kind: SessionEventKind) => void = () => undefined;
@@ -42,17 +64,44 @@ function fixture() {
     sessionId: session.sessionId,
     memberId: "github-101",
     authorized: async () => allowed,
-    snapshot: async () => ({ session, members: [], activeMembers: [], typingMembers: [] }),
+    snapshot: async () => ({
+      session,
+      members: [],
+      activeMembers: [],
+      typingMembers: [],
+    }),
     reply: async () => reply,
-    events: { subscribe: async (listener: { onChange: typeof change; onPresence: typeof onPresence }) => {
-      change = listener.onChange;
-      onPresence = listener.onPresence;
-      return { unsubscribe: () => { unsubscribed++; }, setTyping: (value: boolean) => { typing.push(value); } };
-    } },
+    events: {
+      subscribe: async (listener: {
+        onChange: typeof change;
+        onPresence: typeof onPresence;
+      }) => {
+        change = listener.onChange;
+        onPresence = listener.onPresence;
+        return {
+          unsubscribe: () => {
+            unsubscribed++;
+          },
+          setTyping: (value: boolean) => {
+            typing.push(value);
+          },
+        };
+      },
+    },
   };
-  return { socket, source, typing, change: (kind: SessionEventKind | "presence") => kind === "presence"
-    ? onPresence({ activeMembers: ["github-101"], typingMembers: [] }) : change(kind),
-    revoke: () => { allowed = false; }, unsubscribed: () => unsubscribed };
+  return {
+    socket,
+    source,
+    typing,
+    change: (kind: SessionEventKind | "presence") =>
+      kind === "presence"
+        ? onPresence({ activeMembers: ["github-101"], typingMembers: [] })
+        : change(kind),
+    revoke: () => {
+      allowed = false;
+    },
+    unsubscribed: () => unsubscribed,
+  };
 }
 
 test("the live socket sends a public snapshot and lightweight reply updates, and cleans up once", async () => {
@@ -63,7 +112,11 @@ test("the live socket sends a public snapshot and lightweight reply updates, and
   assert.ok(!f.socket.sent[0].includes("private-checkpoint"));
   f.change("reply");
   await settle();
-  assert.deepEqual(JSON.parse(f.socket.sent[1]), { type: "reply", sessionId: "live-test", reply: await f.source.reply() });
+  assert.deepEqual(JSON.parse(f.socket.sent[1]), {
+    type: "reply",
+    sessionId: "live-test",
+    reply: await f.source.reply(),
+  });
   assert.ok(!f.socket.sent[1].includes("workspace"));
   f.socket.close();
   f.socket.emit("error", new Error("late socket error"));
@@ -85,7 +138,10 @@ test("revoked membership closes the existing socket before sending another updat
 test("the subscription never treats a browser message as agent work", async () => {
   const f = fixture();
   await subscribeToTaskSession(f.socket, f.source);
-  f.socket.emit("message", JSON.stringify({ type: "send-message", body: "start another run" }));
+  f.socket.emit(
+    "message",
+    JSON.stringify({ type: "send-message", body: "start another run" })
+  );
   assert.equal(f.socket.closeCode, 1008);
   assert.equal(f.unsubscribed(), 1);
 });
@@ -94,8 +150,18 @@ test("leaving during database setup releases the late subscription", async () =>
   const f = fixture();
   let ready!: () => void;
   let released = false;
-  const waiting = new Promise<void>((resolve) => { ready = resolve; });
-  f.source.events.subscribe = async () => { await waiting; return { unsubscribe: () => { released = true; }, setTyping: () => {} }; };
+  const waiting = new Promise<void>((resolve) => {
+    ready = resolve;
+  });
+  f.source.events.subscribe = async () => {
+    await waiting;
+    return {
+      unsubscribe: () => {
+        released = true;
+      },
+      setTyping: () => {},
+    };
+  };
   const connected = subscribeToTaskSession(f.socket, f.source);
   f.socket.close();
   ready();
@@ -109,8 +175,14 @@ test("leaving during authorization does not start a snapshot read afterwards", a
   let allow!: (allowed: boolean) => void;
   let reads = 0;
   const snapshot = await f.source.snapshot();
-  f.source.authorized = () => new Promise((resolve) => { allow = resolve; });
-  f.source.snapshot = async () => { reads++; return snapshot; };
+  f.source.authorized = () =>
+    new Promise((resolve) => {
+      allow = resolve;
+    });
+  f.source.snapshot = async () => {
+    reads++;
+    return snapshot;
+  };
   await subscribeToTaskSession(f.socket, f.source);
   f.socket.close();
   allow(true);
@@ -133,8 +205,13 @@ test("presence and reply notifications during a slow snapshot both reach the vie
   const f = fixture();
   const snapshot = await f.source.snapshot();
   let release!: () => void;
-  const waiting = new Promise<void>((resolve) => { release = resolve; });
-  f.source.snapshot = async () => { await waiting; return snapshot; };
+  const waiting = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  f.source.snapshot = async () => {
+    await waiting;
+    return snapshot;
+  };
   try {
     await subscribeToTaskSession(f.socket, f.source);
     await settle();
@@ -143,16 +220,27 @@ test("presence and reply notifications during a slow snapshot both reach the vie
     f.change("presence");
     release();
     await settle();
-    assert.deepEqual(f.socket.sent.map((data) => JSON.parse(data).type), ["snapshot", "reply", "presence"]);
-  } finally { release(); f.socket.close(); }
+    assert.deepEqual(
+      f.socket.sent.map((data) => JSON.parse(data).type),
+      ["snapshot", "reply", "presence"]
+    );
+  } finally {
+    release();
+    f.socket.close();
+  }
 });
 
 test("a queued full snapshot subsumes pending deltas without redundant task reads", async () => {
   const f = fixture();
   const snapshot = await f.source.snapshot();
   let release!: () => void;
-  const waiting = new Promise<void>((resolve) => { release = resolve; });
-  f.source.snapshot = async () => { await waiting; return snapshot; };
+  const waiting = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  f.source.snapshot = async () => {
+    await waiting;
+    return snapshot;
+  };
   try {
     await subscribeToTaskSession(f.socket, f.source);
     await settle();
@@ -163,8 +251,14 @@ test("a queued full snapshot subsumes pending deltas without redundant task read
     f.change("presence");
     release();
     await settle();
-    assert.deepEqual(f.socket.sent.map((data) => JSON.parse(data).type), ["snapshot", "snapshot"]);
-  } finally { release(); f.socket.close(); }
+    assert.deepEqual(
+      f.socket.sent.map((data) => JSON.parse(data).type),
+      ["snapshot", "snapshot"]
+    );
+  } finally {
+    release();
+    f.socket.close();
+  }
 });
 
 test("presence notifications still recheck membership before reading or sending", async () => {
@@ -177,7 +271,9 @@ test("presence notifications still recheck membership before reading or sending"
     await settle();
     assert.equal(f.socket.closeCode, 4401);
     assert.equal(f.socket.sent.length, 1);
-  } finally { f.socket.close(); }
+  } finally {
+    f.socket.close();
+  }
 });
 
 test("typing is the only accepted browser input and is attributed to the authenticated connection", async () => {
@@ -185,15 +281,28 @@ test("typing is the only accepted browser input and is attributed to the authent
   try {
     await subscribeToTaskSession(f.socket, f.source);
     await settle();
-    f.socket.emit("message", Buffer.from(JSON.stringify({ type: "typing", typing: true })), false);
+    f.socket.emit(
+      "message",
+      Buffer.from(JSON.stringify({ type: "typing", typing: true })),
+      false
+    );
     await settle();
     assert.deepEqual(f.typing, [true]);
     f.socket.emit("message", JSON.stringify({ type: "typing", typing: true }));
     await settle();
-    assert.deepEqual(f.typing, [true], "unchanged input does not touch presence again");
-    f.socket.emit("message", JSON.stringify({ type: "typing", typing: false, actor: "github-102" }));
+    assert.deepEqual(
+      f.typing,
+      [true],
+      "unchanged input does not touch presence again"
+    );
+    f.socket.emit(
+      "message",
+      JSON.stringify({ type: "typing", typing: false, actor: "github-102" })
+    );
     assert.equal(f.socket.closeCode, 1008);
-  } finally { f.socket.close(); }
+  } finally {
+    f.socket.close();
+  }
 });
 
 test("revoked members cannot publish typing", async () => {
@@ -206,14 +315,19 @@ test("revoked members cannot publish typing", async () => {
     await settle();
     assert.equal(f.socket.closeCode, 4401);
     assert.deepEqual(f.typing, []);
-  } finally { f.socket.close(); }
+  } finally {
+    f.socket.close();
+  }
 });
 
 test("idle socket probes neither authorize nor read task data; a missed pong releases presence", async (t) => {
   t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
   const f = fixture();
   let reads = 0;
-  f.source.authorized = async () => { reads++; return true; };
+  f.source.authorized = async () => {
+    reads++;
+    return true;
+  };
   try {
     await subscribeToTaskSession(f.socket, f.source);
     await settle();
@@ -228,5 +342,7 @@ test("idle socket probes neither authorize nor read task data; a missed pong rel
     t.mock.timers.tick(LIVE_PING_MS);
     assert.equal(f.socket.terminated, true);
     assert.equal(f.unsubscribed(), 1);
-  } finally { f.socket.close(); }
+  } finally {
+    f.socket.close();
+  }
 });

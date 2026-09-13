@@ -24,12 +24,12 @@ export async function GET(request: NextRequest) {
   if (!installationId || !isTaskSessionId(sessionId)) {
     return NextResponse.json(
       { error: "GitHub did not provide a valid installation ID." },
-      { status: 400 },
+      { status: 400 }
     );
   }
 
   const member = await getSessionMember(
-    request.cookies.get(HIVE_SESSION_COOKIE)?.value,
+    request.cookies.get(HIVE_SESSION_COOKIE)?.value
   );
   if (!member || !(await isTaskSessionMember(sessionId, member.id))) {
     return NextResponse.json({ error: "Session not found" }, { status: 404 });
@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.redirect(
     new URL(
       `/api/github/login?installation_id=${installationId}&session_id=${encodeURIComponent(sessionId)}&return_to=${encodeURIComponent(`/sessions/${sessionId}?github=connected`)}`,
-      request.url,
-    ),
+      request.url
+    )
   );
 }

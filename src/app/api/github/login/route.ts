@@ -27,7 +27,11 @@ export async function GET(request: NextRequest) {
   const sessionId = request.nextUrl.searchParams.get("session_id");
 
   try {
-    const canonicalLogin = canonicalGitHubLoginUrl(request.url, undefined, request.headers.get("host"));
+    const canonicalLogin = canonicalGitHubLoginUrl(
+      request.url,
+      undefined,
+      request.headers.get("host")
+    );
     if (canonicalLogin) return NextResponse.redirect(canonicalLogin);
 
     if (installationId) {
@@ -35,12 +39,12 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: "Invalid session" }, { status: 400 });
       }
       const member = await getSessionMember(
-        request.cookies.get(HIVE_SESSION_COOKIE)?.value,
+        request.cookies.get(HIVE_SESSION_COOKIE)?.value
       );
       if (!member || !(await isTaskSessionMember(sessionId, member.id))) {
         return NextResponse.json(
           { error: "Session not found" },
-          { status: 404 },
+          { status: 404 }
         );
       }
     }
@@ -64,7 +68,7 @@ export async function GET(request: NextRequest) {
         error:
           "Hive could not verify this GitHub App installation before authorization.",
       },
-      { status: 502 },
+      { status: 502 }
     );
   }
 }

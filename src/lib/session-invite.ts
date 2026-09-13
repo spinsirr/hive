@@ -1,6 +1,9 @@
 import "server-only";
 
-import { signSessionInvite, verifySessionInvite } from "@/lib/session-invite-token";
+import {
+  signSessionInvite,
+  verifySessionInvite,
+} from "@/lib/session-invite-token";
 
 function inviteSecret() {
   const secret =
@@ -13,16 +16,13 @@ function inviteSecret() {
   return secret;
 }
 
-export function createSessionInviteToken(
-  sessionId: string,
-  now = Date.now(),
-) {
+export function createSessionInviteToken(sessionId: string, now = Date.now()) {
   return signSessionInvite(sessionId, inviteSecret(), now);
 }
 
 export function verifySessionInviteToken(
   sessionId: string,
-  token?: string | null,
+  token?: string | null
 ) {
   if (!token) return false;
   return verifySessionInvite(sessionId, token, inviteSecret());

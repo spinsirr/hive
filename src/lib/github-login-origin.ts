@@ -2,7 +2,7 @@
 export function canonicalGitHubLoginUrl(
   requestUrl: string,
   callbackUrl = process.env.GITHUB_APP_CALLBACK_URL?.trim(),
-  requestHost?: string | null,
+  requestHost?: string | null
 ) {
   if (!callbackUrl) throw new Error("GitHub callback URL is not configured.");
   const request = new URL(requestUrl);

@@ -1,15 +1,35 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { dashboardTasks, taskUpdatedLabel, type DashboardTask } from "./task-dashboard.ts";
+import {
+  dashboardTasks,
+  taskUpdatedLabel,
+  type DashboardTask,
+} from "./task-dashboard.ts";
 
 test("dashboard keeps every task ordered by update without mutating the input", () => {
   const tasks: DashboardTask[] = [
     { id: "first", title: "First", updatedAt: 1, repositoryName: null },
-    { id: "finished", title: "Finished", updatedAt: 3, repositoryName: "team/repo" },
-    { id: "recent", title: "Recent", updatedAt: 2, repositoryName: "team/repo" },
+    {
+      id: "finished",
+      title: "Finished",
+      updatedAt: 3,
+      repositoryName: "team/repo",
+    },
+    {
+      id: "recent",
+      title: "Recent",
+      updatedAt: 2,
+      repositoryName: "team/repo",
+    },
   ];
-  assert.deepEqual(dashboardTasks(tasks).map((task) => task.id), ["finished", "recent", "first"]);
-  assert.deepEqual(tasks.map((task) => task.id), ["first", "finished", "recent"]);
+  assert.deepEqual(
+    dashboardTasks(tasks).map((task) => task.id),
+    ["finished", "recent", "first"]
+  );
+  assert.deepEqual(
+    tasks.map((task) => task.id),
+    ["first", "finished", "recent"]
+  );
   assert.deepEqual(dashboardTasks([]), []);
 });
 

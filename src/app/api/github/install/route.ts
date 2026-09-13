@@ -12,12 +12,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Invalid session" }, { status: 400 });
   }
   const member = await getSessionMember(
-    request.cookies.get(HIVE_SESSION_COOKIE)?.value,
+    request.cookies.get(HIVE_SESSION_COOKIE)?.value
   );
   if (!member || !(await isTaskSessionMember(sessionId, member.id))) {
     return NextResponse.json({ error: "Session not found" }, { status: 404 });
   }
   return NextResponse.redirect(
-    githubAppInstallUrl(createGitHubInstallState(sessionId)),
+    githubAppInstallUrl(createGitHubInstallState(sessionId))
   );
 }

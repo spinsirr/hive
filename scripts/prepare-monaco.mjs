@@ -10,4 +10,7 @@ await cp(new URL("min/vs/", source), new URL("vs/", destination), {
   recursive: true,
 });
 await copyFile(new URL("LICENSE", source), new URL("LICENSE", destination));
-await copyFile(new URL("ThirdPartyNotices.txt", source), new URL("ThirdPartyNotices.txt", destination));
+await copyFile(
+  new URL("ThirdPartyNotices.txt", source),
+  new URL("ThirdPartyNotices.txt", destination)
+);

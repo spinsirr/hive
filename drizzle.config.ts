@@ -6,7 +6,9 @@ config({ path: ".env.local" });
 const databaseUrl = process.env.DATABASE_URL_DIRECT;
 
 if (!databaseUrl) {
-  throw new Error("DATABASE_URL_DIRECT is required to run database migrations.");
+  throw new Error(
+    "DATABASE_URL_DIRECT is required to run database migrations."
+  );
 }
 
 const verifiedDatabaseUrl = new URL(databaseUrl);

@@ -39,12 +39,33 @@ function errorMessages(error: unknown): string[] {
   return messages;
 }
 
-export function hiveAgentFailureMessage(error: unknown, authentication: "gateway" | "claude-subscription" | "codex-subscription" = "gateway") {
+export function hiveAgentFailureMessage(
+  error: unknown,
+  authentication:
+    "gateway" | "claude-subscription" | "codex-subscription" = "gateway"
+) {
   const statusCode = errorStatusCode(error);
   const details = errorMessages(error).join(" ").toLowerCase();
-  if (authentication !== "gateway" && /subscription limit reached|usage limit|quota_unavailable/.test(details)) return hiveErrorCopy.subscriptionLimit;
-  if (authentication === "codex-subscription" && (statusCode === 401 || statusCode === 403 || /reconnect.*codex|authentication_unavailable/.test(details))) return hiveErrorCopy.codexDisconnected;
-  if (authentication === "claude-subscription" && (statusCode === 401 || statusCode === 403 || /invalid.*oauth|oauth.*expired|authentication_error|invalid bearer/.test(details))) {
+  if (
+    authentication !== "gateway" &&
+    /subscription limit reached|usage limit|quota_unavailable/.test(details)
+  )
+    return hiveErrorCopy.subscriptionLimit;
+  if (
+    authentication === "codex-subscription" &&
+    (statusCode === 401 ||
+      statusCode === 403 ||
+      /reconnect.*codex|authentication_unavailable/.test(details))
+  )
+    return hiveErrorCopy.codexDisconnected;
+  if (
+    authentication === "claude-subscription" &&
+    (statusCode === 401 ||
+      statusCode === 403 ||
+      /invalid.*oauth|oauth.*expired|authentication_error|invalid bearer/.test(
+        details
+      ))
+  ) {
     return hiveErrorCopy.claudeDisconnected;
   }
 
@@ -86,7 +107,7 @@ export class HiveAgentError extends Error {
   constructor(
     message: string,
     cause: unknown,
-    checkpoint?: HiveSessionCheckpoint,
+    checkpoint?: HiveSessionCheckpoint
   ) {
     super(message);
     this.name = "HiveAgentError";

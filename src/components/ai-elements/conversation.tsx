@@ -11,15 +11,22 @@ import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 
 export type ConversationProps = ComponentProps<typeof StickToBottom>;
 
-export const Conversation = ({ className, initial = "instant", resize = "smooth", ...props }: ConversationProps) => {
+export const Conversation = ({
+  className,
+  initial = "instant",
+  resize = "smooth",
+  ...props
+}: ConversationProps) => {
   const reducedMotion = useReducedMotion();
-  return <StickToBottom
-    className={cn("relative flex-1 overflow-y-hidden", className)}
-    initial={reducedMotion && initial !== false ? "instant" : initial}
-    resize={reducedMotion ? "instant" : resize}
-    role="log"
-    {...props}
-  />;
+  return (
+    <StickToBottom
+      className={cn("relative flex-1 overflow-y-hidden", className)}
+      initial={reducedMotion && initial !== false ? "instant" : initial}
+      resize={reducedMotion ? "instant" : resize}
+      role="log"
+      {...props}
+    />
+  );
 };
 
 export type ConversationContentProps = ComponentProps<
@@ -32,7 +39,10 @@ export const ConversationContent = ({
   ...props
 }: ConversationContentProps) => (
   <StickToBottom.Content
-    className={cn("flex flex-col gap-8 p-4 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring", className)}
+    className={cn(
+      "flex flex-col gap-8 p-4 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+      className
+    )}
     scrollClassName={cn("overscroll-contain", scrollClassName)}
     tabIndex={-1}
     {...props}

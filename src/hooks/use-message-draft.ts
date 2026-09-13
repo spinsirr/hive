@@ -17,10 +17,17 @@ const serverSnapshot = () => null;
 export function useMessageDraft(
   storageKey: string,
   deliveredIds: ReadonlySet<string>,
-  onSubmit: (submission: MessageSubmission) => Promise<boolean>,
+  onSubmit: (submission: MessageSubmission) => Promise<boolean>
 ) {
-  const store = useMemo(() => createMessageDraftStore(storageKey), [storageKey]);
-  const draft = useSyncExternalStore<MessageDraft | null>(store.subscribe, store.getSnapshot, serverSnapshot);
+  const store = useMemo(
+    () => createMessageDraftStore(storageKey),
+    [storageKey]
+  );
+  const draft = useSyncExternalStore<MessageDraft | null>(
+    store.subscribe,
+    store.getSnapshot,
+    serverSnapshot
+  );
 
   useEffect(() => {
     const current = store.getSnapshot();
@@ -30,9 +37,12 @@ export function useMessageDraft(
     }
   }, [store, deliveredIds]);
 
-  const edit = useCallback((body: string) => {
-    store.commit(editMessageDraft(store.getSnapshot(), body));
-  }, [store]);
+  const edit = useCallback(
+    (body: string) => {
+      store.commit(editMessageDraft(store.getSnapshot(), body));
+    },
+    [store]
+  );
   const clear = useCallback(() => store.commit(emptyMessageDraft()), [store]);
   const submit = useCallback(async () => {
     const current = store.getSnapshot();
@@ -43,9 +53,11 @@ export function useMessageDraft(
     const { clientId } = next.submission;
     try {
       const delivered = await onSubmit(next.submission);
-      store.commit(delivered
-        ? acknowledgeMessageSubmission(store.getSnapshot(), clientId)
-        : failMessageSubmission(store.getSnapshot(), clientId));
+      store.commit(
+        delivered
+          ? acknowledgeMessageSubmission(store.getSnapshot(), clientId)
+          : failMessageSubmission(store.getSnapshot(), clientId)
+      );
     } catch {
       store.commit(failMessageSubmission(store.getSnapshot(), clientId));
     }

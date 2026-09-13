@@ -7,13 +7,22 @@ const MAX_RETRIES = 2;
 const MAX_WAIT_MS = 60_000;
 const MAX_BODY_BYTES = 64 * 1024 * 1024;
 const HOP_HEADERS = new Set([
-  "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
-  "te", "trailer", "transfer-encoding", "upgrade", "host", "content-length",
+  "connection",
+  "keep-alive",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade",
+  "host",
+  "content-length",
 ]);
 
 function retryAfterMs(value, now) {
   if (value == null) return undefined;
-  if (/^\d+(\.\d+)?$/.test(value.trim())) return Math.ceil(Number(value) * 1000);
+  if (/^\d+(\.\d+)?$/.test(value.trim()))
+    return Math.ceil(Number(value) * 1000);
   // Do not interpret a negative delay or an arbitrary number as a calendar date.
   if (!/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun), /i.test(value)) return undefined;
   const date = Date.parse(value);
@@ -36,7 +45,10 @@ function requestId(headers, name) {
  * }} options
  */
 export function createGatewayFetch({
-  fetchRequest = fetch, wait = sleep, now = Date.now, random = Math.random,
+  fetchRequest = fetch,
+  wait = sleep,
+  now = Date.now,
+  random = Math.random,
   onDiagnostic = () => {},
 } = {}) {
   let retries = 0;
@@ -49,21 +61,36 @@ export function createGatewayFetch({
       const response = await fetchRequest(url, { ...init, redirect: "manual" });
       const afterMs = retryAfterMs(response.headers.get("retry-after"), now());
       const attrs = {
-        route: "ai-gateway", statusCode: response.status,
+        route: "ai-gateway",
+        statusCode: response.status,
         requestId: requestId(response.headers, "x-request-id"),
-        gatewayRequestId: requestId(response.headers, "x-vercel-ai-gateway-request-id"),
+        gatewayRequestId: requestId(
+          response.headers,
+          "x-vercel-ai-gateway-request-id"
+        ),
         vercelId: requestId(response.headers, "x-vercel-id"),
-        retryAfterMs: afterMs, retries, waitedMs,
+        retryAfterMs: afterMs,
+        retries,
+        waitedMs,
       };
       if (response.status !== 429) {
-        if (response.status >= 400 || retried) onDiagnostic({
-          ...attrs, outcome: response.ok ? "recovered" : "stopped",
-        });
+        if (response.status >= 400 || retried)
+          onDiagnostic({
+            ...attrs,
+            outcome: response.ok ? "recovered" : "stopped",
+          });
         return response;
       }
-      const delayMs = Math.max(1000, afterMs ?? Math.ceil(15_000 * 2 ** retries * (1 + random() * 0.2)));
-      const stopReason = retries >= MAX_RETRIES ? "attempt-limit"
-        : delayMs > MAX_WAIT_MS - waitedMs ? "wait-limit" : undefined;
+      const delayMs = Math.max(
+        1000,
+        afterMs ?? Math.ceil(15_000 * 2 ** retries * (1 + random() * 0.2))
+      );
+      const stopReason =
+        retries >= MAX_RETRIES
+          ? "attempt-limit"
+          : delayMs > MAX_WAIT_MS - waitedMs
+            ? "wait-limit"
+            : undefined;
       if (stopReason) {
         onDiagnostic({ ...attrs, outcome: "stopped", stopReason });
         return response; // Keep the real 429, its headers, and its error body.
@@ -71,7 +98,13 @@ export function createGatewayFetch({
       retries++;
       waitedMs += delayMs;
       retried = true;
-      onDiagnostic({ ...attrs, outcome: "retrying", retries, waitedMs, delayMs });
+      onDiagnostic({
+        ...attrs,
+        outcome: "retrying",
+        retries,
+        waitedMs,
+        delayMs,
+      });
       await response.body?.cancel();
       await wait(delayMs, undefined, { signal: init.signal });
     }
@@ -79,19 +112,38 @@ export function createGatewayFetch({
 }
 
 function forwardHeaders(headers) {
-  const connectionHeaders = new Set((headers.get("connection") ?? "").toLowerCase().split(",").map((name) => name.trim()));
+  const connectionHeaders = new Set(
+    (headers.get("connection") ?? "")
+      .toLowerCase()
+      .split(",")
+      .map((name) => name.trim())
+  );
   const forwarded = new Headers();
   for (const [name, value] of headers) {
-    if (!HOP_HEADERS.has(name) && !connectionHeaders.has(name)) forwarded.set(name, value);
+    if (!HOP_HEADERS.has(name) && !connectionHeaders.has(name))
+      forwarded.set(name, value);
   }
   return forwarded;
 }
 
 /** Private, turn-scoped Responses transport. Auth still uses harness credential brokering. */
-export async function startGatewayTransport({ baseUrl, authorization, signal, onDiagnostic, ...fetchOptions }) {
-  if (!authorization || authorization === "Bearer undefined") throw new Error("Codex Gateway authentication is missing.");
+export async function startGatewayTransport({
+  baseUrl,
+  authorization,
+  signal,
+  onDiagnostic,
+  ...fetchOptions
+}) {
+  if (!authorization || authorization === "Bearer undefined")
+    throw new Error("Codex Gateway authentication is missing.");
   const upstream = new URL(`${baseUrl.replace(/\/+$/, "")}/responses`);
-  if (!["http:", "https:"].includes(upstream.protocol) || upstream.username || upstream.password || upstream.search || upstream.hash) {
+  if (
+    !["http:", "https:"].includes(upstream.protocol) ||
+    upstream.username ||
+    upstream.password ||
+    upstream.search ||
+    upstream.hash
+  ) {
     throw new Error("Codex Gateway URL is invalid.");
   }
   signal.throwIfAborted();
@@ -101,13 +153,22 @@ export async function startGatewayTransport({ baseUrl, authorization, signal, on
   const server = createServer((request, response) => {
     const done = handle(request, response);
     pending.add(done);
-    void done.then(() => pending.delete(done), () => pending.delete(done));
+    void done.then(
+      () => pending.delete(done),
+      () => pending.delete(done)
+    );
   });
   async function handle(request, response) {
     const disconnected = new AbortController();
-    const abort = () => { if (!response.writableFinished) disconnected.abort(); };
+    const abort = () => {
+      if (!response.writableFinished) disconnected.abort();
+    };
     response.once("close", abort);
-    const requestSignal = AbortSignal.any([signal, lifetime.signal, disconnected.signal]);
+    const requestSignal = AbortSignal.any([
+      signal,
+      lifetime.signal,
+      disconnected.signal,
+    ]);
     try {
       if (request.method !== "POST" || request.url !== "/responses") {
         response.writeHead(404).end();
@@ -135,21 +196,34 @@ export async function startGatewayTransport({ baseUrl, authorization, signal, on
       const headers = forwardHeaders(new Headers(request.headers));
       headers.set("accept-encoding", "identity");
       const result = await gatewayFetch(upstream, {
-        method: "POST", headers, body: Buffer.concat(chunks), signal: requestSignal,
+        method: "POST",
+        headers,
+        body: Buffer.concat(chunks),
+        signal: requestSignal,
       });
       const outputHeaders = forwardHeaders(result.headers);
       // Fetch decodes compressed responses; never advertise the old encoding/size.
       outputHeaders.delete("content-encoding");
       response.writeHead(result.status, Object.fromEntries(outputHeaders));
-      if (result.body) await pipeline(Readable.fromWeb(result.body), response, { signal: requestSignal });
+      if (result.body)
+        await pipeline(Readable.fromWeb(result.body), response, {
+          signal: requestSignal,
+        });
       else response.end();
     } catch {
       // Do not log request bodies, credentials, URLs, or arbitrary provider errors.
-      if (!requestSignal.aborted) onDiagnostic?.({ route: "ai-gateway", outcome: "transport-error" });
+      if (!requestSignal.aborted)
+        onDiagnostic?.({ route: "ai-gateway", outcome: "transport-error" });
       if (response.headersSent || requestSignal.aborted) response.destroy();
-      else response.writeHead(502, { "content-type": "application/json" }).end(JSON.stringify({
-        error: { message: "Gateway connection failed; this request was not retried." },
-      }));
+      else
+        response.writeHead(502, { "content-type": "application/json" }).end(
+          JSON.stringify({
+            error: {
+              message:
+                "Gateway connection failed; this request was not retried.",
+            },
+          })
+        );
     } finally {
       response.removeListener("close", abort);
     }

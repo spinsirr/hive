@@ -26,8 +26,13 @@
     "test:integration": "node scripts/check-fixture-pool.mjs && pnpm test:auth && pnpm test:onboarding && pnpm test:session-egress && pnpm test:recovery && pnpm test:live-transport",
     "typecheck": "next typegen && tsc --noEmit",
     "start": "next start",
-    "lint": "eslint",
-    "prototype:state": "node scripts/prototype-task-session-state.ts"
+    "lint": "eslint . --max-warnings=0",
+    "prototype:state": "node scripts/prototype-task-session-state.ts",
+    "prepare": "husky",
+    "lint:fix": "pnpm lint --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test:design-system && pnpm test"
   },
   "dependencies": {
     "@ai-sdk/harness": "^1.0.98",
@@ -69,6 +74,7 @@
     "zod": "^4.5.4"
   },
   "devDependencies": {
+    "@eslint/js": "9.39.5",
     "@tailwindcss/postcss": "^4",
     "@testing-library/react": "^16.3.3",
     "@types/node": "^20",
@@ -80,9 +86,14 @@
     "drizzle-kit": "^0.31.10",
     "eslint": "^9",
     "eslint-config-next": "16.3.3",
+    "eslint-config-prettier": "10.1.8",
+    "husky": "9.1.7",
     "jsdom": "^30.0.1",
+    "lint-staged": "17.5.1",
+    "prettier": "3.9.6",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "typescript-eslint": "8.70.0"
   },
   "packageManager": "pnpm@11.19.0"
 }

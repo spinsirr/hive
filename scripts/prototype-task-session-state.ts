@@ -17,16 +17,22 @@ function render() {
   const dim = "\x1b[2m";
   const reset = "\x1b[0m";
   console.log(`${bold}Hive multiplayer state prototype${reset}`);
-  console.log(`${dim}Can teammates prompt, annotate, and steer the same live agent?${reset}\n`);
+  console.log(
+    `${dim}Can teammates prompt, annotate, and steer the same live agent?${reset}\n`
+  );
   console.log(`${bold}actor${reset}       ${memberDirectory[actor].name}`);
   console.log(`${bold}stage${reset}       ${state.stage}`);
   console.log(`${bold}run${reset}         v${state.revision}`);
   console.log(`${bold}annotation${reset}  ${state.annotation.status}`);
-  console.log(`${bold}steeredBy${reset}   ${state.annotation.steeredBy ?? "—"}`);
+  console.log(
+    `${bold}steeredBy${reset}   ${state.annotation.steeredBy ?? "—"}`
+  );
   console.log(`${bold}version${reset}     ${state.version}`);
   console.log(`${bold}messages${reset}    ${state.messages.length}`);
   console.log(`\n${dim}${state.messages.at(-1)?.body}${reset}`);
-  console.log(`\n${bold}[p]${reset} switch person  ${bold}[m]${reset} prompt Hive  ${bold}[s]${reset} steer from annotation`);
+  console.log(
+    `\n${bold}[p]${reset} switch person  ${bold}[m]${reset} prompt Hive  ${bold}[s]${reset} steer from annotation`
+  );
   console.log(`${bold}[r]${reset} reset  ${bold}[q]${reset} quit`);
 }
 
@@ -38,8 +44,15 @@ render();
 process.stdin.on("keypress", (_input, key) => {
   if (key.name === "q" || (key.ctrl && key.name === "c")) process.exit(0);
   if (key.name === "p") actor = actor === "spencer" ? "maya" : "spencer";
-  if (key.name === "m") state = reduceTaskSession(state, { type: "send-message", actor, body: "I agree with the proposed behavior." });
-  if (key.name === "s") state = reduceTaskSession(state, { type: "steer-agent", actor });
-  if (key.name === "r") state = reduceTaskSession(state, { type: "reset", actor });
+  if (key.name === "m")
+    state = reduceTaskSession(state, {
+      type: "send-message",
+      actor,
+      body: "I agree with the proposed behavior.",
+    });
+  if (key.name === "s")
+    state = reduceTaskSession(state, { type: "steer-agent", actor });
+  if (key.name === "r")
+    state = reduceTaskSession(state, { type: "reset", actor });
   render();
 });

@@ -14,13 +14,13 @@ Spencer requested research/review subagents and Codex Desktop-like controls afte
 
 ## Actual APIs, not simulated execution
 
-| Hive operation | Public Codex App Server API |
-| --- | --- |
-| New research/review context | `thread/start` with the current task's settings |
-| Repository research | `turn/start` |
-| Code review | `review/start` on that new thread |
-| Stop one child | `turn/interrupt` with the recorded thread + turn IDs |
-| Status / result | Native item and turn notifications; `exitedReviewMode` for review |
+| Hive operation              | Public Codex App Server API                                       |
+| --------------------------- | ----------------------------------------------------------------- |
+| New research/review context | `thread/start` with the current task's settings                   |
+| Repository research         | `turn/start`                                                      |
+| Code review                 | `review/start` on that new thread                                 |
+| Stop one child              | `turn/interrupt` with the recorded thread + turn IDs              |
+| Status / result             | Native item and turn notifications; `exitedReviewMode` for review |
 
 Sources: [App Server overview](https://learn.chatgpt.com/docs/app-server#api-overview), [native review](https://learn.chatgpt.com/docs/app-server#review), [configuration inheritance](https://learn.chatgpt.com/docs/agent-configuration/subagents#custom-agents). Implementation is checked against the generated protocol and executable from the project's pinned **Codex 0.149.1**, not an assumed current desktop interface. No CLI, model or dependency upgrade was necessary.
 
