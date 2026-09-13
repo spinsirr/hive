@@ -14,7 +14,7 @@ export async function connectHiveConversationTools(connection: HiveToolConnectio
     }));
     const { tools } = await client.listTools();
     return {
-      tools: Object.fromEntries(tools.filter(({ name }) => ["get_context", "request_input", "reply_to_thread"].includes(name)).map(({ name, description, inputSchema }) => [name, dynamicTool({
+      tools: Object.fromEntries(tools.filter(({ name }) => ["get_context", "get_presence", "read_thread", "request_input", "reply_to_thread"].includes(name)).map(({ name, description, inputSchema }) => [name, dynamicTool({
         description, inputSchema: jsonSchema(inputSchema),
         execute: async (input, { abortSignal }) => {
           const result = await client.callTool({ name, arguments: input as Record<string, unknown> }, undefined, { signal: abortSignal, timeout: 15_000 });

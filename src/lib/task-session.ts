@@ -295,7 +295,7 @@ export type TaskSessionAction =
   | { type: "archive-task"; actor: MemberId }
   | { type: "restore-task"; actor: MemberId }
   | { type: "resolve-peer-review"; actor: MemberId; messageId: string; revision: string }
-  | { type: "continue-peer-response"; actor: MemberId; steerId: string }
+  | { type: "continue-queued-steer"; actor: MemberId; steerId: string }
   | { type: "answer-question"; actor: MemberId; messageId: string; body: string; clientId: string; replyThreadId?: string }
   | { type: "select-harness"; actor: MemberId; runtime: CodingRuntime; modelId?: string }
   | { type: "set-coding-effort"; actor: MemberId; effort: CodingEffort; modelId?: string }
@@ -465,6 +465,15 @@ export function canApplyNextSteer(state: TaskSessionState): boolean {
     state.steeringQueue.length > 0 &&
     !state.activeSteer &&
     !isHiveRunActive(state);
+}
+
+/** Only already-submitted input may auto-continue. Errors and restored history
+ * require an explicit restart; the exact head ID fences competing clients. */
+export function nextAutomaticSteer(state: TaskSessionState): string | null {
+  const next = state.steeringQueue[0];
+  if (!canApplyNextSteer(state) || !next || state.workspace.status === "error" ||
+    (state.workspace.lastRestore && next.queuedAt <= state.workspace.lastRestore.at)) return null;
+  return next.id;
 }
 
 export function didStartHiveRun(previous: TaskSessionState, next: TaskSessionState): boolean {
@@ -1127,10 +1136,8 @@ export function reduceTaskSession(
     };
   }
 
-  if (action.type === "continue-peer-response") {
-    const next = state.steeringQueue[0];
-    if (!next || next.id !== action.steerId || next.source.kind !== "peer-response" || state.workspace.status === "error" ||
-      (state.workspace.lastRestore && next.queuedAt <= state.workspace.lastRestore.at)) return state;
+  if (action.type === "continue-queued-steer") {
+    if (nextAutomaticSteer(state) !== action.steerId) return state;
     return reduceTaskSession(state, { type: "apply-next-steer", actor: action.actor }, now, members);
   }
 
