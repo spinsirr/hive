@@ -62,7 +62,7 @@ mock.module("@ai-sdk/harness/agent", { namedExports: { HarnessAgent: class {
       if (question) {
         const receipt = { messageId: "confirmed-question", created: true, status: "awaiting_answer" };
         yield { type: "tool-result", toolName: runtime === "codex" ? "request_input" : "mcp__hive__request_input",
-          output: runtime === "codex" ? { content: [{ type: "text", text: JSON.stringify(receipt) }] } : receipt };
+          output: runtime === "codex" ? { content: [{ type: "text", text: JSON.stringify(receipt) }] } : [{ type: "text", text: JSON.stringify(receipt) }] };
         yield { type: "text-start", id: "unnecessary-followup" };
         yield { type: "text-delta", text: '["Close after navigation"]' };
       }
