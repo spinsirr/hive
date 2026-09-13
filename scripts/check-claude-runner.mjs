@@ -26,11 +26,15 @@ const persistent = { name: "hive-session-fixture", tags: { session: "claude-test
   expiresAt: new Date(Date.now() + 1_800_000), currentSession: () => ({ sessionId: "claude-vm" }),
   keepLastSnapshots: { count: 3 }, async stop() { stopped++; return { snapshot: { id: "saved-native-and-files", createdAt: 100, status: "created" } }; } };
 mock.module("@vercel/sandbox", { namedExports: { Sandbox: { async getOrCreate(options) {
+  assert.equal(expectedResume, undefined, "A resumed Claude task must not create a new workspace");
   assert.equal(options.resources.vcpus, 2, "New Claude workspaces must have enough memory for native bootstrap");
   persistent.tags = options.tags; starts++; return persistent;
-}, async get() { starts++; return persistent; } } } });
+}, async get() { assert.ok(expectedResume); starts++; return persistent; } } } });
 mock.module("@ai-sdk/sandbox-vercel", { namedExports: { createVercelSandbox() { return {}; } } });
-mock.module(new URL("../src/lib/github-app.ts", import.meta.url).href, { namedExports: { async getRepositoryCloneCredentials() { return {}; } } });
+mock.module(new URL("../src/lib/github-app.ts", import.meta.url).href, { namedExports: { async getRepositoryCloneCredentials() {
+  assert.equal(expectedResume, undefined, "Claude continuation must not depend on GitHub clone-token issuance");
+  return {};
+} } });
 mock.module("@ai-sdk/harness/agent", { namedExports: { HarnessAgent: class {
   constructor(value) {
     settings = value;

@@ -5,6 +5,7 @@ export const hiveErrorCopy = {
   claudeDisconnected: "Reconnect the Claude subscription.",
   codexDisconnected: "Reconnect the Codex subscription.",
   subscriptionLimit: "Subscription limit reached. Try again after the limit resets.",
+  repositoryAccess: "Couldn't get GitHub repository access. The agent hasn't started. Try again.",
   generic: "Run failed. Try again.",
   lost: "Hive's execution process was lost. Partial output and queued steers were kept; nothing was rerun.",
   model: "Model unavailable on this plan.",
@@ -12,6 +13,7 @@ export const hiveErrorCopy = {
 } as const;
 
 export function displayHiveErrorMessage(message: string) {
+  if (message === hiveErrorCopy.repositoryAccess) return message;
   const normalized = message.toLowerCase();
   if (normalized === "start a new claude task to change its authentication.") return message;
   if (normalized.includes("reconnect the claude subscription")) return hiveErrorCopy.claudeDisconnected;

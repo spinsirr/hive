@@ -25,6 +25,9 @@ const resumeSafeInstructions = "You are Hive's Codex execution engine, shared by
 let scenario;
 let memoryQueries = [];
 let sandboxStopped = false;
+let cloneError, sandboxLookupError, expectedResume;
+let cloneCalls = 0, sandboxGets = 0, sandboxCreates = 0, agentStarts = 0;
+const cloneCredentials = { username: "x-access-token", password: "fixture-clone-token" };
 const sandbox = {
   async run({ command }) {
     assert.equal(sandboxStopped, false, "Read artifacts before stopping the caller-owned sandbox");
@@ -46,7 +49,19 @@ const persistentSandbox = { name: "hive-session-fixture", persistent: true, time
   tags: { session: "failed-run" }, expiresAt: new Date(Date.now() + 1_800_000), currentSession: () => ({ sessionId: "fixture-vm" }),
   keepLastSnapshots: { count: 3 }, async stop() { sandboxStopped = true; return { snapshot: { id: "snap-run-fixture", status: "created", createdAt: 50 } }; } };
 mock.module("@vercel/sandbox", { namedExports: {
-  Sandbox: { async getOrCreate() { return persistentSandbox; }, async get() { return persistentSandbox; } },
+  Sandbox: {
+    async getOrCreate(options) {
+      sandboxCreates++;
+      assert.equal(options.source.username, cloneCredentials.username);
+      assert.equal(options.source.password, cloneCredentials.password, "New private clones must still use repository credentials");
+      return persistentSandbox;
+    },
+    async get() {
+      sandboxGets++;
+      if (sandboxLookupError) throw sandboxLookupError;
+      return persistentSandbox;
+    },
+  },
 } });
 mock.module("@ai-sdk/sandbox-vercel", { namedExports: { createVercelSandbox() { return {}; } } });
 mock.module("@ai-sdk/harness-codex", { namedExports: { createCodex(settings) {
@@ -54,7 +69,13 @@ mock.module("@ai-sdk/harness-codex", { namedExports: { createCodex(settings) {
   return { async doStart() { return {}; } };
 } } });
 mock.module(new URL("../src/lib/github-app.ts", import.meta.url).href, {
-  namedExports: { async getRepositoryCloneCredentials() { return {}; } },
+  namedExports: { async getRepositoryCloneCredentials(repository) {
+    cloneCalls++;
+    assert.equal(repository.id, 1);
+    assert.equal(repository.installationId, 1);
+    if (cloneError) throw cloneError;
+    return cloneCredentials;
+  } },
 });
 mock.module("@ai-sdk/harness/agent", { namedExports: {
   HarnessAgent: class {
@@ -62,7 +83,9 @@ mock.module("@ai-sdk/harness/agent", { namedExports: {
       assert.equal(settings.model, scenario.modelOverride ?? "openai/gpt-5.1-codex-mini", "The coding default and explicit model override must reach the harness");
       this.settings = settings;
     }
-    async createSession() {
+    async createSession(options) {
+      agentStarts++;
+      assert.equal(options.resumeFrom, expectedResume, "Resume the same native context, never replace it with a new session");
       await this.settings.sandboxConfig.onSession({ session: sandbox, sessionWorkDir: "/vercel/sandbox/hive" });
       await this.settings.harness.doStart({ sandboxSession: { id: persistentSandbox.name, async setRequestTransformations() {} } });
       return { async stop() {
@@ -174,3 +197,66 @@ for (const options of [
   assert.deepEqual(memoryQueries, options.memoryRecall ? [{ query: "Fix the steer label.", filters: { AND: [{ user_id: repositoryMemoryId({ installationId: 1, repositoryId: 1 }) }, { app_id: "hive" }] }, top_k: 3, rerank: false }] : []);
   console.log(`PASS: ${options.name}`);
 }
+
+// Reproduce the production GitHub 500 at the real runner boundary. A saved
+// native session must not depend on credentials used only by fresh git clones.
+const { displayHiveErrorMessage } = await import("../src/lib/hive-error-copy.ts");
+const repositoryFailureCopy = "Couldn't get GitHub repository access. The agent hasn't started. Try again.";
+scenario = { fail: false };
+process.env.HIVE_CODEX_MODEL = "";
+process.env.MEM0_API_KEY = "";
+globalThis.fetch = async () => { throw new Error("This regression must not access the network"); };
+const resumed = { ...running, workspace: { ...running.workspace, ...previousSnapshot, agentSession: { ...running.workspace.agentSession, resumeFrom: checkpoint } } };
+expectedResume = checkpoint;
+cloneError = Object.assign(new Error("GitHub token endpoint failed; fixture-private-details"), {
+  status: 500, response: { headers: { "x-github-request-id": "FIXTURE-500" } },
+});
+cloneCalls = sandboxGets = sandboxCreates = agentStarts = 0;
+sandboxStopped = false;
+const continued = await runHiveCodingTask(resumed, "spencer");
+assert.equal(cloneCalls, 0, "GitHub token failure must not block an existing task");
+assert.equal(sandboxGets, 1);
+assert.equal(sandboxCreates, 0);
+assert.equal(agentStarts, 1);
+assert.equal(continued.agentSession.resumeFrom, checkpoint);
+assert.equal(sandboxStopped, false);
+console.log("PASS: resumed task runs once with its saved native context and no clone-credential request, even when GitHub token issuance fails");
+
+sandboxLookupError = new Error("Existing sandbox is unavailable (fixture)");
+await assert.rejects(runHiveCodingTask(resumed, "spencer"), error => {
+  assert.equal(error.cause, sandboxLookupError);
+  return true;
+});
+assert.equal(cloneCalls, 0);
+assert.equal(sandboxCreates, 0, "A failed resume must never fall back to cloning a replacement workspace");
+assert.equal(agentStarts, 1);
+sandboxLookupError = undefined;
+console.log("PASS: failed environment lookup preserves the resume boundary without recloning or rerunning");
+
+expectedResume = undefined;
+for (const status of [500, 401, 403]) {
+  cloneError = Object.assign(new Error("fixture-private-details"), { status, response: { headers: { "x-github-request-id": `FIXTURE-${status}` } } });
+  cloneCalls = sandboxGets = sandboxCreates = agentStarts = 0;
+  await assert.rejects(runHiveCodingTask(running, "spencer"), error => {
+    assert.ok(error instanceof HiveAgentError);
+    assert.equal(error.cause, cloneError, "Keep the original GitHub request ID available to server diagnostics");
+    assert.equal(error.message, repositoryFailureCopy);
+    assert.equal(displayHiveErrorMessage(error.message), repositoryFailureCopy, "The UI must preserve the failure stage instead of displaying a generic/model-auth error");
+    const state = applyHiveRunError(running, error.message, 40, error.checkpoint);
+    assert.equal(state.workspace.status, "error");
+    assert.equal(state.workspace.liveReply, undefined, "Credential failure must release the running state");
+    assert.doesNotMatch(JSON.stringify(state), /fixture-private-details|FIXTURE-|fixture-clone-token/);
+    return true;
+  });
+  assert.equal(cloneCalls, 1, "No retry loop on credential failure");
+  assert.equal(sandboxGets + sandboxCreates + agentStarts, 0, "Do not start anything or use broader credentials after clone authentication fails");
+  console.log(`PASS: fresh task GitHub ${status} fails once before Agent start, with safe repository-specific UI copy`);
+}
+cloneError = undefined;
+cloneCalls = sandboxGets = sandboxCreates = agentStarts = 0;
+await runHiveCodingTask(running, "spencer");
+assert.equal(cloneCalls, 1);
+assert.equal(sandboxCreates, 1);
+assert.equal(sandboxGets, 0);
+assert.equal(agentStarts, 1);
+console.log("PASS: fresh task still supplies repository-scoped clone credentials and starts once");
