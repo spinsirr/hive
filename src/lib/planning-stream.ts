@@ -6,23 +6,26 @@ const questionReceipt = z.object({
   created: z.boolean(),
   status: z.literal("awaiting_answer"),
 });
+const mcpContent = z.array(z.object({ type: z.string(), text: z.string().optional() }));
 const mcpResult = z.object({
   isError: z.boolean().optional(),
-  content: z.array(z.object({ type: z.string(), text: z.string().optional() })),
+  content: mcpContent,
 });
 const failedToolOutput = z.object({ isError: z.literal(true) });
 
 function isPendingQuestion(output: unknown) {
   if (failedToolOutput.safeParse(output).success) return false;
   if (questionReceipt.safeParse(output).success) return true;
-  // Codex preserves MCP content; Claude may already have decoded its JSON.
-  const result = mcpResult.safeParse(output);
-  if (!result.success || result.data.isError) return false;
-  return result.data.content.some(part => {
+  // Codex returns the MCP envelope. Claude's native tool_use_result is the
+  // content array; only when absent does its bridge decode the receipt JSON.
+  const content = Array.isArray(output)
+    ? mcpContent.safeParse(output).data
+    : mcpResult.safeParse(output).data?.content;
+  return content?.some(part => {
     if (part.type !== "text" || !part.text) return false;
     try { return questionReceipt.safeParse(JSON.parse(part.text)).success; }
     catch { return false; }
-  });
+  }) ?? false;
 }
 
 /** A planning question is the public turn's endpoint, but the native turn must
