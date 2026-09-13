@@ -3,6 +3,7 @@ import path from "node:path";
 import { createCodex, type CodexHarnessSettings } from "@ai-sdk/harness-codex";
 import { subagentUpdateSchema, type HiveSubagentUpdate } from "./hive-subagents.ts";
 import { codexAccessPlaceholder, codexOAuthTransformations, type CodexAccess } from "./codex-subscription-broker.ts";
+import { withHiveCodexTools } from "./hive-codex-tools.ts";
 
 /** Keep the existing harness lifecycle/auth; replace only its sandbox turn driver. */
 export function createHiveCodex(
@@ -28,7 +29,7 @@ export function createHiveCodex(
         // Replace stale forwarding rules when resuming an earlier Gateway run.
         await session.setRequestTransformations(codexOAuthTransformations(subscription, placeholder));
       }
-      return harness.doStart({
+      const session = await harness.doStart({
         ...options,
         // The framework's global debug sink also prints raw console lines.
         // Forward only our structured request metadata, never sandbox logs.
@@ -48,6 +49,10 @@ export function createHiveCodex(
           },
         },
       });
+      if (!settings.mcpServers?.hive) return session;
+      return { ...session, doPromptTurn(options: Parameters<typeof session.doPromptTurn>[0]) {
+        return session.doPromptTurn({ ...options, prompt: withHiveCodexTools(options.prompt) });
+      } };
     },
     async getBootstrap(...args: Parameters<NonNullable<typeof getBootstrap>>) {
       const recipe = await getBootstrap?.(...args);

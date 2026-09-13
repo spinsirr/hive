@@ -68,7 +68,7 @@ export function ConversationMessage({ message, currentMember, members, sessionId
     catch { setCopyState("failed"); }
   };
   const actions = message.status !== "streaming" && (message.body || canStartThread) ? (
-    <div className={cn("ml-auto flex shrink-0 items-center gap-1 text-muted-foreground transition-opacity focus-within:opacity-100 group-hover:opacity-100 sm:opacity-0 motion-reduce:transition-none", isOwn && "ml-0")}>
+    <div data-slot="message-controls" className={cn("flex shrink-0 items-center gap-1 self-start text-muted-foreground transition-opacity focus-within:opacity-100 group-hover:opacity-100 sm:opacity-0 motion-reduce:transition-none", isOwn && "self-end")}>
       {isAgent && message.body ? <Button aria-label={copyState === "copied" ? "Response copied" : "Copy response"} className="text-muted-foreground" onClick={() => { void copy(); }} size={copyState === "copied" ? "xs" : "icon-xs"} type="button" variant="ghost" title={copyState === "copied" ? "Copied" : "Copy text"}><Copy aria-hidden="true" className="size-3.5" />{copyState === "copied" ? <span>Copied</span> : null}</Button> : null}
       {canStartThread ? <Button aria-label={`Reply in thread to ${message.name}'s message`} data-thread-trigger={message.id} className="text-xs text-muted-foreground" onClick={() => onOpenThread(message.id)} size="xs" type="button" variant="ghost"><MessageSquare aria-hidden="true" className="size-3.5" /> Reply</Button> : null}
       {!isAgent ? <DropdownMenu>
@@ -99,16 +99,15 @@ export function ConversationMessage({ message, currentMember, members, sessionId
         <span className="min-w-0 truncate text-xs font-medium text-[#444]">{message.name}</span>
         <MessageTime className="shrink-0 text-xs text-[#aaa]" message={message} />
         {message.edits?.length ? <Button aria-expanded={showHistory} className="text-muted-foreground" onClick={() => setShowHistory((visible) => !visible)} size="xs" variant="ghost">Edited</Button> : null}
-        {!message.interaction ? actions : null}
       </div> : null}
       {message.subagents?.length ? <SubagentActivity live={message.status === "streaming" && runActive && !disabled} sessionId={sessionId} tasks={message.subagents} /> : null}
       <div className="flex w-full min-w-0 flex-col gap-2" data-slot={hasThread ? "threaded-message" : question ? "question-message" : "message-body"}>
           {message.interaction ? <div className="flex min-w-0 items-center gap-2">
             <PeerRequestSummary className="mb-0" message={message} members={members} />
-            {actions}
           </div> : null}
           {body}
           {question && onAnswerQuestion && !selected ? <QuestionAnswer currentMember={currentMember} disabled={disabled} members={members} message={message} onAnswer={onAnswerQuestion} replyThreadId={message.threadId} sessionId={sessionId} /> : null}
+        {actions}
         {hasThread ? thread : null}
       </div>
       {showHistory && message.edits?.length ? <section aria-label={`Edit history for ${message.name}'s message`} className="w-full rounded-xl border border-border bg-muted/30 p-3 text-xs">

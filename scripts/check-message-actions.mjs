@@ -38,6 +38,15 @@ let editing, opened, cancelled = 0;
 const props = { message, members, currentMember: "alex", sessionId: "ui-fixture", disabled: false, runActive: true, queueing: true, selected: false, onOpenThread: id => { opened = id; }, onSteerReply() {}, onEdit: value => { editing = value; } };
 try {
   const view = render(h(ConversationMessage, props));
+  // Purpose: message controls follow the text, including shared question cards;
+  // author headers stay metadata-only, regardless of who wrote the message.
+  for (const example of [message, { ...message, role: "agent", name: "Hive" }, { ...message, role: "agent", name: "Hive", interaction: { kind: "question", status: "open", options: ["Yes", "No"] } }]) {
+    view.rerender(h(ConversationMessage, { ...props, message: example }));
+    const body = view.container.querySelector('[data-slot="message-content"]');
+    const control = screen.getByRole("button", { name: example.role === "agent" ? "Copy response" : "Message actions for Alex" });
+    assert.ok(body.compareDocumentPosition(control) & Node.DOCUMENT_POSITION_FOLLOWING, "message actions must be below the body");
+  }
+  view.rerender(h(ConversationMessage, props));
   fireEvent.click(screen.getByRole("button", { name: "Message actions for Alex" }));
   fireEvent.click(await screen.findByRole("menuitem", { name: "Edit message" }));
   assert.equal(editing.id, message.id);

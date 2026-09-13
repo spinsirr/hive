@@ -138,8 +138,11 @@ bounded footer with a reply count, excerpt and open state for ordinary messages,
 questions and reviews. Its subtle left rule connects the discussion to its parent;
 it does not wrap or restyle that parent. Question/review metadata and answer controls
 compose inside the same message layout, not an additional outer card.
-Copy and Reply actions sit in the message header instead of reserving an empty
-row between content and discussion. Copy retains its copy icon and briefly says
+Copy, Reply and More actions sit below the message content (2026-09-13), before
+the discussion footer; author headers remain metadata-only. The same placement
+applies to ordinary messages and question/review messages. Own-message actions
+align right; other actions align left. Touch and keyboard access remain available.
+Copy retains its copy icon and briefly says
 `Copied`; a persistent checkmark must not resemble review approval.
 The Thread's selected and keyboard-focus states are distinct, and the full-width
 entry remains available on touch screens and archived tasks. Production and Demo
