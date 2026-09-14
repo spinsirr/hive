@@ -1,12 +1,15 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { getSessionMember, HIVE_SESSION_COOKIE } from "@/lib/auth-session";
-import { isTaskSessionId } from "@/lib/task-session-id";
+import {
+  getSessionMember,
+  HIVE_SESSION_COOKIE,
+} from "@/server/auth/auth-session";
+import { isTaskSessionId } from "@/lib/tasks/task-session-id";
 import {
   isTaskSessionMember,
   withTaskSubagentControl,
-} from "@/lib/task-session-store";
-import { controlSubagent } from "@/lib/subagent-control";
+} from "@/server/sessions/task-session-store";
+import { controlSubagent } from "@/server/agents/tools/subagent-control";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;

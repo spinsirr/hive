@@ -1,15 +1,18 @@
 import { experimental_upgradeWebSocket } from "@vercel/functions";
 import type { NextRequest } from "next/server";
 
-import { getSessionMember, HIVE_SESSION_COOKIE } from "@/lib/auth-session";
-import { sessionEvents } from "@/lib/session-events";
-import { subscribeToTaskSession } from "@/lib/session-live";
-import { isTaskSessionId } from "@/lib/task-session-id";
+import {
+  getSessionMember,
+  HIVE_SESSION_COOKIE,
+} from "@/server/auth/auth-session";
+import { sessionEvents } from "@/server/sessions/session-events";
+import { subscribeToTaskSession } from "@/server/sessions/session-live";
+import { isTaskSessionId } from "@/lib/tasks/task-session-id";
 import {
   getAgentReply,
   getPublicTaskSessionSnapshot,
   isTaskSessionMember,
-} from "@/lib/task-session-store";
+} from "@/server/sessions/task-session-store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

@@ -3,9 +3,9 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { TaskDashboard } from "@/components/hive/task-dashboard";
+import { TaskDashboard } from "@/components/hive/tasks/task-dashboard";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { demoLoadedAt, demoTaskHref, demoTasks } from "@/lib/ui-demo";
+import { demoLoadedAt, demoTaskHref, demoTasks } from "@/lib/demo/ui-demo";
 
 export function DashboardDemo() {
   const router = useRouter();

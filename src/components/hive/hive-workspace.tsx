@@ -1,13 +1,13 @@
 "use client";
-import { WorkspaceDetail } from "./workspace-detail";
+import { WorkspaceDetail } from "./workspace/workspace-detail";
 import { Code2, MessageSquare } from "lucide-react";
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { useQueuedContinuation } from "@/hooks/use-queued-continuation";
 import { useHiveClient } from "@/components/hive/hive-client";
-import { TaskAttention } from "@/components/hive/task-attention";
+import { TaskAttention } from "@/components/hive/tasks/task-attention";
 
-import { WorkspaceSplit } from "@/components/hive/workspace-split";
-import type { AnnotateCode } from "@/components/hive/code-annotation-composer";
+import { WorkspaceSplit } from "@/components/hive/workspace/workspace-split";
+import type { AnnotateCode } from "@/components/hive/workspace/code-annotation-composer";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -20,8 +20,8 @@ import {
 import { useSharedSession } from "@/hooks/use-shared-session";
 import { useWorkspaceRecovery } from "@/hooks/use-workspace-recovery";
 import { useStalledRun } from "@/hooks/use-stalled-run";
-import type { MessageSubmission } from "@/lib/message-draft";
-import type { CodingEffort } from "@/lib/coding-effort";
+import type { MessageSubmission } from "@/lib/conversation/message-draft";
+import type { CodingEffort } from "@/lib/agents/coding-effort";
 
 import {
   canApplyNextSteer,
@@ -34,12 +34,12 @@ import {
   type MessageEdit,
   resolveMember,
   type TeamMember,
-} from "@/lib/task-session";
-import type { TaskSessionSnapshot } from "@/lib/task-session-contract";
+} from "@/lib/session/task-session";
+import type { TaskSessionSnapshot } from "@/lib/session/task-session-contract";
 import { cn } from "@/lib/utils";
 import { useWorkspaceNavigation } from "@/hooks/use-workspace-navigation";
-import { ProductHeader } from "./workspace-header";
-import { SharedSession } from "./shared-conversation";
+import { ProductHeader } from "./workspace/workspace-header";
+import { SharedSession } from "./conversation/shared-conversation";
 
 type SharedProps = Parameters<typeof SharedSession>[0];
 

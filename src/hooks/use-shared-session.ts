@@ -2,15 +2,18 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { AgentReply } from "@/lib/task-session";
-import type { TaskSessionSnapshot } from "@/lib/task-session-contract";
-import type { LivePresence } from "@/lib/session-presence";
+import type { AgentReply } from "@/lib/session/task-session";
+import type {
+  TaskSessionSnapshot,
+  LivePresence,
+} from "@/lib/session/task-session-contract";
+
 import {
   receiveAgentReply,
   receiveTaskSessionSnapshot,
-} from "@/lib/task-session-snapshot";
+} from "@/lib/session/task-session-snapshot";
 
-import type { ClientTaskSessionAction as SessionDispatchAction } from "@/lib/task-session-actions";
+import type { ClientTaskSessionAction as SessionDispatchAction } from "@/lib/session/task-session-actions";
 
 class SessionActionError extends Error {
   status: number;

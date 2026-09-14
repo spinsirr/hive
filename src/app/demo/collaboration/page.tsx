@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { DemoWorkspace } from "../demo-workspace";
-import { demoTasks } from "@/lib/ui-demo";
+import { demoTasks } from "@/lib/demo/ui-demo";
 
 export const metadata: Metadata = {
   title: "Hive — Peer programming preview",

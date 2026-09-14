@@ -1,8 +1,11 @@
 import { cookies } from "next/headers";
 
-import { HiveSignIn } from "@/components/hive/hive-sign-in";
-import { TaskDashboard } from "@/components/hive/task-dashboard";
-import { getSessionMember, HIVE_SESSION_COOKIE } from "@/lib/auth-session";
+import { HiveSignIn } from "@/components/hive/tasks/hive-sign-in";
+import { TaskDashboard } from "@/components/hive/tasks/task-dashboard";
+import {
+  getSessionMember,
+  HIVE_SESSION_COOKIE,
+} from "@/server/auth/auth-session";
 
 export const dynamic = "force-dynamic";
 
@@ -38,7 +41,7 @@ export default async function Home({
   // metadata, not repository authorization details or a full task transcript.
   // Visitors can reach the public demo without loading the task database.
   const [{ listTaskSessions }, { createTaskSession }] = await Promise.all([
-    import("@/lib/task-session-store"),
+    import("@/server/sessions/task-session-store"),
     import("@/app/actions"),
   ]);
   const sessions = await listTaskSessions(member.id);

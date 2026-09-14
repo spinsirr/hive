@@ -1,14 +1,20 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { getSessionMember, HIVE_SESSION_COOKIE } from "@/lib/auth-session";
-import { isTaskSessionId } from "@/lib/task-session-id";
+import {
+  getSessionMember,
+  HIVE_SESSION_COOKIE,
+} from "@/server/auth/auth-session";
+import { isTaskSessionId } from "@/lib/tasks/task-session-id";
 import {
   withTaskWorkspaceRead,
   isTaskSessionMember,
-} from "@/lib/task-session-store";
-import { readWorkspace, WorkspaceReadError } from "@/lib/workspace-browser";
-import { workspaceReadRequest } from "@/lib/workspace-files";
-import { WorkspaceRestoreError } from "@/lib/workspace-restore-state";
+} from "@/server/sessions/task-session-store";
+import {
+  readWorkspace,
+  WorkspaceReadError,
+} from "@/server/workspace/workspace-browser";
+import { workspaceReadRequest } from "@/lib/workspace/workspace-files";
+import { WorkspaceRestoreError } from "@/lib/workspace/workspace-restore-state";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";

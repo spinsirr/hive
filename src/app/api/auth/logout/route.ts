@@ -4,11 +4,11 @@ import {
   deleteUserSession,
   HIVE_SESSION_COOKIE,
   sessionCookieOptions,
-} from "@/lib/auth-session";
+} from "@/server/auth/auth-session";
 import {
   GITHUB_USER_COOKIE,
   githubUserCookieOptions,
-} from "@/lib/github-user-session";
+} from "@/server/auth/github-user-session";
 
 export async function POST(request: NextRequest) {
   await deleteUserSession(request.cookies.get(HIVE_SESSION_COOKIE)?.value);

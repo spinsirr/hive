@@ -19,7 +19,7 @@ import type {
   RunStage,
   SteeringQueueItem,
   WorkspaceState,
-} from "@/lib/task-session";
+} from "@/lib/session/task-session";
 
 export const users = pgTable("users", {
   id: text("id").primaryKey(),

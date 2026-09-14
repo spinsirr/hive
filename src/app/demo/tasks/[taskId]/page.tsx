@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { DemoWorkspace } from "../../demo-workspace";
-import { demoLoadedAt, findDemoTask } from "@/lib/ui-demo";
+import { demoLoadedAt, findDemoTask } from "@/lib/demo/ui-demo";
 
 export const metadata: Metadata = {
   title: "Hive — Sample task",

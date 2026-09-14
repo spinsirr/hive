@@ -3,8 +3,11 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { getSessionMember, HIVE_SESSION_COOKIE } from "@/lib/auth-session";
-import { createTaskSession as createStoredTaskSession } from "@/lib/task-session-store";
+import {
+  getSessionMember,
+  HIVE_SESSION_COOKIE,
+} from "@/server/auth/auth-session";
+import { createTaskSession as createStoredTaskSession } from "@/server/sessions/task-session-store";
 
 export async function createTaskSession(formData: FormData) {
   const cookieStore = await cookies();

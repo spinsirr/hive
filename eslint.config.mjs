@@ -23,6 +23,35 @@ const eslintConfig = defineConfig([
     },
   },
   {
+    files: ["src/**/*.{ts,tsx,mjs}"],
+    // Integration-style unit tests may exercise both sides of a boundary.
+    // Production imports and every other lint rule remain enforced.
+    ignores: ["**/*.test.ts"],
+    rules: {
+      "import/no-cycle": ["error", { ignoreExternal: true }],
+      "import/no-restricted-paths": [
+        "error",
+        {
+          basePath: import.meta.dirname,
+          zones: [
+            {
+              target: ["./src/lib", "./src/components", "./src/hooks"],
+              from: ["./src/server", "./src/db"],
+              message:
+                "Keep server implementation out of shared/client modules. Shared contracts belong in src/lib.",
+            },
+            {
+              target: ["./src/lib", "./src/server", "./src/db"],
+              from: ["./src/components", "./src/hooks", "./src/app"],
+              message:
+                "Routes and UI compose domain and server modules; dependencies must not point back to presentation.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ["**/*.{ts,tsx,mts,cts}"],
     languageOptions: {
       parser: tseslint.parser,

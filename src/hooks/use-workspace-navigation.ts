@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ChatMessage } from "@/lib/task-session";
+import type { ChatMessage } from "@/lib/session/task-session";
 
 export type WorkspaceTab = "diff" | "files" | "runs" | "checkpoints";
 type DetailView =

@@ -1,7 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { getSessionMember, HIVE_SESSION_COOKIE } from "@/lib/auth-session";
-import { isTaskSessionId } from "@/lib/task-session-id";
+import {
+  getSessionMember,
+  HIVE_SESSION_COOKIE,
+} from "@/server/auth/auth-session";
+import { isTaskSessionId } from "@/lib/tasks/task-session-id";
 import {
   getTaskSessionSnapshot,
   getPublicTaskSessionSnapshot,
@@ -11,20 +14,20 @@ import {
   recordTaskWorkspaceRestoreSource,
   finishTaskWorkspaceRestore,
   TaskSessionAccessError,
-} from "@/lib/task-session-store";
+} from "@/server/sessions/task-session-store";
 import {
   readWorkspaceCheckpoints,
   WorkspaceReadError,
-} from "@/lib/workspace-browser";
+} from "@/server/workspace/workspace-browser";
 import {
   restoreWorkspaceRequest,
   WorkspaceRestoreError,
-} from "@/lib/workspace-restore-state";
+} from "@/lib/workspace/workspace-restore-state";
 import {
   confirmSandboxCheckpoint,
   restoreSandboxCheckpoint,
-} from "@/lib/workspace-restore";
-import { publicTaskSessionSnapshot } from "@/lib/task-session-snapshot";
+} from "@/server/workspace/workspace-restore";
+import { publicTaskSessionSnapshot } from "@/lib/session/task-session-snapshot";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";

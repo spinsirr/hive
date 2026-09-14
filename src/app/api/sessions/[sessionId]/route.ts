@@ -1,22 +1,31 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { getSessionMember, HIVE_SESSION_COOKIE } from "@/lib/auth-session";
-import { createReplyWriter } from "@/lib/agent-stream";
-import { HiveAgentError } from "@/lib/hive-agent";
-import { runHiveConversation } from "@/lib/hive-conversation";
-import { hiveErrorCopy } from "@/lib/hive-error-copy";
-import { runHiveCodingTask } from "@/lib/hive-runner";
-import { readCodexSubscription } from "@/lib/codex-subscription-store";
-import { usesPlatformSubscriptions } from "@/lib/platform-models";
-import { buildHiveRunInput } from "@/lib/hive-prompt";
-import { createHiveToolToken, hiveToolEndpoint } from "@/lib/hive-tool-token";
-import { MessageEditError, type TaskSessionAction } from "@/lib/task-session";
-import { isTaskSessionId } from "@/lib/task-session-id";
-import { clientTaskSessionActionSchema } from "@/lib/task-session-actions";
-import { publicTaskSessionSnapshot } from "@/lib/task-session-snapshot";
-import { WorkspaceRestoreError } from "@/lib/workspace-restore-state";
-import { subagentCapability } from "@/lib/subagent-control";
-import type { HiveSubagent } from "@/lib/hive-subagents";
+import {
+  getSessionMember,
+  HIVE_SESSION_COOKIE,
+} from "@/server/auth/auth-session";
+import { createReplyWriter } from "@/server/agents/agent-stream";
+import { HiveAgentError } from "@/server/agents/hive-agent";
+import { runHiveConversation } from "@/server/agents/hive-conversation";
+import { hiveErrorCopy } from "@/lib/agents/hive-error-copy";
+import { runHiveCodingTask } from "@/server/agents/hive-runner";
+import { readCodexSubscription } from "@/server/agents/codex/codex-subscription-store";
+import { usesPlatformSubscriptions } from "@/server/agents/platform-models";
+import { buildHiveRunInput } from "@/server/agents/hive-prompt";
+import {
+  createHiveToolToken,
+  hiveToolEndpoint,
+} from "@/server/agents/tools/hive-tool-token";
+import {
+  MessageEditError,
+  type TaskSessionAction,
+} from "@/lib/session/task-session";
+import { isTaskSessionId } from "@/lib/tasks/task-session-id";
+import { clientTaskSessionActionSchema } from "@/lib/session/task-session-actions";
+import { publicTaskSessionSnapshot } from "@/lib/session/task-session-snapshot";
+import { WorkspaceRestoreError } from "@/lib/workspace/workspace-restore-state";
+import { subagentCapability } from "@/server/agents/tools/subagent-control";
+import type { HiveSubagent } from "@/lib/agents/hive-subagents";
 import {
   appendHiveReply,
   applyTaskSessionAction,
@@ -25,8 +34,8 @@ import {
   getPublicTaskSessionSnapshot,
   isTaskSessionMember,
   TaskSessionAccessError,
-} from "@/lib/task-session-store";
-import type { TaskSessionSnapshot } from "@/lib/task-session-contract";
+} from "@/server/sessions/task-session-store";
+import type { TaskSessionSnapshot } from "@/lib/session/task-session-contract";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";

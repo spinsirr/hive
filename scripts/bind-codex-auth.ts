@@ -12,8 +12,8 @@ import {
   codexAuthNeedsRefresh,
   parseManagedCodexAuth,
   sealCodexAuth,
-} from "../src/lib/codex-subscription-credentials.ts";
-import { isTaskSessionId } from "../src/lib/task-session-id.ts";
+} from "../src/server/agents/codex/codex-subscription-credentials.ts";
+import { isTaskSessionId } from "../src/lib/tasks/task-session-id.ts";
 
 const { values } = parseArgs({
   options: {

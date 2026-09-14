@@ -2,12 +2,13 @@
 
 import { useCallback, useMemo, useRef } from "react";
 import useSWRInfinite from "swr/infinite";
-import { useHiveClient, type HiveClient } from "@/components/hive/hive-client";
+import { useHiveClient } from "@/components/hive/hive-client";
+import type { HiveClient } from "@/lib/session/task-session-contract";
 
 import {
   workspaceReadResponse,
   type WorkspaceReadResponse,
-} from "@/lib/workspace-files";
+} from "@/lib/workspace/workspace-files";
 
 type ReadKey = readonly [
   sessionId: string,

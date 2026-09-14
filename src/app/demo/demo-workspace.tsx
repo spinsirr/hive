@@ -4,8 +4,8 @@ import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { HiveWorkspaceView } from "@/components/hive/hive-workspace";
 import { HiveClientContext } from "@/components/hive/hive-client";
 import { Button } from "@/components/ui/button";
-import { createDemoWorkspace, demoMembers } from "@/lib/demo-workspace";
-import type { DashboardTask } from "@/lib/task-dashboard";
+import { createDemoWorkspace, demoMembers } from "@/lib/demo/demo-workspace";
+import type { DashboardTask } from "@/lib/tasks/task-dashboard";
 
 export function DemoWorkspace({ task }: { task: DashboardTask }) {
   const [demo] = useState(() => createDemoWorkspace(task));

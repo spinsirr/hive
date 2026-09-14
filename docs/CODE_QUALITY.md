@@ -25,7 +25,9 @@ Prettier owns formatting. ESLint owns errors and maintainability rules; `eslint-
 
 Two rule choices are deliberate: registering `node:test` tests does not require awaiting the runner-owned registration promise (promises inside the tests still do); unused object properties deliberately removed with rest destructuring are allowed. `void` marks deliberate fire-and-forget work, but does **not** handle rejection. Review the called function's error handling before using it.
 
-Generated Next files, Monaco bundles, coverage and deployment output are excluded. Prettier additionally skips the package-manager lockfile and generated Drizzle metadata. Authored application code, test scripts, documentation and configuration remain in scope. The sandbox file reader is an authored `.mjs` asset under `src/lib/runtime`, so the same lint and formatting gates cover the code that actually runs.
+Generated Next files, Monaco bundles, coverage and deployment output are excluded. Prettier additionally skips the package-manager lockfile and generated Drizzle metadata. Authored application code, test scripts, documentation and configuration remain in scope. The sandbox file reader is an authored `.mjs` asset under `src/server/workspace`, so the same lint and formatting gates cover the code that actually runs.
+
+ESLint also enforces the [directory dependency rules](DEVELOPMENT.md#module-boundaries): shared/client modules cannot import server or database code, and server/domain modules cannot depend on presentation. The rule resolves both aliases and relative paths, including dynamic imports. Runtime import cycles are errors. Colocated tests may cross these layer boundaries to exercise integrations; all other lint rules still apply to them.
 
 ## Before committing
 
@@ -39,7 +41,7 @@ CI runs format/lint/types, database tests and a production build. The workflow d
 
 Lint passing does not prove that a state model or abstraction is good. Apply the [Thermo-Nuclear Code Quality Review skill](https://github.com/cursor/plugins/blob/main/cursor-team-kit/skills/thermo-nuclear-code-quality-review/SKILL.md) to meaningful changes. Keep action validation in `task-session-actions`, execution admission in `task-session-commands`, and provider I/O outside task/membership row locks. The reducer dispatches to focused domain transitions; it should not grow another execution-start path. Keep navigation in `use-workspace-navigation` and presentation in the shared workspace components.
 
-The [September 13 review and fixes](CODE_QUALITY_REVIEW.md) record the original findings, new boundaries and validation. Complexity is still a diagnostic, not an accepted-debt baseline. To reproduce the structural scan:
+Complexity is still a diagnostic, not an accepted-debt baseline. To reproduce the structural scan:
 
 ```sh
 pnpm exec eslint src --rule 'complexity:[warn,20]' --rule 'max-lines:[warn,{max:1000,skipBlankLines:true,skipComments:true}]'

@@ -1,23 +1,26 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { getSessionMember, HIVE_SESSION_COOKIE } from "@/lib/auth-session";
+import {
+  getSessionMember,
+  HIVE_SESSION_COOKIE,
+} from "@/server/auth/auth-session";
 import {
   GitHubUserAuthorizationError,
   listGitHubUserRepositories,
-} from "@/lib/github-oauth";
+} from "@/server/auth/github-oauth";
 import {
   GITHUB_USER_COOKIE,
   readGitHubUserToken,
-} from "@/lib/github-user-session";
-import { isTaskSessionId } from "@/lib/task-session-id";
-import { ARCHIVED_TASK_MESSAGE } from "@/lib/task-session";
-import { WorkspaceRestoreError } from "@/lib/workspace-restore-state";
+} from "@/server/auth/github-user-session";
+import { isTaskSessionId } from "@/lib/tasks/task-session-id";
+import { ARCHIVED_TASK_MESSAGE } from "@/lib/session/task-session";
+import { WorkspaceRestoreError } from "@/lib/workspace/workspace-restore-state";
 import {
   applyTaskSessionAction,
   getPublicTaskSessionSnapshot,
   isTaskSessionMember,
   TaskSessionAccessError,
-} from "@/lib/task-session-store";
+} from "@/server/sessions/task-session-store";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
