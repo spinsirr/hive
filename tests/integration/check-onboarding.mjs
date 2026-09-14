@@ -81,7 +81,7 @@ const githubRepositories = [
 ];
 let githubDenied = false;
 let repositoryRevoked = false;
-globalThis.fetch = async (input, init) => {
+const githubFixture = async (input, init) => {
   const endpoint = new URL(String(input));
   const authorization = new Headers(init?.headers).get("authorization") ?? "";
   if (endpoint.href === "https://github.com/login/oauth/access_token") {
@@ -89,11 +89,15 @@ globalThis.fetch = async (input, init) => {
     assert.ok(people[code], "only explicit fixture accounts may sign in");
     return Response.json({
       access_token: `fixture-${code}`,
+      scope: "",
+      token_type: "bearer",
       expires_in: 28_800,
+      refresh_token: `fixture-refresh-${code}`,
+      refresh_token_expires_in: 15_552_000,
     });
   }
   if (endpoint.href === "https://api.github.com/user") {
-    const account = authorization.replace("Bearer fixture-", "");
+    const account = authorization.replace(/^(?:Bearer|token) fixture-/, "");
     assert.ok(people[account]);
     return Response.json(people[account]);
   }
@@ -117,13 +121,21 @@ globalThis.fetch = async (input, init) => {
       ? []
       : githubRepositories.filter(
           (repo) =>
-            repo.id === (authorization === "Bearer fixture-owner" ? 701 : 702)
+            repo.id ===
+            (/^(?:Bearer|token) fixture-owner$/.test(authorization) ? 701 : 702)
         );
     return Response.json({ total_count: repositories.length, repositories });
   }
   throw new Error(
     `External HTTP is forbidden in this fixture: ${endpoint.origin}${endpoint.pathname}`
   );
+};
+
+globalThis.fetch = async (input, init) => {
+  const response = await githubFixture(input, init);
+  Object.defineProperty(response, "url", { value: String(input) });
+  response.headers.set("date", new Date().toUTCString());
+  return response;
 };
 
 try {

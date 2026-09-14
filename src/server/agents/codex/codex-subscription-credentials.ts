@@ -1,5 +1,5 @@
 import { createHash, hkdfSync } from "node:crypto";
-import { EncryptJWT, jwtDecrypt } from "jose";
+import { decodeJwt, EncryptJWT, jwtDecrypt } from "jose";
 import { z } from "zod";
 
 const audience = "hive-codex-subscription";
@@ -94,11 +94,7 @@ export function codexAuthNeedsRefresh(
   now = Date.now()
 ) {
   try {
-    const payload = JSON.parse(
-      Buffer.from(auth.tokens.access_token.split(".")[1], "base64url").toString(
-        "utf8"
-      )
-    );
+    const payload = decodeJwt(auth.tokens.access_token);
     const refreshed = Date.parse(auth.last_refresh);
     return (
       !Number.isFinite(refreshed) ||
