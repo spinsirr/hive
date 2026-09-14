@@ -13,7 +13,11 @@ export function CreateSessionButton() {
       disabled={pending}
       type="submit"
     >
-      {pending ? <LoaderCircle className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
+      {pending ? (
+        <LoaderCircle className="size-3.5 animate-spin" />
+      ) : (
+        <Plus className="size-3.5" />
+      )}
       {pending ? "Creating…" : "New task"}
     </Button>
   );

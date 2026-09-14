@@ -78,7 +78,7 @@ export function createGitHubInstallState(sessionId: string) {
     JSON.stringify({
       sessionId,
       expiresAt: Date.now() + STATE_TTL_MS,
-    } satisfies InstallStatePayload),
+    } satisfies InstallStatePayload)
   ).toString("base64url");
   return `${encoded}.${sign(encoded)}`;
 }
@@ -90,7 +90,7 @@ export function verifyGitHubInstallState(state?: string | null) {
 
   try {
     const payload = JSON.parse(
-      Buffer.from(encoded, "base64url").toString("utf8"),
+      Buffer.from(encoded, "base64url").toString("utf8")
     ) as InstallStatePayload;
     return payload.expiresAt >= Date.now() ? payload.sessionId : null;
   } catch {
@@ -125,7 +125,7 @@ export function verifyGitHubOAuthState(state: string, cookieNonce?: string) {
 
   try {
     const payload = JSON.parse(
-      Buffer.from(encoded, "base64url").toString("utf8"),
+      Buffer.from(encoded, "base64url").toString("utf8")
     ) as OAuthStatePayload;
     if (
       payload.nonce !== cookieNonce ||
@@ -205,7 +205,7 @@ export function getGitHubUser(accessToken: string) {
 
 export async function authorizeGitHubInstallation(
   accessToken: string,
-  installationId: number,
+  installationId: number
 ): Promise<{
   user: GitHubUserPayload;
   repositories: GitHubInstallationRepository[];
@@ -219,16 +219,20 @@ export async function authorizeGitHubInstallation(
 
 async function getGitHubUserInstallationRepositories(
   accessToken: string,
-  installationId: number,
+  installationId: number
 ): Promise<GitHubInstallationRepository[]> {
   const repositories: InstallationRepositoriesPayload["repositories"] = [];
   for (let page = 1; ; page++) {
     const payload = await githubUserRequest<InstallationRepositoriesPayload>(
       accessToken,
-      `/user/installations/${installationId}/repositories?per_page=100&page=${page}`,
+      `/user/installations/${installationId}/repositories?per_page=100&page=${page}`
     );
     repositories.push(...payload.repositories);
-    if (repositories.length >= payload.total_count || payload.repositories.length === 0) break;
+    if (
+      repositories.length >= payload.total_count ||
+      payload.repositories.length === 0
+    )
+      break;
   }
   return repositories.map((repository) => ({
     id: repository.id,
@@ -247,14 +251,25 @@ export async function listGitHubUserRepositories(accessToken: string) {
       total_count: number;
     }>(accessToken, `/user/installations?per_page=100&page=${page}`);
     installations.push(...payload.installations);
-    if (installations.length >= payload.total_count || payload.installations.length === 0) break;
+    if (
+      installations.length >= payload.total_count ||
+      payload.installations.length === 0
+    )
+      break;
   }
   // The user endpoint returns the intersection of App and user permissions.
   // An installation token alone would expose other members' private repositories.
   const repositories = [];
   for (const { id } of installations) {
-    const accessible = await getGitHubUserInstallationRepositories(accessToken, id);
-    repositories.push(...accessible.map((repository) => ({ ...repository, installationId: id })));
+    const accessible = await getGitHubUserInstallationRepositories(
+      accessToken,
+      id
+    );
+    repositories.push(
+      ...accessible.map((repository) => ({ ...repository, installationId: id }))
+    );
   }
-  return repositories.sort((left, right) => left.name.localeCompare(right.name));
+  return repositories.sort((left, right) =>
+    left.name.localeCompare(right.name)
+  );
 }

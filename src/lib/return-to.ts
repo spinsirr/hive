@@ -13,7 +13,8 @@ export function safeReturnTo(value: unknown) {
   try {
     const url = new URL(value, LOCAL_ORIGIN);
     // Dot segments and control characters can normalize into a protocol-relative URL.
-    if (url.origin !== LOCAL_ORIGIN || url.pathname.startsWith("//")) return "/";
+    if (url.origin !== LOCAL_ORIGIN || url.pathname.startsWith("//"))
+      return "/";
     return `${url.pathname}${url.search}${url.hash}`;
   } catch {
     return "/";

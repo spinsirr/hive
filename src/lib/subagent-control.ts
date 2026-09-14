@@ -1,12 +1,23 @@
 import { createHmac } from "node:crypto";
 import { Sandbox } from "@vercel/sandbox";
-import { subagentControlSchema, subagentSchema, type SubagentControl, type SubagentSession } from "./hive-subagents.ts";
+import {
+  subagentControlSchema,
+  subagentSchema,
+  type SubagentControl,
+  type SubagentSession,
+} from "./hive-subagents.ts";
 import { createAgentSessionId } from "./task-session.ts";
 import { resolvePersistentSandboxName } from "./hive-sandbox.ts";
 
-export function subagentCapability(sessionId: string, runId: string, secret: string) {
+export function subagentCapability(
+  sessionId: string,
+  runId: string,
+  secret: string
+) {
   if (!secret) throw new Error("Agent control is not configured.");
-  return createHmac("sha256", secret).update(JSON.stringify(["hive-subagents", sessionId, runId])).digest("hex");
+  return createHmac("sha256", secret)
+    .update(JSON.stringify(["hive-subagents", sessionId, runId]))
+    .digest("hex");
 }
 
 // Constant executable; user/model inputs are data, never interpolated commands.
@@ -25,25 +36,64 @@ socket.on('error',()=>{process.stderr.write('Subagent control is unavailable');p
 `;
 
 export function assertSubagentRun(session: SubagentSession, runId: string) {
-  if (session.workspace.agentSession?.runtime === "claude-code") throw new Error("Child controls are not available for Claude Code tasks.");
-  if (!session.repository || session.stage !== "running" || session.workspace.startedAt == null || session.workspace.completedAt != null || session.workspace.restore || session.workspace.liveReply?.id !== runId) throw new Error("This run has ended. Refresh the task.");
+  if (session.workspace.agentSession?.runtime === "claude-code")
+    throw new Error("Child controls are not available for Claude Code tasks.");
+  if (
+    !session.repository ||
+    session.stage !== "running" ||
+    session.workspace.startedAt == null ||
+    session.workspace.completedAt != null ||
+    session.workspace.restore ||
+    session.workspace.liveReply?.id !== runId
+  )
+    throw new Error("This run has ended. Refresh the task.");
 }
 
-export async function controlSubagent(session: SubagentSession, runId: string, input: SubagentControl, signal: AbortSignal) {
+export async function controlSubagent(
+  session: SubagentSession,
+  runId: string,
+  input: SubagentControl,
+  signal: AbortSignal
+) {
   assertSubagentRun(session, runId);
   const parsed = subagentControlSchema.parse(input);
-  const agentId = session.workspace.agentSession?.id ?? createAgentSessionId(session.sessionId, session.repository!.connectedAt);
+  const agentId =
+    session.workspace.agentSession?.id ??
+    createAgentSessionId(session.sessionId, session.repository!.connectedAt);
   // Never create/resume a stopped VM or start another parent run from a control.
-  const sandbox = await Sandbox.get({ name: resolvePersistentSandboxName(session, agentId), resume: false, signal });
-  if (sandbox.tags?.session !== session.sessionId) throw new Error("Workspace does not belong to this task.");
-  const result = await sandbox.runCommand({ cmd: "node", args: ["-e", client], env: {
-    HIVE_CONTROL: subagentCapability(session.sessionId, runId, process.env.HIVE_INVITE_SECRET?.trim() ?? ""),
-    HIVE_CONTROL_INPUT: JSON.stringify(parsed),
-  }, signal, timeoutMs: 15_000 });
-  if (result.exitCode !== 0) throw new Error("Subagent control is unavailable. No new run was started.");
+  const sandbox = await Sandbox.get({
+    name: resolvePersistentSandboxName(session, agentId),
+    resume: false,
+    signal,
+  });
+  if (sandbox.tags?.session !== session.sessionId)
+    throw new Error("Workspace does not belong to this task.");
+  const result = await sandbox.runCommand({
+    cmd: "node",
+    args: ["-e", client],
+    env: {
+      HIVE_CONTROL: subagentCapability(
+        session.sessionId,
+        runId,
+        process.env.HIVE_INVITE_SECRET?.trim() ?? ""
+      ),
+      HIVE_CONTROL_INPUT: JSON.stringify(parsed),
+    },
+    signal,
+    timeoutMs: 15_000,
+  });
+  if (result.exitCode !== 0)
+    throw new Error("Subagent control is unavailable. No new run was started.");
   const response = JSON.parse(await result.stdout({ signal }));
-  if (response.error) throw new Error("The subagent request was not accepted. Check its current state.");
+  if (response.error)
+    throw new Error(
+      "The subagent request was not accepted. Check its current state."
+    );
   const task = subagentSchema.parse(response.result);
-  if (task.runId !== runId || (parsed.action !== "spawn" && task.id !== parsed.id)) throw new Error("Subagent response does not belong to this request.");
+  if (
+    task.runId !== runId ||
+    (parsed.action !== "spawn" && task.id !== parsed.id)
+  )
+    throw new Error("Subagent response does not belong to this request.");
   return task;
 }

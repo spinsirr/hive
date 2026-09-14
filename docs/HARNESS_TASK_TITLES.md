@@ -52,11 +52,11 @@ changes; renaming must not create a new task or native conversation.
 
 ## What is actually exposed
 
-| Layer | Verified capability | Boundary |
-| --- | --- | --- |
-| `@ai-sdk/harness` 1.0.98 | `createSession`, stable `sessionId`, lifecycle/resume state, text/tool/compaction events and adapter-specific metadata/raw events. | No common session `title`, `getTitle`, or title-change event. The `summary` on a compaction event summarizes context, not a sidebar task name. |
-| `@ai-sdk/harness-codex` 1.0.100 | Official bridge forwards the native thread ID for resume. | Its session/event mapping does not expose a title. Hive's custom app-server turn driver also captures only `thread.id` at startup and does not consume `thread/name/updated`. |
-| `@ai-sdk/harness-claude-code` 1.0.102 | Bundles Claude Agent SDK 0.3.245 / Claude Code 2.1.245. Native SDK has `getSessionInfo` / `listSessions` and `SDKSessionInfo.summary`. | The installed Harness bridge does not call those functions or forward a session title; its final Claude metadata includes session ID and cost. |
+| Layer                                 | Verified capability                                                                                                                    | Boundary                                                                                                                                                                      |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@ai-sdk/harness` 1.0.98              | `createSession`, stable `sessionId`, lifecycle/resume state, text/tool/compaction events and adapter-specific metadata/raw events.     | No common session `title`, `getTitle`, or title-change event. The `summary` on a compaction event summarizes context, not a sidebar task name.                                |
+| `@ai-sdk/harness-codex` 1.0.100       | Official bridge forwards the native thread ID for resume.                                                                              | Its session/event mapping does not expose a title. Hive's custom app-server turn driver also captures only `thread.id` at startup and does not consume `thread/name/updated`. |
+| `@ai-sdk/harness-claude-code` 1.0.102 | Bundles Claude Agent SDK 0.3.245 / Claude Code 2.1.245. Native SDK has `getSessionInfo` / `listSessions` and `SDKSessionInfo.summary`. | The installed Harness bridge does not call those functions or forward a session title; its final Claude metadata includes session ID and cost.                                |
 
 Evidence: installed `node_modules/@ai-sdk/harness/src/v1/harness-v1-session.ts`
 lines 23–86 and 155 onward; `harness-v1-stream-part.ts` lines 29–137;

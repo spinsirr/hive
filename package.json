@@ -9,7 +9,7 @@
     "postinstall": "node scripts/prepare-monaco.mjs && node scripts/prepare-codex-bridge.mjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "test": "node --test src/lib/*.test.ts && node --test scripts/check-memory-recall.mjs && node scripts/check-message-time-hydration.mjs && node scripts/check-native-stream.mjs && node --experimental-test-module-mocks scripts/check-gateway-diagnostics.mjs && node --experimental-test-module-mocks scripts/check-failed-run.mjs && node --experimental-test-module-mocks scripts/check-conversation-input.mjs && node --experimental-test-module-mocks scripts/check-workspace-files.mjs && node --experimental-test-module-mocks scripts/check-workspace-restore.mjs && node scripts/check-thread-preview.mjs && node scripts/check-dashboard-preview.mjs && node scripts/check-workspace-runs.mjs && node scripts/check-conversation-scroll.mjs && node --experimental-test-module-mocks scripts/check-workspace-cache.mjs && node scripts/check-shared-session.mjs && node scripts/check-message-actions.mjs && node scripts/check-collaboration-demo.mjs && pnpm test:subagents && pnpm test:claude && node scripts/check-peer-thread.mjs && pnpm test:ux-regressions",
+    "test": "node --test src/lib/*.test.ts && node --test scripts/check-memory-recall.mjs && node scripts/check-message-time-hydration.mjs && node scripts/check-native-stream.mjs && node --test scripts/check-native-protocol.mjs && node --experimental-test-module-mocks scripts/check-gateway-diagnostics.mjs && node --experimental-test-module-mocks scripts/check-failed-run.mjs && node --experimental-test-module-mocks scripts/check-conversation-input.mjs && node --experimental-test-module-mocks scripts/check-workspace-files.mjs && node --experimental-test-module-mocks scripts/check-workspace-restore.mjs && node scripts/check-thread-preview.mjs && node scripts/check-dashboard-preview.mjs && node scripts/check-workspace-runs.mjs && node scripts/check-conversation-scroll.mjs && node --experimental-test-module-mocks scripts/check-workspace-cache.mjs && node scripts/check-shared-session.mjs && node scripts/check-message-actions.mjs && node scripts/check-collaboration-demo.mjs && pnpm test:subagents && pnpm test:claude && node scripts/check-peer-thread.mjs && pnpm test:ux-regressions",
     "test:ux-regressions": "node scripts/check-planning-questions.mjs && node scripts/check-workspace-recovery.mjs && node scripts/check-queued-continuation.mjs",
     "test:release": "node scripts/check-release.mjs",
     "test:collaboration": "node scripts/check-collaboration-demo.mjs && node --test src/lib/peer-collaboration.test.ts && node scripts/check-peer-thread.mjs",
@@ -26,8 +26,13 @@
     "test:integration": "node scripts/check-fixture-pool.mjs && pnpm test:auth && pnpm test:onboarding && pnpm test:session-egress && pnpm test:recovery && pnpm test:live-transport",
     "typecheck": "next typegen && tsc --noEmit",
     "start": "next start",
-    "lint": "eslint",
-    "prototype:state": "node scripts/prototype-task-session-state.ts"
+    "lint": "eslint . --max-warnings=0",
+    "prototype:state": "node scripts/prototype-task-session-state.ts",
+    "prepare": "husky",
+    "lint:fix": "pnpm lint --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test:design-system && pnpm test"
   },
   "dependencies": {
     "@ai-sdk/harness": "^1.0.98",
@@ -69,6 +74,7 @@
     "zod": "^4.5.4"
   },
   "devDependencies": {
+    "@eslint/js": "9.39.5",
     "@tailwindcss/postcss": "^4",
     "@testing-library/react": "^16.3.3",
     "@types/node": "^20",
@@ -80,9 +86,14 @@
     "drizzle-kit": "^0.31.10",
     "eslint": "^9",
     "eslint-config-next": "16.3.3",
+    "eslint-config-prettier": "10.1.8",
+    "husky": "9.1.7",
     "jsdom": "^30.0.1",
+    "lint-staged": "17.5.1",
+    "prettier": "3.9.6",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "typescript-eslint": "8.70.0"
   },
   "packageManager": "pnpm@11.19.0"
 }

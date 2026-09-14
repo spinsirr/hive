@@ -3,7 +3,8 @@ import { DashboardDemo } from "./dashboard-demo";
 
 export const metadata: Metadata = {
   title: "Hive — Dashboard UI demo",
-  description: "Interactive dashboard preview using sample data. No account or agent execution.",
+  description:
+    "Interactive dashboard preview using sample data. No account or agent execution.",
   robots: { index: false, follow: false },
 };
 

@@ -1,0 +1,12 @@
+# Dependency/generated artifacts, not authored source.
+node_modules/
+.next/
+.vercel/
+.husky/_/
+out/
+build/
+coverage/
+public/monaco/
+next-env.d.ts
+pnpm-lock.yaml
+drizzle/meta/

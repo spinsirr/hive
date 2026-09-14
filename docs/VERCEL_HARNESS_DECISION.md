@@ -16,11 +16,11 @@ These are **version-specific compatibility limits, not confirmed SDK bugs**.
 Package observations below describe this checkout, not the newest published
 release, production deployment, or every model/account's capabilities.
 
-| Boundary | Verified local evidence | Product impact |
-| --- | --- | --- |
-| Codex Ultra effort | `@ai-sdk/harness-codex` **1.0.100** declares `reasoningEffort` as `low`, `medium`, `high`, `xhigh`, `max` in `dist/index.d.ts`; its `dist/index.js` bridge parameter schema accepts the same values. | Hive does not expose or accept `ultra`. This is not just a missing slider label. |
-| Claude runtime version | `@ai-sdk/harness-claude-code` **1.0.102** ships a `dist/bridge/package.json` and lockfile pinning Claude Agent SDK **0.3.245** and Claude Code **2.1.245**. | Updating a model label or the host CLI does not upgrade the Sandbox runtime. Hive currently exposes Fable 5, not Fable 5.1; Fable 5.1 is not validated on this bundle. |
-| Model-specific capabilities | [The bounded catalog](../src/lib/coding-models.ts) is maintained by Hive, not fetched from the current account's native runtime. | An adapter accepting an effort value does not prove every model or account supports it. Keep each model's menu separate from the transport vocabulary. |
+| Boundary                    | Verified local evidence                                                                                                                                                                              | Product impact                                                                                                                                                         |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Codex Ultra effort          | `@ai-sdk/harness-codex` **1.0.100** declares `reasoningEffort` as `low`, `medium`, `high`, `xhigh`, `max` in `dist/index.d.ts`; its `dist/index.js` bridge parameter schema accepts the same values. | Hive does not expose or accept `ultra`. This is not just a missing slider label.                                                                                       |
+| Claude runtime version      | `@ai-sdk/harness-claude-code` **1.0.102** ships a `dist/bridge/package.json` and lockfile pinning Claude Agent SDK **0.3.245** and Claude Code **2.1.245**.                                          | Updating a model label or the host CLI does not upgrade the Sandbox runtime. Hive currently exposes Fable 5, not Fable 5.1; Fable 5.1 is not validated on this bundle. |
+| Model-specific capabilities | [The bounded catalog](../src/lib/coding-models.ts) is maintained by Hive, not fetched from the current account's native runtime.                                                                     | An adapter accepting an effort value does not prove every model or account supports it. Keep each model's menu separate from the transport vocabulary.                 |
 
 OpenAI documents `ultra` for supported Codex models in its
 [reasoning-effort guidance](https://learn.chatgpt.com/docs/agent-configuration/subagents#choosing-models-and-reasoning).
@@ -114,16 +114,16 @@ Official sources:
 
 ## Hive before migration vs. HarnessAgent
 
-| Concern | Current Hive | HarnessAgent |
-| --- | --- | --- |
-| Agent runtime | `ToolLoopAgent` with a 14-step loop | Native Claude Code, Codex, etc. behind one interface |
-| Workspace | `Sandbox.getOrCreate()` managed by Hive | Sandbox lifecycle managed by the harness provider |
-| Tools | Four hand-written tools: list, read, write, shell | Runtime built-ins plus optional AI SDK and MCP tools |
-| Conversation | Last 12 task-session messages rebuilt into every prompt | Native multi-turn session with resume state |
-| Context pressure | No compaction beyond truncating tool output | Runtime-native compaction and session history |
-| Permissions | Mostly prompt-enforced; sandbox limits host impact | Runtime permission modes and pausable approvals where the adapter supports them |
-| Model choice | Any Gateway model, including the current free Poolside model | Model choices supported by the selected native runtime |
-| Product state | Authorship, annotations, queue, and shared artifacts | Still Hive's responsibility |
+| Concern          | Current Hive                                                 | HarnessAgent                                                                    |
+| ---------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------- |
+| Agent runtime    | `ToolLoopAgent` with a 14-step loop                          | Native Claude Code, Codex, etc. behind one interface                            |
+| Workspace        | `Sandbox.getOrCreate()` managed by Hive                      | Sandbox lifecycle managed by the harness provider                               |
+| Tools            | Four hand-written tools: list, read, write, shell            | Runtime built-ins plus optional AI SDK and MCP tools                            |
+| Conversation     | Last 12 task-session messages rebuilt into every prompt      | Native multi-turn session with resume state                                     |
+| Context pressure | No compaction beyond truncating tool output                  | Runtime-native compaction and session history                                   |
+| Permissions      | Mostly prompt-enforced; sandbox limits host impact           | Runtime permission modes and pausable approvals where the adapter supports them |
+| Model choice     | Any Gateway model, including the current free Poolside model | Model choices supported by the selected native runtime                          |
+| Product state    | Authorship, annotations, queue, and shared artifacts         | Still Hive's responsibility                                                     |
 
 The largest current weakness is not the number of tools. It is that each run is
 effectively a new agent invocation: Hive manually serializes a short transcript

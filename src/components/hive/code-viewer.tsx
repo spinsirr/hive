@@ -22,12 +22,20 @@ const configureEditor: BeforeMount = (monaco) => {
       "editorIndentGuide.background1": "#eeeeee",
       "editorWidget.background": "#ffffff",
       "editorWidget.border": "#e5e5e5",
-      "focusBorder": "#737373",
+      focusBorder: "#737373",
     },
   });
 };
 
-export default function CodeViewer({ path, content, onSelectionChange }: { path: string; content: string; onSelectionChange?: (selection: CodeReference | null) => void }) {
+export default function CodeViewer({
+  path,
+  content,
+  onSelectionChange,
+}: {
+  path: string;
+  content: string;
+  onSelectionChange?: (selection: CodeReference | null) => void;
+}) {
   const [loadFailed, setLoadFailed] = useState(false);
 
   useEffect(() => {
@@ -35,15 +43,24 @@ export default function CodeViewer({ path, content, onSelectionChange }: { path:
     loader.init().catch(() => {
       if (mounted) setLoadFailed(true);
     });
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   if (loadFailed) {
     return (
-      <div className="grid h-full place-items-center p-6 text-center text-sm text-[#737373]" role="alert">
+      <div
+        className="grid h-full place-items-center p-6 text-center text-sm text-[#737373]"
+        role="alert"
+      >
         <div>
           <p>The code viewer couldn’t load.</p>
-          <button className="mt-2 underline underline-offset-4" onClick={() => window.location.reload()} type="button">
+          <button
+            className="mt-2 underline underline-offset-4"
+            onClick={() => window.location.reload()}
+            type="button"
+          >
             Reload page
           </button>
         </div>
@@ -55,17 +72,38 @@ export default function CodeViewer({ path, content, onSelectionChange }: { path:
     <Editor
       beforeMount={configureEditor}
       height="100%"
-      loading={<span className="text-xs text-[#737373]" role="status">Loading code viewer…</span>}
+      loading={
+        <span className="text-xs text-[#737373]" role="status">
+          Loading code viewer…
+        </span>
+      }
       onMount={(editor) => {
         if (!onSelectionChange) return;
         onSelectionChange(null);
         editor.onDidChangeCursorSelection(({ selection }) => {
           const model = editor.getModel();
-          if (!model || selection.isEmpty()) { onSelectionChange(null); return; }
+          if (!model || selection.isEmpty()) {
+            onSelectionChange(null);
+            return;
+          }
           const startLine = selection.startLineNumber;
-          const endLine = selection.endLineNumber - (selection.endColumn === 1 && selection.endLineNumber > startLine ? 1 : 0);
-          const quote = model.getValueInRange({ startLineNumber: startLine, startColumn: 1, endLineNumber: endLine, endColumn: model.getLineMaxColumn(endLine) });
-          const reference = codeReferenceSchema.safeParse({ path, startLine, endLine, quote });
+          const endLine =
+            selection.endLineNumber -
+            (selection.endColumn === 1 && selection.endLineNumber > startLine
+              ? 1
+              : 0);
+          const quote = model.getValueInRange({
+            startLineNumber: startLine,
+            startColumn: 1,
+            endLineNumber: endLine,
+            endColumn: model.getLineMaxColumn(endLine),
+          });
+          const reference = codeReferenceSchema.safeParse({
+            path,
+            startLine,
+            endLine,
+            quote,
+          });
           onSelectionChange(reference.success ? reference.data : null);
         });
       }}

@@ -9,7 +9,10 @@ import type { MemberId, TaskSessionState } from "@/lib/task-session";
 import { usesPlatformSubscriptions } from "./platform-models.ts";
 import { runHivePlanningHarness } from "./hive-planning-harness.ts";
 import type { CodexAccess } from "./codex-subscription-broker.ts";
-import { connectHiveConversationTools, type HiveToolConnection } from "./hive-conversation-tools.ts";
+import {
+  connectHiveConversationTools,
+  type HiveToolConnection,
+} from "./hive-conversation-tools.ts";
 
 const DEFAULT_MODEL = "openai/gpt-5-mini";
 
@@ -20,7 +23,7 @@ export async function runHiveConversation(
   onText: (body: string) => void = () => undefined,
   steer?: string,
   codexSubscription?: CodexAccess,
-  toolConnection?: HiveToolConnection,
+  toolConnection?: HiveToolConnection
 ) {
   const instructions = [
     "You are Hive, a coding agent shared by a small software team.",
@@ -32,16 +35,30 @@ export async function runHiveConversation(
   ].join(" ");
   const prompt = buildHivePrompt(session, actor, steer, actorName, "planning");
   if (usesPlatformSubscriptions(process.env)) {
-    return runHivePlanningHarness(session, prompt, instructions, onText, codexSubscription, toolConnection);
+    return runHivePlanningHarness(
+      session,
+      prompt,
+      instructions,
+      onText,
+      codexSubscription,
+      toolConnection
+    );
   }
-  let collaboration: Awaited<ReturnType<typeof connectHiveConversationTools>> | undefined;
+  let collaboration:
+    Awaited<ReturnType<typeof connectHiveConversationTools>> | undefined;
   try {
-    if (toolConnection) collaboration = await connectHiveConversationTools(toolConnection);
+    if (toolConnection)
+      collaboration = await connectHiveConversationTools(toolConnection);
     const result = streamText({
       model: process.env.HIVE_CHAT_MODEL?.trim() || DEFAULT_MODEL,
       system: instructions,
       prompt,
-      ...(collaboration ? { tools: collaboration.tools, stopWhen: [hasToolCall("request_input"), stepCountIs(4)] } : {}),
+      ...(collaboration
+        ? {
+            tools: collaboration.tools,
+            stopWhen: [hasToolCall("request_input"), stepCountIs(4)],
+          }
+        : {}),
       providerOptions: {
         gateway: {
           user: actor,
@@ -54,5 +71,7 @@ export async function runHiveConversation(
     return { summary: (await result.text).trim() };
   } catch (error) {
     throw new HiveAgentError(hiveAgentFailureMessage(error), error);
-  } finally { await collaboration?.close(); }
+  } finally {
+    await collaboration?.close();
+  }
 }

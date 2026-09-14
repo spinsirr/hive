@@ -30,7 +30,11 @@ export function WorkspaceSplit({
   workspace: ReactNode;
   activePane: "chat" | "workspace";
 }) {
-  const desktop = useSyncExternalStore(subscribeToViewport, isDesktopViewport, serverViewport);
+  const desktop = useSyncExternalStore(
+    subscribeToViewport,
+    isDesktopViewport,
+    serverViewport
+  );
 
   return (
     <ResizablePanelGroup

@@ -2,12 +2,15 @@ import { parseArgs } from "node:util";
 import { runBridge } from "./runtime.mjs";
 import { runCodexAppServerTurn } from "./app-server.mjs";
 
-const { values } = parseArgs({ options: {
-  workdir: { type: "string" },
-  "bridge-state-dir": { type: "string" },
-  "cli-shim-dir": { type: "string" },
-} });
-if (!values.workdir || !values["bridge-state-dir"]) throw new Error("Codex bridge directories are required.");
+const { values } = parseArgs({
+  options: {
+    workdir: { type: "string" },
+    "bridge-state-dir": { type: "string" },
+    "cli-shim-dir": { type: "string" },
+  },
+});
+if (!values.workdir || !values["bridge-state-dir"])
+  throw new Error("Codex bridge directories are required.");
 let threadId;
 let currentTurn;
 let controller;
@@ -22,13 +25,27 @@ await runBridge({
     controller = new AbortController();
     currentTurn = runCodexAppServerTurn({
       start,
-      turn: { ...turn, abortSignal: AbortSignal.any([turn.abortSignal, controller.signal]) },
+      turn: {
+        ...turn,
+        abortSignal: AbortSignal.any([turn.abortSignal, controller.signal]),
+      },
       workdir: values.workdir,
-      threadId: start.restartThread ? undefined : start.resumeThreadId || threadId,
-      onThread(id) { threadId = id; },
+      threadId: start.restartThread
+        ? undefined
+        : start.resumeThreadId || threadId,
+      onThread(id) {
+        threadId = id;
+      },
     });
-    try { await currentTurn; } finally { controller = undefined; }
+    try {
+      await currentTurn;
+    } finally {
+      controller = undefined;
+    }
   },
-  async onStop() { await drain(); return threadId ? { threadId } : {}; },
+  async onStop() {
+    await drain();
+    return threadId ? { threadId } : {};
+  },
   onDestroy: drain,
 });

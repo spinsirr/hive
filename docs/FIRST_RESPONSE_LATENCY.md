@@ -17,12 +17,12 @@ Browser observations sampled rendered reply paragraphs approximately every
 300 ms. The bounds below are the last empty and first nonempty observations,
 not provider token timestamps or aggregate percentiles.
 
-| Case | Send time (UTC, September 13) | First visible reply |
-| --- | --- | --- |
-| New task, no repository, short greeting | 02:53:08.423 | 23.242–23.552 s |
-| Same task, no repository, explain a Git branch | 02:54:06.308 | 21.359–21.668 s |
-| First turn after connecting `spinsirr/hive`, explain git status | 02:57:28.095 | 35.530–69.101 s; observer gap, **not** an exact measurement |
-| Warm repository turn, explain git diff | 02:59:50.863 | 17.595–17.900 s |
+| Case                                                            | Send time (UTC, September 13) | First visible reply                                         |
+| --------------------------------------------------------------- | ----------------------------- | ----------------------------------------------------------- |
+| New task, no repository, short greeting                         | 02:53:08.423                  | 23.242–23.552 s                                             |
+| Same task, no repository, explain a Git branch                  | 02:54:06.308                  | 21.359–21.668 s                                             |
+| First turn after connecting `spinsirr/hive`, explain git status | 02:57:28.095                  | 35.530–69.101 s; observer gap, **not** an exact measurement |
+| Warm repository turn, explain git diff                          | 02:59:50.863                  | 17.595–17.900 s                                             |
 
 The working indicator appeared around 0.9–1.2 s on the first turn. It was not
 counted as a reply. These samples confirm the reported delay, not a latency SLA.
@@ -55,12 +55,12 @@ its VMs/template/orphan snapshots, and prints only timing metadata.
 
 One complete comparison on September 13 UTC:
 
-| Startup path | Bootstrap ready | Agent ready |
-| --- | --- | --- |
-| Old cold-per-turn path | 10.456 s | 12.796 s |
-| New path, first template creation | 17.869 s | 19.826 s |
-| New path, cached template | 1.966 s | 3.940 s |
-| New path, cached template again | 1.311 s | 3.619 s |
+| Startup path                      | Bootstrap ready | Agent ready |
+| --------------------------------- | --------------- | ----------- |
+| Old cold-per-turn path            | 10.456 s        | 12.796 s    |
+| New path, first template creation | 17.869 s        | 19.826 s    |
+| New path, cached template         | 1.966 s         | 3.940 s     |
+| New path, cached template again   | 1.311 s         | 3.619 s     |
 
 Two earlier uncached measurements were 13.306 s and 15.127 s. Their cache
 comparisons did not run because the diagnostic initially requested an invalid
@@ -106,16 +106,16 @@ request-log response retains them.
 Request: `n7ngf-1789268391032-1494196c7885`, region `iad1`, function start type
 **hot**. Run: `agent-6b550944-88c7-4a13-860e-7c8d1a116ed9`, zero tool calls.
 
-| Milestone (UTC, September 13) | Time | Since Send |
-| --- | --- | --- |
-| Browser Send | 02:59:50.863 | 0 |
-| Request received | 02:59:51.032 | 0.169 s |
-| Subscription login/check completed; routing logged | 02:59:57.535 | 6.672 s |
-| Native user message prepared | 02:59:58.549 | 7.686 s |
-| First main-request WebSocket failure | 02:59:58.942 | 8.079 s |
-| Sixth main-request failure; HTTP fallback logged | 03:00:06.866 | 16.003 s |
-| Browser first visible text | 03:00:08.458–08.763 | 17.595–17.900 s |
-| Native final reply persisted | 03:00:08.833 | 17.970 s |
+| Milestone (UTC, September 13)                      | Time                | Since Send      |
+| -------------------------------------------------- | ------------------- | --------------- |
+| Browser Send                                       | 02:59:50.863        | 0               |
+| Request received                                   | 02:59:51.032        | 0.169 s         |
+| Subscription login/check completed; routing logged | 02:59:57.535        | 6.672 s         |
+| Native user message prepared                       | 02:59:58.549        | 7.686 s         |
+| First main-request WebSocket failure               | 02:59:58.942        | 8.079 s         |
+| Sixth main-request failure; HTTP fallback logged   | 03:00:06.866        | 16.003 s        |
+| Browser first visible text                         | 03:00:08.458–08.763 | 17.595–17.900 s |
+| Native final reply persisted                       | 03:00:08.833        | 17.970 s        |
 
 There was also a failed WebSocket prewarm at 02:59:58.355. The main request
 then made six failed attempts, with five backoffs of **202, 389, 730, 1463 and

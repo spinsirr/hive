@@ -4,7 +4,8 @@ import { demoTasks } from "@/lib/ui-demo";
 
 export const metadata: Metadata = {
   title: "Hive — Peer programming preview",
-  description: "Try questions, teammate replies, and shared review in a local UI simulation.",
+  description:
+    "Try questions, teammate replies, and shared review in a local UI simulation.",
   robots: { index: false, follow: false },
 };
 

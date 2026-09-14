@@ -2,8 +2,9 @@
 
 Commands, test boundaries and dated live evidence. For current release gaps, see [release status](ROADMAP.md).
 
-For a fresh end-to-end release pass, start with the [ordered production acceptance script](RELEASE_ACCEPTANCE.md). `pnpm test:release --plan` lists the existing local checks; `HIVE_QA_DATABASE_URL=postgres://localhost/postgres pnpm test:release` runs them with per-stage logs and a revision-stamped report. Use an isolated worktree without `.env` files and a disposable loopback Postgres role that can create databases. The runner refuses remote databases, does not pass application credentials to child processes, and never marks production acceptance as passed. It includes `test:peer-store` as well as `test:integration`, matching the full CI boundary.
+Run `pnpm check` for formatting, zero-warning lint, types, shared UI ownership and the regression suite. [Code quality](CODE_QUALITY.md) defines the editor, pre-commit and CI checks; the [full repository review](CODE_QUALITY_REVIEW.md) records remaining structural issues.
 
+For a fresh end-to-end release pass, start with the [ordered production acceptance script](RELEASE_ACCEPTANCE.md). `pnpm test:release --plan` lists the existing local checks; `HIVE_QA_DATABASE_URL=postgres://localhost/postgres pnpm test:release` runs them with per-stage logs and a revision-stamped report. Use an isolated worktree without `.env` files and a disposable loopback Postgres role that can create databases. The runner refuses remote databases, does not pass application credentials to child processes, and never marks production acceptance as passed. It includes `test:peer-store` as well as `test:integration`, matching the full CI boundary.
 
 ```bash
 pnpm test
@@ -53,3 +54,11 @@ On September 8, the independent real-repository task completed `pnpm test && pnp
 The supervising AI operated both authenticated accounts and supplied a tested repair after earlier agent failures. This was not two independent human reviews or an autonomous first-pass success. Provider 429 risk remains; these checks do not prove hard-worker-crash or permanent-Sandbox-deletion recovery.
 
 The [dated evidence log](DEVELOPMENT.md#evidence-log) records successes, failures, versions, and test limitations. Historical checks do not substitute for fresh-account and final-release acceptance.
+
+## Shared fixture setup
+
+Component and route scripts call `registerTestModules` from `scripts/test-modules.mjs` before dynamically importing application modules. It owns aliases, Next entry points and TSX compilation. Keep fixture-specific resolve/load overrides and module mocks in the scenario that needs them; forward unmatched inputs to `next`.
+
+Use `createDomFixture` from `scripts/test-dom.mjs` before importing Testing Library. Run component cleanup before `fixture.close()`; closing restores the previous browser globals. Tests may still supply layout, Monaco and network behavior explicitly. Static HTML parsing does not need browser globals.
+
+Database scenarios use `createTestDatabase` from `scripts/test-database.mjs`, then call `start()` and `close()` in a `try/finally`. The helper validates loopback Postgres, creates a unique database, runs migrations, installs the fixture pool, waits for sockets to close, drops only that database and restores the environment. It never force-drops active clients. Protocol tests use native Node streams; no model or sandbox service is needed.

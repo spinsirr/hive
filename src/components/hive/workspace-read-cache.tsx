@@ -11,8 +11,18 @@ const cacheOptions = {
   shouldRetryOnError: false,
 };
 
-export function WorkspaceReadCache({ scope, children }: { scope: string; children: ReactNode }) {
+export function WorkspaceReadCache({
+  scope,
+  children,
+}: {
+  scope: string;
+  children: ReactNode;
+}) {
   // A new workspace version drops both content and pending-request bookkeeping.
   // This memory belongs to this Files pane, never a global or persistent cache.
-  return <SWRConfig key={scope} value={cacheOptions}>{children}</SWRConfig>;
+  return (
+    <SWRConfig key={scope} value={cacheOptions}>
+      {children}
+    </SWRConfig>
+  );
 }

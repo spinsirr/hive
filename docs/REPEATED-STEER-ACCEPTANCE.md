@@ -25,16 +25,16 @@ Do not disclose credentials or invitation links in this record.
 
 ## Execution script
 
-| Case | User action | Test purpose / expected observable result |
-| --- | --- | --- |
-| S0 | Main: create the test file with `{"color":"neutral","radius":0}`; read it back. | Establish a real native run and inspectable file, not a simulated Demo response. |
-| S1 | Open a Thread on the initial main message. Reply `Use blue for the color.` Do not Steer yet. | Discussion is saved without executing or changing the file. |
-| S2 | Steer that Thread; inspect Files and Runs after completion. | First handoff changes color to `blue`, with radius still `0`. |
-| S3 | Main: `Change the color to black. This replaces the earlier color choice.` Wait for completion. | A newer main decision changes the actual file to `black`, radius `0`. |
-| S4 | Return to the same Thread; reply `Set the radius to 12.` Steer again. | Final file is `{"color":"black","radius":12}`. The old blue reply stays visible as history but is not replayed. |
-| S5 | With no new human reply, inspect/retry the same Steer control. | No duplicate execution; the discussion remains readable. |
-| Q1 | In another isolated fixture, establish the same first blue handoff. Start the main black change with a 20-second local-timer wait, then submit the radius reply and Steer while that run is still active. | The second handoff queues without interrupting the current run. Apply it through the normal queue action after the current run completes. |
-| Q2 | Inspect Files and Runs after the queued handoff completes. | The queued turn uses the current native context and file: black, radius 12. Main updates are not replaced by the old Thread snapshot. |
+| Case | User action                                                                                                                                                                                               | Test purpose / expected observable result                                                                                                 |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| S0   | Main: create the test file with `{"color":"neutral","radius":0}`; read it back.                                                                                                                           | Establish a real native run and inspectable file, not a simulated Demo response.                                                          |
+| S1   | Open a Thread on the initial main message. Reply `Use blue for the color.` Do not Steer yet.                                                                                                              | Discussion is saved without executing or changing the file.                                                                               |
+| S2   | Steer that Thread; inspect Files and Runs after completion.                                                                                                                                               | First handoff changes color to `blue`, with radius still `0`.                                                                             |
+| S3   | Main: `Change the color to black. This replaces the earlier color choice.` Wait for completion.                                                                                                           | A newer main decision changes the actual file to `black`, radius `0`.                                                                     |
+| S4   | Return to the same Thread; reply `Set the radius to 12.` Steer again.                                                                                                                                     | Final file is `{"color":"black","radius":12}`. The old blue reply stays visible as history but is not replayed.                           |
+| S5   | With no new human reply, inspect/retry the same Steer control.                                                                                                                                            | No duplicate execution; the discussion remains readable.                                                                                  |
+| Q1   | In another isolated fixture, establish the same first blue handoff. Start the main black change with a 20-second local-timer wait, then submit the radius reply and Steer while that run is still active. | The second handoff queues without interrupting the current run. Apply it through the normal queue action after the current run completes. |
+| Q2   | Inspect Files and Runs after the queued handoff completes.                                                                                                                                                | The queued turn uses the current native context and file: black, radius 12. Main updates are not replaced by the old Thread snapshot.     |
 
 The second Thread reply intentionally does not repeat “keep black”: the test
 must establish whether the agent reconciles old context with the newer decision,
@@ -76,8 +76,7 @@ and do not silently change models, billing, or credentials.
   `sleep 20 && cat hive-steer-qa.json` exiting 0, and Run next became enabled.
 - Q2: PASS. Clicked the normal Run next action after confirming black / 0.
   The queue changed to Applying Spinsirr's steer. After completion, Diff showed
-  exactly `{"color":"black","radius":12}`; Runs showed two file reads exiting
-  0. No queued item remained. The old blue choice did not replace the newer
+  exactly `{"color":"black","radius":12}`; Runs showed two file reads exiting 0. No queued item remained. The old blue choice did not replace the newer
   main decision.
 - Local latest-source regression: PASS. The real disposable Postgres suite
   exercises immediate and queued second Steers after a newer main decision.
@@ -94,23 +93,23 @@ and run evidence were retained and no pre-existing user task was altered.
 All four turns returned HTTP 200 and each recorded three native tool calls
 with `bash` and `fileChange`. These are real deployment logs, not fixture data.
 
-| Turn | Run ID | Observed completed Diff |
-| --- | --- | --- |
-| Create file | `agent-139e6d44-ca48-43eb-9cde-51bdbc1f7d7b` | neutral / 0 |
-| First Thread Steer | `agent-bf4b4aff-91fc-4041-a332-2483ec2e42b1` | blue / 0 |
-| New main decision | `agent-10d51a1c-2e17-44f2-9376-1950a830fc5e` | black / 0 |
-| Second Thread Steer | `agent-543f62d2-8a71-44e6-9876-1f218a963666` | black / 12 |
+| Turn                | Run ID                                       | Observed completed Diff |
+| ------------------- | -------------------------------------------- | ----------------------- |
+| Create file         | `agent-139e6d44-ca48-43eb-9cde-51bdbc1f7d7b` | neutral / 0             |
+| First Thread Steer  | `agent-bf4b4aff-91fc-4041-a332-2483ec2e42b1` | blue / 0                |
+| New main decision   | `agent-10d51a1c-2e17-44f2-9376-1950a830fc5e` | black / 0               |
+| Second Thread Steer | `agent-543f62d2-8a71-44e6-9876-1f218a963666` | black / 12              |
 
 ### Native execution evidence (production, queued case)
 
 The following turns returned HTTP 200, used ChatGPT subscription authentication
 with `gpt-5.6-luna`, and recorded native `bash` and `fileChange` tools.
 
-| Turn | Run ID | Native tool calls | Observed completed Diff |
-| --- | --- | --- | --- |
-| First Thread Steer | `agent-11c8032e-4be9-4301-aa63-909623d80ac3` | 3 | blue / 0 |
-| New main decision, including the wait | `agent-05c9e60f-4714-48a2-819b-a69bdf026262` | 2 | black / 0 |
-| Queued second Thread Steer | `agent-50e455f2-7b8d-4ec1-93e6-77ddc7864d9d` | 3 | black / 12 |
+| Turn                                  | Run ID                                       | Native tool calls | Observed completed Diff |
+| ------------------------------------- | -------------------------------------------- | ----------------- | ----------------------- |
+| First Thread Steer                    | `agent-11c8032e-4be9-4301-aa63-909623d80ac3` | 3                 | blue / 0                |
+| New main decision, including the wait | `agent-05c9e60f-4714-48a2-819b-a69bdf026262` | 2                 | black / 0               |
+| Queued second Thread Steer            | `agent-50e455f2-7b8d-4ec1-93e6-77ddc7864d9d` | 3                 | black / 12              |
 
 ## Coverage boundary
 

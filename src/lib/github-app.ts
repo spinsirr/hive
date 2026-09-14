@@ -37,7 +37,7 @@ function installationAuth() {
 
 async function tokenForInstallation(
   installationId: number,
-  repositoryId: number,
+  repositoryId: number
 ) {
   const authentication = await installationAuth()({
     type: "installation",
@@ -59,18 +59,18 @@ async function tokenForInstallation(
 export function githubAppInstallUrl(state?: string) {
   const slug = process.env.GITHUB_APP_SLUG?.trim() || DEFAULT_APP_SLUG;
   const url = new URL(
-    `https://github.com/apps/${encodeURIComponent(slug)}/installations/new`,
+    `https://github.com/apps/${encodeURIComponent(slug)}/installations/new`
   );
   if (state) url.searchParams.set("state", state);
   return url;
 }
 
 export async function getRepositoryCloneCredentials(
-  repository: RepositoryState,
+  repository: RepositoryState
 ) {
   const token = await tokenForInstallation(
     repository.installationId,
-    repository.id,
+    repository.id
   );
 
   return {

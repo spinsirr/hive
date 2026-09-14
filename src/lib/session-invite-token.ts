@@ -9,10 +9,10 @@ function signature(payload: string, secret: string) {
 export function signSessionInvite(
   sessionId: string,
   secret: string,
-  now = Date.now(),
+  now = Date.now()
 ) {
   const payload = Buffer.from(
-    JSON.stringify({ sessionId, expiresAt: now + INVITE_TTL_MS }),
+    JSON.stringify({ sessionId, expiresAt: now + INVITE_TTL_MS })
   ).toString("base64url");
   return `${payload}.${signature(payload, secret)}`;
 }
@@ -21,7 +21,7 @@ export function verifySessionInvite(
   sessionId: string,
   token: string | null | undefined,
   secret: string,
-  now = Date.now(),
+  now = Date.now()
 ) {
   if (!token) return false;
   const parts = token.split(".");
@@ -30,13 +30,16 @@ export function verifySessionInvite(
   if (!payload || !receivedSignature) return false;
   const expected = Buffer.from(signature(payload, secret));
   const received = Buffer.from(receivedSignature);
-  if (expected.length !== received.length || !timingSafeEqual(expected, received)) {
+  if (
+    expected.length !== received.length ||
+    !timingSafeEqual(expected, received)
+  ) {
     return false;
   }
 
   try {
     const invite = JSON.parse(
-      Buffer.from(payload, "base64url").toString("utf8"),
+      Buffer.from(payload, "base64url").toString("utf8")
     ) as { sessionId?: unknown; expiresAt?: unknown };
     return (
       invite.sessionId === sessionId &&

@@ -4,22 +4,39 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { Sandbox } from "@vercel/sandbox";
 
-assert.ok(process.argv.includes("--live"), "Pass --live for a temporary diagnostic sandbox.");
-const snapshotId = process.argv.find(value => value.startsWith("snap_"));
+assert.ok(
+  process.argv.includes("--live"),
+  "Pass --live for a temporary diagnostic sandbox."
+);
+const snapshotId = process.argv.find((value) => value.startsWith("snap_"));
 assert.match(snapshotId ?? "", /^snap_[a-zA-Z0-9]+$/);
-const value = flag => process.argv[process.argv.indexOf(flag) + 1];
-for (const flag of ["--since", "--until"]) assert.ok(process.argv.includes(flag), `${flag} is required`);
-const since = Date.parse(value("--since")), until = Date.parse(value("--until"));
-assert.ok(Number.isFinite(since) && Number.isFinite(until) && since < until, "Provide a valid time interval.");
-for (const name of ["VERCEL_TOKEN", "VERCEL_TEAM_ID", "VERCEL_PROJECT_ID"]) assert.ok(process.env[name], `${name} is required`);
+const value = (flag) => process.argv[process.argv.indexOf(flag) + 1];
+for (const flag of ["--since", "--until"])
+  assert.ok(process.argv.includes(flag), `${flag} is required`);
+const since = Date.parse(value("--since")),
+  until = Date.parse(value("--until"));
+assert.ok(
+  Number.isFinite(since) && Number.isFinite(until) && since < until,
+  "Provide a valid time interval."
+);
+for (const name of ["VERCEL_TOKEN", "VERCEL_TEAM_ID", "VERCEL_PROJECT_ID"])
+  assert.ok(process.env[name], `${name} is required`);
 const sandbox = await Sandbox.create({
-  token: process.env.VERCEL_TOKEN, teamId: process.env.VERCEL_TEAM_ID, projectId: process.env.VERCEL_PROJECT_ID,
-  name: `hive-qa-latency-${randomUUID()}`, source: { type: "snapshot", snapshotId }, timeout: 120_000,
+  token: process.env.VERCEL_TOKEN,
+  teamId: process.env.VERCEL_TEAM_ID,
+  projectId: process.env.VERCEL_PROJECT_ID,
+  name: `hive-qa-latency-${randomUUID()}`,
+  source: { type: "snapshot", snapshotId },
+  timeout: 120_000,
 });
 let report;
 try {
   // Names/sizes only: no credentials, prompt text or private reasoning output.
-  const result = await sandbox.runCommand({ cmd: "node", args: ["-e", `
+  const result = await sandbox.runCommand({
+    cmd: "node",
+    args: [
+      "-e",
+      `
     const fs = require('node:fs'), path = require('node:path'), os = require('node:os');
     const since = ${since}, until = ${until};
     const roots = ['/vercel/sandbox/.agent-runs', path.join(os.homedir(), '.codex')];
@@ -72,17 +89,30 @@ try {
       nativeEvents.push(...events);
     }
     console.log(JSON.stringify({transport,nativeEvents:nativeEvents.sort((a,b) => a.at.localeCompare(b.at))}));
-  `] });
+  `,
+    ],
+  });
   assert.equal(result.exitCode, 0);
   report = JSON.parse(await result.stdout());
   console.log(JSON.stringify(report, null, 2));
 } finally {
-  try { await sandbox.stop(); }
-  finally { await sandbox.delete({ deleteOrphanSnapshots: true }); }
-  console.log("Removed only the diagnostic copy; the original task and snapshot were retained.");
+  try {
+    await sandbox.stop();
+  } finally {
+    await sandbox.delete({ deleteOrphanSnapshots: true });
+  }
+  console.log(
+    "Removed only the diagnostic copy; the original task and snapshot were retained."
+  );
 }
-assert.ok(report.nativeEvents.length, "No native turn events found in this interval.");
+assert.ok(
+  report.nativeEvents.length,
+  "No native turn events found in this interval."
+);
 if (process.argv.includes("--assert-http-only")) {
-  assert.equal(report.transport.filter(event => event.kind === "websocket-error").length, 0,
-    "Brokered HTTP transport must not spend first-response time on failing WebSocket attempts.");
+  assert.equal(
+    report.transport.filter((event) => event.kind === "websocket-error").length,
+    0,
+    "Brokered HTTP transport must not spend first-response time on failing WebSocket attempts."
+  );
 }

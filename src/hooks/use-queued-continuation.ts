@@ -2,13 +2,17 @@
 
 import { useEffect, useRef } from "react";
 import { nextAutomaticSteer, type TaskSessionState } from "@/lib/task-session";
+import type { ClientTaskSessionAction } from "@/lib/task-session-actions";
 
-type ContinueAction = { type: "continue-queued-steer"; steerId: string };
+type ContinueAction = Extract<
+  ClientTaskSessionAction,
+  { type: "continue-queued-steer" }
+>;
 
 export function useQueuedContinuation(
   session: TaskSessionState,
   disconnected: boolean,
-  dispatch: (action: ContinueAction) => Promise<unknown>,
+  dispatch: (action: ContinueAction) => Promise<unknown>
 ) {
   const attempted = useRef<string | null>(null);
   const next = nextAutomaticSteer(session);

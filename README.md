@@ -63,14 +63,14 @@ flowchart LR
     class Runtime,Model execution
 ```
 
-| Component | Role |
-| --- | --- |
-| Next.js on Vercel | Product UI, authenticated routes and shared task actions. |
-| GitHub OAuth + GitHub App | Establish identity, discover the current user's authorized repositories, and issue repository-scoped clone credentials. |
-| Neon Postgres | Persist team history, membership, queue, approvals and private recovery records. Row-locked transitions grant execution. |
-| AI SDK Harness + Vercel Sandbox | Run Codex or Claude Code in an isolated working copy. Native history remains bound to the selected runtime. |
-| Vercel AI Gateway | Provide the Gateway model-access path using Vercel OIDC; configured subscription paths are runtime-specific. |
-| WebSockets, Streamdown and Monaco | Share live state, render incremental replies, and present source files for review. |
+| Component                         | Role                                                                                                                     |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Next.js on Vercel                 | Product UI, authenticated routes and shared task actions.                                                                |
+| GitHub OAuth + GitHub App         | Establish identity, discover the current user's authorized repositories, and issue repository-scoped clone credentials.  |
+| Neon Postgres                     | Persist team history, membership, queue, approvals and private recovery records. Row-locked transitions grant execution. |
+| AI SDK Harness + Vercel Sandbox   | Run Codex or Claude Code in an isolated working copy. Native history remains bound to the selected runtime.              |
+| Vercel AI Gateway                 | Provide the Gateway model-access path using Vercel OIDC; configured subscription paths are runtime-specific.             |
+| WebSockets, Streamdown and Monaco | Share live state, render incremental replies, and present source files for review.                                       |
 
 Task invitations share the conversation and attached working copy, not the inviter's other tasks or repository pool. Browser responses exclude private native recovery data. See [access and setup](docs/SETUP.md) and [runtime compatibility](docs/VERCEL_HARNESS_DECISION.md) for the implementation boundaries.
 
@@ -106,9 +106,7 @@ vercel dev
 ## Verification
 
 ```bash
-pnpm test
-pnpm lint
-pnpm typecheck
+pnpm check
 pnpm build --webpack
 ```
 

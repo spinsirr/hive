@@ -2,7 +2,11 @@
 
 import { useEffect, useState } from "react";
 
-import { isHiveRunActive, STALLED_RUN_AFTER_MS, type TaskSessionState } from "@/lib/task-session";
+import {
+  isHiveRunActive,
+  STALLED_RUN_AFTER_MS,
+  type TaskSessionState,
+} from "@/lib/task-session";
 
 /**
  * Whether the active run has outlived the request that could still report for
@@ -12,11 +16,18 @@ import { isHiveRunActive, STALLED_RUN_AFTER_MS, type TaskSessionState } from "@/
 export function useStalledRun(session: TaskSessionState) {
   const active = isHiveRunActive(session);
   const startedAt = session.workspace.startedAt;
-  const [check, setCheck] = useState<{ startedAt: number; stalled: boolean } | null>(null);
+  const [check, setCheck] = useState<{
+    startedAt: number;
+    stalled: boolean;
+  } | null>(null);
 
   useEffect(() => {
     if (!active || startedAt === undefined) return;
-    const evaluate = () => setCheck({ startedAt, stalled: Date.now() - startedAt >= STALLED_RUN_AFTER_MS });
+    const evaluate = () =>
+      setCheck({
+        startedAt,
+        stalled: Date.now() - startedAt >= STALLED_RUN_AFTER_MS,
+      });
     const initial = setTimeout(evaluate, 0);
     const interval = setInterval(evaluate, 5_000);
     return () => {
@@ -25,5 +36,7 @@ export function useStalledRun(session: TaskSessionState) {
     };
   }, [active, startedAt]);
 
-  return active && check !== null && check.startedAt === startedAt && check.stalled;
+  return (
+    active && check !== null && check.startedAt === startedAt && check.stalled
+  );
 }

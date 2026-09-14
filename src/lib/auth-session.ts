@@ -21,8 +21,9 @@ function displayName(user: GitHubUserPayload) {
 
 function initialsFor(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
-  return (parts.length > 1 ? `${parts[0][0]}${parts.at(-1)?.[0]}` : name.slice(0, 2))
-    .toUpperCase();
+  return (
+    parts.length > 1 ? `${parts[0][0]}${parts.at(-1)?.[0]}` : name.slice(0, 2)
+  ).toUpperCase();
 }
 
 function memberFromUser(user: typeof users.$inferSelect): TeamMember {
@@ -38,10 +39,14 @@ function memberFromUser(user: typeof users.$inferSelect): TeamMember {
 
 export async function createUserSession(
   githubUser: GitHubUserPayload,
-  now = new Date(),
+  now = new Date()
 ) {
   // Authentication creates an identity, never membership in somebody else's task.
-  if (!Number.isSafeInteger(githubUser.id) || githubUser.id <= 0 || !githubUser.login?.trim()) {
+  if (
+    !Number.isSafeInteger(githubUser.id) ||
+    githubUser.id <= 0 ||
+    !githubUser.login?.trim()
+  ) {
     throw new Error("GitHub did not return a valid user identity.");
   }
   const { db } = await import("@/db");
@@ -104,8 +109,8 @@ export async function getSessionMember(token?: string | null) {
     .where(
       and(
         eq(authSessions.tokenHash, tokenHash(token)),
-        gt(authSessions.expiresAt, new Date()),
-      ),
+        gt(authSessions.expiresAt, new Date())
+      )
     )
     .limit(1);
 

@@ -29,11 +29,12 @@ export default async function SessionPage({
   const { sessionId } = await params;
   const { invite: inviteParam } = await searchParams;
   const invite = typeof inviteParam === "string" ? inviteParam : undefined;
-  if (!isTaskSessionId(sessionId) || !(await taskSessionExists(sessionId))) notFound();
+  if (!isTaskSessionId(sessionId) || !(await taskSessionExists(sessionId)))
+    notFound();
 
   const cookieStore = await cookies();
   const member = await getSessionMember(
-    cookieStore.get(HIVE_SESSION_COOKIE)?.value,
+    cookieStore.get(HIVE_SESSION_COOKIE)?.value
   );
 
   const cleanReturnTo = `/sessions/${sessionId}`;

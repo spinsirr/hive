@@ -37,10 +37,19 @@ export const CommitHeader = ({
   children,
   ...props
 }: CommitHeaderProps) => (
-  <CollapsibleTrigger {...props} render={<div className={cn(
-            "group flex cursor-pointer items-center justify-between gap-4 p-3 text-left transition-colors hover:opacity-80",
-            className
-          )} />}>{children}</CollapsibleTrigger>
+  <CollapsibleTrigger
+    {...props}
+    render={
+      <div
+        className={cn(
+          "group flex cursor-pointer items-center justify-between gap-4 p-3 text-left transition-colors hover:opacity-80",
+          className
+        )}
+      />
+    }
+  >
+    {children}
+  </CollapsibleTrigger>
 );
 
 export type CommitHashProps = HTMLAttributes<HTMLSpanElement>;
@@ -243,7 +252,7 @@ export const CommitCopyButton = ({
   return (
     <Button
       className={cn("size-7 shrink-0", className)}
-      onClick={copyToClipboard}
+      onClick={() => void copyToClipboard()}
       size="icon"
       variant="ghost"
       {...props}

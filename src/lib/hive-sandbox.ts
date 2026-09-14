@@ -13,7 +13,7 @@ export function repositoryDirectory(repositoryUrl: string) {
 
 export function isRepositoryWorkingCopy(
   sessionWorkDir: string,
-  gitTopLevel: string,
+  gitTopLevel: string
 ) {
   return (
     path.posix.normalize(gitTopLevel.trim()) ===
@@ -23,7 +23,7 @@ export function isRepositoryWorkingCopy(
 
 export function resolvePersistentSandboxName(
   session: { workspace: Pick<TaskSessionState["workspace"], "sandboxName"> },
-  sessionId: string,
+  sessionId: string
 ) {
   const storedName = session.workspace.sandboxName;
   const knownNames = [

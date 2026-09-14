@@ -8,14 +8,14 @@ Initial tested revision: `30f692e626c2a3de75645566ace2c286f84456f7` (Fable's pus
 
 Observed through **2026-09-11 01:52 UTC**. Local checks used the working tree based on `3d11457`, including the uncommitted model/effort controls. They are not evidence that those controls have been deployed.
 
-| Check | Result and scope |
-| --- | --- |
-| Full local suite | Exit 0: 179 unit tests, 8 memory checks, hydration scenarios and the remaining controlled runner/component regressions |
-| Lint, typecheck and diff check | Exit 0 |
-| Production build | `pnpm build --webpack` exited 0; no default-Turbopack build pass is claimed |
-| First login, task creation and access isolation | `test:onboarding` exited 0 against disposable local Postgres and actual routes, with the GitHub/cookie boundary controlled |
-| Authentication storage and refresh | `test:auth` exited 0, including 24 unit tests and real local Postgres checks |
-| Presence and data transfer | `test:session-egress` exited 0 with actual loopback WebSockets/Postgres; typing caused zero task reads, a 31-second idle interval caused zero table queries, and reconnect read one public task snapshot |
+| Check                                           | Result and scope                                                                                                                                                                                         |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Full local suite                                | Exit 0: 179 unit tests, 8 memory checks, hydration scenarios and the remaining controlled runner/component regressions                                                                                   |
+| Lint, typecheck and diff check                  | Exit 0                                                                                                                                                                                                   |
+| Production build                                | `pnpm build --webpack` exited 0; no default-Turbopack build pass is claimed                                                                                                                              |
+| First login, task creation and access isolation | `test:onboarding` exited 0 against disposable local Postgres and actual routes, with the GitHub/cookie boundary controlled                                                                               |
+| Authentication storage and refresh              | `test:auth` exited 0, including 24 unit tests and real local Postgres checks                                                                                                                             |
+| Presence and data transfer                      | `test:session-egress` exited 0 with actual loopback WebSockets/Postgres; typing caused zero task reads, a 31-second idle interval caused zero table queries, and reconnect read one public task snapshot |
 
 The database checks used loopback-only disposable databases, not production Neon. No model or Mem0 request was sent during this recheck.
 
@@ -27,14 +27,14 @@ Publication status was checked separately: the repository remains private. Remot
 
 ## Result
 
-| Check | Result | Boundary |
-| --- | --- | --- |
-| Existing full suite | Pass: 161 unit tests, 8 recall checks and the remaining controlled regressions | Does not include the new standalone hydration reproduction below |
-| Typecheck and lint | Pass | Current local revision |
-| Lost-run recovery | Pass against actual local Postgres, routes and store | Controlled fixture state, not a killed production worker |
-| Live Reset | Confirmation and cancellation pass; disabled during a real run | No live task was reset |
-| Live automatic memory recall and source citation | Pass in a new task with no previous answer | One bounded successful round; cross-repository isolation not tested live |
-| Refreshed message times | **Fail** in production and actual React hydration | Reproduction retained; no implementation fix in this verification |
+| Check                                            | Result                                                                         | Boundary                                                                 |
+| ------------------------------------------------ | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------ |
+| Existing full suite                              | Pass: 161 unit tests, 8 recall checks and the remaining controlled regressions | Does not include the new standalone hydration reproduction below         |
+| Typecheck and lint                               | Pass                                                                           | Current local revision                                                   |
+| Lost-run recovery                                | Pass against actual local Postgres, routes and store                           | Controlled fixture state, not a killed production worker                 |
+| Live Reset                                       | Confirmation and cancellation pass; disabled during a real run                 | No live task was reset                                                   |
+| Live automatic memory recall and source citation | Pass in a new task with no previous answer                                     | One bounded successful round; cross-repository isolation not tested live |
+| Refreshed message times                          | **Fail** in production and actual React hydration                              | Reproduction retained; no implementation fix in this verification        |
 
 The baseline being green does **not** make this an all-green acceptance result.
 
@@ -74,13 +74,13 @@ Exactly one prompt was sent:
 
 The prompt supplied none of the answer values. The new task contained no old answer. The final answer correctly distinguished all five fields:
 
-| Field | Observed answer |
-| --- | --- |
-| Marker | 青桐-0909 |
-| Author | Spinsirr |
-| Source task | `verify-repository-memory-save-q1wdex` |
-| Source message | `initial-1` |
-| Source reply | `annotation-1788930878857-3` |
+| Field          | Observed answer                        |
+| -------------- | -------------------------------------- |
+| Marker         | 青桐-0909                              |
+| Author         | Spinsirr                               |
+| Source task    | `verify-repository-memory-save-q1wdex` |
+| Source message | `initial-1`                            |
+| Source reply   | `annotation-1788930878857-3`           |
 
 Mem0 recorded one new [successful SEARCH](https://app.mem0.ai/dashboard/requests?requestId=cebcbdd3-f87e-46a0-acc9-e6cedefdf9e3) at **2026-09-10 05:07:39 UTC**, taking **118.10 ms**. It returned the single existing test memory with relevance **0.31**, using the repository-scoped `user_id` and `app_id="hive"` filters. The request list grew from five to six records; there was no new ADD. The memory was the earlier explicitly labeled test contribution, not a new team convention.
 

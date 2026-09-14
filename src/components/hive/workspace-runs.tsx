@@ -3,7 +3,11 @@ import { ChevronDown, ListChecks } from "lucide-react";
 import type { WorkspaceState } from "@/lib/task-session";
 import { cn } from "@/lib/utils";
 
-export function RunsPane({ commands }: { commands: WorkspaceState["commands"] }) {
+export function RunsPane({
+  commands,
+}: {
+  commands: WorkspaceState["commands"];
+}) {
   if (commands.length === 0) {
     return (
       <div className="grid h-full place-items-center bg-[#fafafa] p-8 text-center">
@@ -34,16 +38,20 @@ export function RunsPane({ commands }: { commands: WorkspaceState["commands"] })
               <span
                 className={cn(
                   "flex items-center gap-1.5 text-xs font-medium",
-                  exitedCleanly ? "text-[#3d3d3d]" : "text-[#737373]",
+                  exitedCleanly ? "text-[#3d3d3d]" : "text-[#737373]"
                 )}
               >
                 <span
                   className={cn(
                     "size-1.5 rounded-full",
-                    exitedCleanly ? "bg-[#171717]" : "bg-[#a1a1a1]",
+                    exitedCleanly ? "bg-[#171717]" : "bg-[#a1a1a1]"
                   )}
                 />
-                {command.exitCode === null ? command.resultReceived ? "Exit unavailable" : "Incomplete" : `Exit ${command.exitCode}`}
+                {command.exitCode === null
+                  ? command.resultReceived
+                    ? "Exit unavailable"
+                    : "Incomplete"
+                  : `Exit ${command.exitCode}`}
               </span>
               <span className="text-xs tabular-nums text-[#999]">
                 {command.durationMs ? `${command.durationMs}ms` : "—"}

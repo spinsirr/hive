@@ -11,7 +11,11 @@ The receipt is not an answer. The shared card is already visible: do not repeat 
 
 export function withHiveCodexTools(prompt: HarnessV1Prompt): HarnessV1Prompt {
   if (typeof prompt === "string") return `${toolContext}\n\n${prompt}`;
-  return { ...prompt, content: typeof prompt.content === "string"
-    ? `${toolContext}\n\n${prompt.content}`
-    : [{ type: "text", text: toolContext }, ...prompt.content] };
+  return {
+    ...prompt,
+    content:
+      typeof prompt.content === "string"
+        ? `${toolContext}\n\n${prompt.content}`
+        : [{ type: "text", text: toolContext }, ...prompt.content],
+  };
 }
