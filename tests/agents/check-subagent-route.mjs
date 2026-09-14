@@ -92,13 +92,19 @@ try {
   );
   const request = (
     body = { id: task.id, runId: "active-run" },
-    origin = "https://hive.test"
+    origin = "https://hive.test",
+    contentType = "application/json",
+    extraHeaders = {}
   ) =>
     POST(
       new NextRequest("https://hive.test/api/sessions/subagent-qa/subagents", {
         method: "POST",
-        headers: { "Content-Type": "application/json", origin },
-        body: JSON.stringify(body),
+        headers: {
+          "Content-Type": contentType,
+          ...(origin ? { origin } : {}),
+          ...extraHeaders,
+        },
+        body: typeof body === "string" ? body : JSON.stringify(body),
       }),
       { params: Promise.resolve({ sessionId: session.sessionId }) }
     );
@@ -108,7 +114,36 @@ try {
   admitted = false;
   assert.equal((await request()).status, 401);
   admitted = true;
-  assert.equal((await request(undefined, "https://foreign.test")).status, 403);
+  assert.equal(
+    (await request(undefined, "https://foreign.test", "text/plain")).status,
+    403,
+    "Cross-origin form-capable requests are rejected by Hono CSRF"
+  );
+  for (const contentType of [
+    "text/plain",
+    "application/x-www-form-urlencoded",
+    "multipart/form-data",
+  ]) {
+    assert.equal(
+      (await request(undefined, "https://hive.test", contentType)).status,
+      400,
+      "Even same-origin writes must use JSON validation"
+    );
+  }
+  assert.equal(
+    (await request("{")).status,
+    400,
+    "Malformed JSON stays a client error"
+  );
+  assert.equal(
+    (
+      await request(" ".repeat(2048) + "{}", undefined, undefined, {
+        "Content-Length": "2",
+      })
+    ).status,
+    400,
+    "A forged length header cannot bypass the actual body limit"
+  );
   assert.equal(
     (await request({ id: task.id, runId: "active-run", action: "spawn" }))
       .status,
@@ -123,8 +158,19 @@ try {
   assert.equal((await request()).status, 409);
   assert.equal(calls.filter((call) => call.type === "control").length, 0);
   foreign = false;
-  const response = await request();
-  assert.equal(response.status, 200);
+  const response = await request(undefined, "https://frontend.example");
+  assert.equal(
+    response.status,
+    200,
+    "A valid JSON request need not match Origin"
+  );
+  assert.equal(response.headers.get("cache-control"), "private, no-store");
+  assert.equal(response.headers.get("access-control-allow-origin"), null);
+  assert.equal(
+    (await request(undefined, "")).status,
+    200,
+    "Non-browser JSON clients need no Origin header"
+  );
   assert.equal(
     (await response.json()).task.status,
     "stopping",
@@ -144,7 +190,7 @@ try {
   assert.equal((await request()).status, 409);
   assert.equal(calls.length, count);
   console.log(
-    "PASS: stop requires same-origin task membership, active run, matching VM and run capability; never creates/resumes a sandbox, starts Hive, or changes the queue."
+    "PASS: stop requires validated JSON, task membership, active run, matching VM and run capability; never creates/resumes a sandbox, starts Hive, or changes the queue."
   );
 } finally {
   if (previousSecret === undefined) delete process.env.HIVE_INVITE_SECRET;

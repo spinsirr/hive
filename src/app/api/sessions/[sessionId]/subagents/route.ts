@@ -1,78 +1,64 @@
-import { type NextRequest, NextResponse } from "next/server";
+import { Hono } from "hono";
+import { csrf } from "hono/csrf";
+import { handle } from "hono/vercel";
+import { zValidator } from "@hono/zod-validator";
+import {
+  apiError,
+  privateResponse,
+  taskMember,
+  type SessionApi,
+} from "@/server/http/session-middleware";
 import { z } from "zod";
-import {
-  getSessionMember,
-  HIVE_SESSION_COOKIE,
-} from "@/server/auth/auth-session";
-import { isTaskSessionId } from "@/lib/tasks/task-session-id";
-import {
-  isTaskSessionMember,
-  withTaskSubagentControl,
-} from "@/server/sessions/task-session-store";
+import { withTaskSubagentControl } from "@/server/sessions/task-session-store";
 import { controlSubagent } from "@/server/agents/tools/subagent-control";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
-const headers = { "Cache-Control": "private, no-store" };
 const stopRequest = z
   .object({ id: z.string().uuid(), runId: z.string().min(1).max(120) })
   .strict();
 
-export async function POST(
-  request: NextRequest,
-  context: { params: Promise<{ sessionId: string }> }
-) {
-  const { sessionId } = await context.params;
-  if (request.headers.get("origin") !== request.nextUrl.origin)
-    return NextResponse.json({ error: "Forbidden" }, { status: 403, headers });
-  const member = await getSessionMember(
-    request.cookies.get(HIVE_SESSION_COOKIE)?.value
+const app = new Hono<SessionApi>()
+  .use("*", privateResponse, csrf())
+  .onError(apiError)
+  .post(
+    "/api/sessions/:sessionId/subagents",
+    taskMember,
+    async (c, next) => {
+      if ((await c.req.text()).length > 2048)
+        return c.json({ error: "Invalid request" }, 400);
+      await next();
+    },
+    zValidator("json", stopRequest, (result, c) => {
+      if (!result.success) return c.json({ error: "Invalid request" }, 400);
+    }),
+    async (c) => {
+      const sessionId = c.get("sessionId");
+      const input = c.req.valid("json");
+      try {
+        const signal = AbortSignal.any([
+          c.req.raw.signal,
+          AbortSignal.timeout(20_000),
+        ]);
+        const task = await withTaskSubagentControl(sessionId, (session) =>
+          controlSubagent(
+            session,
+            input.runId,
+            { action: "stop", id: input.id },
+            signal
+          )
+        );
+        return Response.json({ task });
+      } catch {
+        return Response.json(
+          {
+            error:
+              "Stop could not be confirmed. Check the task's current state before retrying.",
+          },
+          { status: 409 }
+        );
+      }
+    }
   );
-  if (
-    !isTaskSessionId(sessionId) ||
-    !member ||
-    !(await isTaskSessionMember(sessionId, member.id))
-  )
-    return NextResponse.json(
-      { error: "Unauthorized" },
-      { status: 401, headers }
-    );
-  const body = await request.text();
-  if (body.length > 2048)
-    return NextResponse.json(
-      { error: "Invalid request" },
-      { status: 400, headers }
-    );
-  let input;
-  try {
-    input = stopRequest.parse(JSON.parse(body));
-  } catch {
-    return NextResponse.json(
-      { error: "Invalid request" },
-      { status: 400, headers }
-    );
-  }
-  try {
-    const signal = AbortSignal.any([
-      request.signal,
-      AbortSignal.timeout(20_000),
-    ]);
-    const task = await withTaskSubagentControl(sessionId, (session) =>
-      controlSubagent(
-        session,
-        input.runId,
-        { action: "stop", id: input.id },
-        signal
-      )
-    );
-    return NextResponse.json({ task }, { headers });
-  } catch {
-    return NextResponse.json(
-      {
-        error:
-          "Stop could not be confirmed. Check the task's current state before retrying.",
-      },
-      { status: 409, headers }
-    );
-  }
-}
+
+export const POST = handle(app);

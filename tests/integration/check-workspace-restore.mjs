@@ -179,13 +179,17 @@ try {
     await import("../../src/app/api/sessions/[sessionId]/checkpoints/route.ts");
   const { GET: files } =
     await import("../../src/app/api/sessions/[sessionId]/files/route.ts");
-  const post = (body, origin = "https://hive.example") =>
+  const post = (
+    body,
+    origin = "https://hive.example",
+    contentType = "application/json"
+  ) =>
     POST(
       new NextRequest(
         "https://hive.example/api/sessions/restore-qa/checkpoints",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json", origin },
+          headers: { "Content-Type": contentType, origin },
           body: JSON.stringify(body),
         }
       ),
@@ -202,12 +206,18 @@ try {
   admitted = false;
   assert.equal((await post(input)).status, 401);
   admitted = true;
-  assert.equal((await post(input, "https://attacker.example")).status, 403);
+  assert.equal(
+    (await post(input, "https://attacker.example", "text/plain")).status,
+    403
+  );
   assert.equal((await post({ snapshotId: "snap-old" })).status, 400);
   assert.equal((await post({ ...input, snapshotId: "foreign" })).status, 409);
   assert.equal((await post({ ...input, version: 0 })).status, 409);
   assert.equal(calls.length, 0, "Denied requests never touch the provider");
-  const response = await post({ ...input, by: { id: "forged-author" } });
+  const response = await post(
+    { ...input, by: { id: "forged-author" } },
+    "https://frontend.example"
+  );
   assert.equal(response.status, 200);
   assert.equal(session.workspace.files[0].content, "old");
   assert.equal(session.workspace.codingModel, "gpt-5.6-luna");
@@ -242,7 +252,7 @@ try {
     "Retrying a completed request never restores twice"
   );
   console.log(
-    "PASS: restore enforces membership/origin/version, preserves author and native state, and waits for confirmed sandbox resume before publishing"
+    "PASS: restore enforces JSON/membership/version, preserves author and native state, and waits for confirmed sandbox resume before publishing"
   );
 
   fresh();

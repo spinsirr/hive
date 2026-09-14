@@ -14,7 +14,7 @@ export function workspaceReadRevision(workspace: WorkspaceState) {
 
 export const workspaceReadRequest = z
   .object({
-    kind: z.enum(["directory", "file"]),
+    kind: z.enum(["directory", "file"]).default("directory"),
     path: z
       .string()
       .max(4096)
@@ -27,7 +27,8 @@ export const workspaceReadRequest = z
               .split("/")
               .every((part) => part !== "" && part !== "." && part !== "..")),
         "Use a relative workspace path."
-      ),
+      )
+      .default(""),
     offset: z.coerce.number().int().min(0).max(1_000_000).default(0),
   })
   .refine((value) => value.kind === "directory" || value.path.length > 0);

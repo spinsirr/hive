@@ -405,6 +405,7 @@ try {
   ).json();
   for (const origin of ["https://untrusted.hive.test", undefined]) {
     const headers = new Headers(ownHeaders);
+    headers.set("content-type", "text/plain");
     if (origin) headers.set("origin", origin);
     else headers.delete("origin");
     const rejected = await action(
@@ -414,7 +415,7 @@ try {
         body: JSON.stringify({
           type: "annotate-message",
           messageId: ownSnapshot.session.messages[0].id,
-          body: "Must not be submitted by another origin",
+          body: "Must not be submitted through a browser form",
           clientId: randomUUID(),
         }),
       }),
@@ -434,7 +435,7 @@ try {
     ownSnapshot.session
   );
   console.log(
-    "PASS: even a valid login cannot mutate tasks through a foreign or missing browser origin."
+    "PASS: even a valid login cannot mutate tasks through a cross-site form request."
   );
   assert.equal("lifecycle" in ownSnapshot.session, false);
   assert.equal("completedAt" in ownSnapshot.session, false);
@@ -461,7 +462,7 @@ try {
   const discussed = await action(
     new NextRequest(ownUrl, {
       method: "POST",
-      headers: ownHeaders,
+      headers: { ...ownHeaders, origin: "https://frontend.example" },
       body: JSON.stringify({
         type: "annotate-message",
         messageId: ownSnapshot.session.messages[0].id,
@@ -472,7 +473,12 @@ try {
     }),
     ownContext
   );
-  assert.equal(discussed.status, 200);
+  assert.equal(
+    discussed.status,
+    200,
+    "JSON requests do not require a matching Origin"
+  );
+  assert.equal(discussed.headers.get("access-control-allow-origin"), null);
   const discussion = (await discussed.json()).session;
   assert.equal(
     taskExecution(discussion).kind,
@@ -509,10 +515,12 @@ try {
     );
     assert.equal(invalid.status, 400);
   }
+  const nonBrowserHeaders = new Headers(ownHeaders);
+  nonBrowserHeaders.delete("origin");
   const renamedResponse = await action(
     new NextRequest(ownUrl, {
       method: "POST",
-      headers: ownHeaders,
+      headers: nonBrowserHeaders,
       body: JSON.stringify({
         type: "rename-task",
         title: "  My task name  ",
@@ -521,7 +529,11 @@ try {
     }),
     ownContext
   );
-  assert.equal(renamedResponse.status, 200);
+  assert.equal(
+    renamedResponse.status,
+    200,
+    "An authenticated JSON client need not send Origin"
+  );
   const renamedSession = (await renamedResponse.json()).session;
   assert.equal(renamedSession.title, "My task name");
   assert.equal(renamedSession.sessionId, ownTasks[0].id);

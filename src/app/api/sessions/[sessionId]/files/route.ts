@@ -1,14 +1,14 @@
-import { type NextRequest, NextResponse } from "next/server";
+import { Hono } from "hono";
+import { handle } from "hono/vercel";
+import { zValidator } from "@hono/zod-validator";
+import {
+  apiError,
+  privateResponse,
+  taskMember,
+  type SessionApi,
+} from "@/server/http/session-middleware";
 
-import {
-  getSessionMember,
-  HIVE_SESSION_COOKIE,
-} from "@/server/auth/auth-session";
-import { isTaskSessionId } from "@/lib/tasks/task-session-id";
-import {
-  withTaskWorkspaceRead,
-  isTaskSessionMember,
-} from "@/server/sessions/task-session-store";
+import { withTaskWorkspaceRead } from "@/server/sessions/task-session-store";
 import {
   readWorkspace,
   WorkspaceReadError,
@@ -20,61 +20,43 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const headers = {
-  "Cache-Control": "private, no-store",
-  "X-Content-Type-Options": "nosniff",
-};
-
-export async function GET(
-  request: NextRequest,
-  context: { params: Promise<{ sessionId: string }> }
-) {
-  try {
-    const { sessionId } = await context.params;
-    const member = await getSessionMember(
-      request.cookies.get(HIVE_SESSION_COOKIE)?.value
-    );
-    if (
-      !isTaskSessionId(sessionId) ||
-      !member ||
-      !(await isTaskSessionMember(sessionId, member.id))
-    ) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401, headers }
-      );
+const app = new Hono<SessionApi>()
+  .use("*", privateResponse)
+  .onError(apiError)
+  .get(
+    "/api/sessions/:sessionId/files",
+    taskMember,
+    zValidator("query", workspaceReadRequest, (result, c) => {
+      if (!result.success)
+        return c.json({ error: "Invalid workspace path." }, 400);
+    }),
+    async (c) => {
+      try {
+        const sessionId = c.get("sessionId");
+        const input = c.req.valid("query");
+        const signal = AbortSignal.any([
+          c.req.raw.signal,
+          AbortSignal.timeout(45_000),
+        ]);
+        return Response.json(
+          await withTaskWorkspaceRead(sessionId, (session) =>
+            readWorkspace(session, input, signal)
+          )
+        );
+      } catch (error) {
+        const status =
+          error instanceof WorkspaceReadError ||
+          error instanceof WorkspaceRestoreError
+            ? error.status
+            : 503;
+        const message =
+          error instanceof WorkspaceReadError ||
+          error instanceof WorkspaceRestoreError
+            ? error.message
+            : "Workspace could not be read. Try again.";
+        return Response.json({ error: message }, { status });
+      }
     }
-    const input = workspaceReadRequest.safeParse({
-      kind: request.nextUrl.searchParams.get("kind") ?? "directory",
-      path: request.nextUrl.searchParams.get("path") ?? "",
-      offset: request.nextUrl.searchParams.get("offset") ?? 0,
-    });
-    if (!input.success)
-      return NextResponse.json(
-        { error: "Invalid workspace path." },
-        { status: 400, headers }
-      );
-    const signal = AbortSignal.any([
-      request.signal,
-      AbortSignal.timeout(45_000),
-    ]);
-    return NextResponse.json(
-      await withTaskWorkspaceRead(sessionId, (session) =>
-        readWorkspace(session, input.data, signal)
-      ),
-      { headers }
-    );
-  } catch (error) {
-    const status =
-      error instanceof WorkspaceReadError ||
-      error instanceof WorkspaceRestoreError
-        ? error.status
-        : 503;
-    const message =
-      error instanceof WorkspaceReadError ||
-      error instanceof WorkspaceRestoreError
-        ? error.message
-        : "Workspace could not be read. Try again.";
-    return NextResponse.json({ error: message }, { status, headers });
-  }
-}
+  );
+
+export const GET = handle(app);

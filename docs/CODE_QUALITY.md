@@ -39,6 +39,8 @@ CI runs format/lint/types, database tests and a production build. The workflow d
 
 ## Structural review remains required
 
+Check the APIs and types of installed dependencies before building infrastructure. Use Hono for HTTP middleware and Zod request validation, SWR for server-state caching, and XState for asynchronous client lifecycles with retries and cancellation. Use the MCP and coding harness SDKs for their protocols. Add a library when it removes mechanics we would otherwise maintain; keep Hive's collaboration rules and transactional invariants explicit in the domain and store.
+
 Lint passing does not prove that a state model or abstraction is good. Apply the [Thermo-Nuclear Code Quality Review skill](https://github.com/cursor/plugins/blob/main/cursor-team-kit/skills/thermo-nuclear-code-quality-review/SKILL.md) to meaningful changes. Keep action validation in `task-session-actions`, execution rules in `task-execution`, input admission in `task-session-commands`, and provider I/O outside task/membership row locks. Derive execution state from existing evidence instead of persisting another phase flag. The reducer dispatches to focused domain transitions; it should not grow another execution-start path. Keep navigation in `use-workspace-navigation` and presentation in the shared workspace components.
 
 Complexity is still a diagnostic, not an accepted-debt baseline. To reproduce the structural scan:

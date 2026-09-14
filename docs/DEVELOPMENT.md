@@ -13,6 +13,7 @@ Hive owns collaboration state; the installed coding harness owns tools and nativ
 | `src/lib/tasks/`, `conversation/`, `workspace/`, `agents/` | Shared domain rules, selectors and validation; no server or UI dependencies.                                                         |
 | `src/lib/demo/`                                            | Local sample data and simulation using the same domain rules.                                                                        |
 | `src/server/sessions/`, `auth/`, `workspace/`              | Transactions/live relay, identity/repository authorization and sandbox lifecycle/artifacts.                                          |
+| `src/server/http/`                                         | Hono middleware for authenticated task membership, private responses and unexpected errors.                                          |
 | `src/server/agents/`                                       | Execution, prompts and streams; `codex/` and `claude/` own provider adapters/auth, `tools/` owns MCP, `memory/` owns recall/storage. |
 | `src/server/agents/codex/bridge/`                          | Portable native Codex connection, turn collection, transport and children, copied together into the sandbox.                         |
 | `src/db/`                                                  | Database connection and schema; migrations stay in `drizzle/`.                                                                       |
@@ -22,6 +23,8 @@ Hive owns collaboration state; the installed coding harness owns tools and nativ
 Imports point from routes/UI to shared domain code or server services. Shared code and components cannot import `src/server` or `src/db`, including type imports; shared contracts live in `src/lib/session`. Server/domain code cannot import routes, components or hooks. ESLint enforces these directions and rejects runtime import cycles. Production components also cannot depend on demo code.
 
 Within `src/lib/session`, `task-session-actions.ts` validates client actions, `task-session.ts` dispatches reducer transitions, and `task-session-commands.ts` owns frozen input admission and execution start. Public snapshot contracts and projections stay alongside the state model. `src/lib/utils.ts` contains the shared class-name helper; do not use it as a miscellaneous domain bucket.
+
+Task, file, checkpoint and child-control APIs use Hono through its Next/Vercel adapter. Next route files preserve the public URLs and per-endpoint execution budgets. Shared middleware authenticates cookies, checks task membership and applies private response headers; `@hono/zod-validator` validates JSON bodies and query parameters with the domain schemas. JSON mutations do not require a matching Origin. Hono's CSRF middleware checks form-capable requests, and these endpoints accept only validated JSON bodies. They do not enable credentialed cross-origin browser access: adding CORS requires an explicit trusted-origin policy. WebSocket upgrades retain their own Origin check because browser WebSockets do not use CORS preflight; MCP retains its SDK transport and actual streamed-body size limit.
 
 ## Input and execution
 
@@ -44,6 +47,8 @@ Postgres stores the team history and private recovery state. Public SQL and in-m
 Retired prototype columns (`stage`, `revision`, `annotation`) remain in storage to preserve existing records, but are absent from domain state and public snapshots. The row reader converts old workspace failure flags into error evidence; new writes use the current state model. This consolidation requires no database migration.
 
 A checkpoint pairs files with native context. Restore preserves discussion and the queue, invalidates review and starts no agent turn. Late callbacks are fenced by run/restore identity. Files is a read-only inspection surface; the sandbox reader rejects unsafe paths and symlinks. Its asset and the native bridge files must remain in Next's output tracing.
+
+`use-workspace-recovery` uses an XState actor for waiting, checking, retrying, exhaustion and confirmation. Each restore owns its actor and retry budget; ordinary snapshot revisions do not restart it. Manual checks cancel the previous invocation, while task changes and unmount stop the actor, cancel timers and ignore late results. This client actor sends read-only confirmation requests. Durable restore fencing and task admission remain in Postgres; the actor does not provide background job dispatch.
 
 ## Live collaboration and tools
 
