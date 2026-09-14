@@ -1,4 +1,5 @@
-import type { taskSessions } from "../../db/schema.ts";
+import { sql } from "drizzle-orm";
+import { taskSessions } from "../../db/schema.ts";
 import type { TaskSessionState } from "../../lib/session/task-session.ts";
 
 export function sessionValues(session: TaskSessionState) {
@@ -9,10 +10,7 @@ export function sessionValues(session: TaskSessionState) {
     createdBy: session.createdBy,
     createdAt: new Date(session.createdAt),
     version: session.version,
-    revision: session.revision,
-    stage: session.stage,
     messages: session.messages,
-    annotation: session.annotation,
     steeringQueue: session.steeringQueue,
     activeSteer: session.activeSteer ?? null,
     repository: session.repository ?? null,
@@ -24,6 +22,10 @@ export function sessionValues(session: TaskSessionState) {
 export function sessionState(
   row: typeof taskSessions.$inferSelect
 ): TaskSessionState {
+  // Older rows may carry a display status. Import its failure evidence once;
+  // subsequent saves contain only timestamps/error, never a second phase flag.
+  const { status, ...workspace } = row.workspace;
+  if (status === "error" && workspace.error == null) workspace.error = "";
   return {
     archived: row.archived ?? undefined,
     sessionId: row.id,
@@ -31,14 +33,18 @@ export function sessionState(
     createdBy: row.createdBy ?? "hive-system",
     createdAt: row.createdAt.getTime(),
     version: row.version,
-    revision: row.revision === 2 ? 2 : 1,
-    stage: row.stage,
     messages: row.messages,
-    annotation: row.annotation,
     steeringQueue: row.steeringQueue,
     activeSteer: row.activeSteer ?? undefined,
     repository: row.repository ?? undefined,
-    workspace: row.workspace,
+    workspace,
     updatedAt: row.updatedAt.getTime(),
   };
 }
+
+/** Same run/restore evidence as isHiveRunActive; JSON null and absent fields agree. */
+export const activeRunCondition = sql`
+  ${taskSessions.workspace}->>'startedAt' IS NOT NULL
+  AND ${taskSessions.workspace}->>'completedAt' IS NULL
+  AND ${taskSessions.workspace}->>'restore' IS NULL
+`;

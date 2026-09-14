@@ -52,7 +52,6 @@ const scope = {
 };
 const context = {
   sessionId: scope.sessionId,
-  stage: "running",
   repository: null,
   messages: [
     {
@@ -65,7 +64,7 @@ const context = {
       role: "human",
     },
   ],
-  workspace: { status: "running", liveReply: { id: scope.runId } },
+  workspace: { startedAt: 1, liveReply: { id: scope.runId } },
   members: [memberDirectory.spencer],
   steeringQueue: [],
 };

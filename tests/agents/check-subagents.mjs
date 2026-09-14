@@ -152,7 +152,6 @@ test("MCP retries of one delegation reuse its child despite different transport 
   const initial = createInitialTaskSessionState(1, scope.sessionId);
   const context = {
     ...initial,
-    stage: "running",
     members: [memberDirectory.spencer],
     repository: {
       provider: "github-app",
@@ -166,7 +165,11 @@ test("MCP retries of one delegation reuse its child despite different transport 
       connectedAt: 1,
       authorizedByGitHub: { id: 1, login: "spencer" },
     },
-    workspace: { ...initial.workspace, liveReply: { id: scope.runId } },
+    workspace: {
+      ...initial.workspace,
+      startedAt: 1,
+      liveReply: { id: scope.runId },
+    },
   };
   const client = new Client({ name: "replayed-delegation", version: "1" });
   await client.connect(

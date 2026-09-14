@@ -72,7 +72,7 @@ try {
   assert.equal(calls.length, 2, "reconnect retries an unconfirmed head safely");
   cleanup();
   for (const session of [
-    { ...state, workspace: { ...state.workspace, status: "error" } },
+    { ...state, workspace: { ...state.workspace, error: "Test run failed" } },
     {
       ...state,
       workspace: {

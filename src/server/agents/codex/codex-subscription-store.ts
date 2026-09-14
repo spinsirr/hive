@@ -1,3 +1,4 @@
+import { activeRunCondition } from "../../sessions/task-session-row.ts";
 import type { TaskRunScope } from "../../../lib/session/task-session-contract.ts";
 import { randomUUID } from "node:crypto";
 import { and, eq, isNull, sql } from "drizzle-orm";
@@ -37,9 +38,8 @@ async function authorizedTask(scope: TaskRunScope) {
       and(
         eq(taskSessions.id, scope.sessionId),
         sql`${taskSessions.archived} IS NULL`,
-        eq(taskSessions.stage, "running"),
-        sql`${taskSessions.workspace}->'liveReply'->>'id' = ${scope.runId}`,
-        sql`(${taskSessions.workspace}->'restore' IS NULL OR ${taskSessions.workspace}->'restore' = 'null'::jsonb)`
+        activeRunCondition,
+        sql`${taskSessions.workspace}->'liveReply'->>'id' = ${scope.runId}`
       )
     );
   if (!task)

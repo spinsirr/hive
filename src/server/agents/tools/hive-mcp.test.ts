@@ -107,7 +107,6 @@ function fixture(): HiveToolContext {
   const initial = createInitialTaskSessionState(1, scope.sessionId);
   return {
     ...initial,
-    stage: "running",
     repository: {
       id: 20,
       installationId: 10,
@@ -131,7 +130,7 @@ function fixture(): HiveToolContext {
         role: "human",
       },
     ],
-    workspace: { status: "running", liveReply: { id: scope.runId } },
+    workspace: { startedAt: 1, liveReply: { id: scope.runId } },
     members: [memberDirectory.spencer, memberDirectory.maya],
   };
 }
@@ -212,9 +211,12 @@ test("tools reject stale or finished runs, restores and revoked members", () => 
   assert.doesNotThrow(() => assertHiveToolRun(context, scope));
   for (const changed of [
     { ...context, sessionId: "other-task" },
-    { ...context, stage: "waiting" as const },
-    { ...context, stage: "review" as const },
-    { ...context, stage: "approved" as const },
+    { ...context, workspace: { ...context.workspace, startedAt: undefined } },
+    { ...context, workspace: { ...context.workspace, completedAt: 2 } },
+    {
+      ...context,
+      workspace: { ...context.workspace, completedAt: 2, error: "Run failed" },
+    },
     { ...context, members: [] },
     {
       ...context,

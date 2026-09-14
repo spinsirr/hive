@@ -15,7 +15,6 @@ export type HiveClient = {
 /** The allowlist is shared with the SQL projection. New stored fields stay private. */
 export const publicWorkspaceFields = [
   "reviewRevision",
-  "status",
   "codingEffort",
   "codingModel",
   "sandboxName",
@@ -47,10 +46,7 @@ export const publicSessionFields = [
   "createdBy",
   "createdAt",
   "version",
-  "revision",
-  "stage",
   "messages",
-  "annotation",
   "steeringQueue",
   "activeSteer",
   "repository",

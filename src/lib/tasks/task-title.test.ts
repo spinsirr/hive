@@ -1,3 +1,4 @@
+import { taskExecution } from "../session/task-execution.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
@@ -99,7 +100,7 @@ test("a member can rename without running the agent or changing the conversation
     "Settings polish"
   );
   assert.equal(renamed.sessionId, initial.sessionId);
-  assert.equal(renamed.stage, initial.stage);
+  assert.equal(taskExecution(renamed).kind, taskExecution(initial).kind);
   assert.equal(renamed.workspace, initial.workspace);
   assert.equal(renamed.messages, initial.messages);
   assert.equal(renamed.steeringQueue, initial.steeringQueue);

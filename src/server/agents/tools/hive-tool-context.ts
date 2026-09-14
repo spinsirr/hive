@@ -1,6 +1,8 @@
 import type { TaskRunScope } from "../../../lib/session/task-session-contract.ts";
 import {
   pendingMessageIds,
+  isHiveRunActive,
+  taskExecution,
   resolveMember,
   type TaskSessionState,
   type TeamMember,
@@ -16,7 +18,6 @@ export type HiveToolContext = Pick<
   | "sessionId"
   | "title"
   | "version"
-  | "stage"
   | "repository"
   | "messages"
   | "steeringQueue"
@@ -25,7 +26,7 @@ export type HiveToolContext = Pick<
   archived?: TaskSessionState["archived"];
   workspace: Pick<
     TaskSessionState["workspace"],
-    "status" | "restore" | "lastRestore"
+    "startedAt" | "completedAt" | "error" | "restore" | "lastRestore"
   > & {
     liveReply?: { id: string };
     runtime?: CodingRuntime;
@@ -40,9 +41,8 @@ export function assertHiveToolRun(
   if (
     context.archived ||
     context.sessionId !== scope.sessionId ||
-    context.stage !== "running" ||
+    !isHiveRunActive(context) ||
     context.workspace.liveReply?.id !== scope.runId ||
-    context.workspace.restore ||
     !context.members.some((member) => member.id === scope.memberId)
   ) {
     throw new Error("This agent run no longer has access to the task.");
@@ -66,7 +66,7 @@ export function describeHiveContext(context: HiveToolContext) {
     environment: {
       runtime: "Vercel Sandbox",
       harness: context.workspace.runtime ?? "codex",
-      workspace: context.workspace.status,
+      execution: taskExecution(context).kind,
       restored: Boolean(context.workspace.lastRestore),
     },
     members: context.members.map(({ id, name, githubLogin }) => ({

@@ -1,7 +1,6 @@
+import { canApplyNextSteer, isHiveRunActive } from "./task-execution.ts";
 import {
-  canApplyNextSteer,
   createAgentSessionId,
-  isHiveRunActive,
   type SteeringQueueItem,
   type TaskSessionState,
   type TeamMember,
@@ -23,10 +22,6 @@ function commandSource(
           queuedAt: status === "queued" ? now : undefined,
         };
   return {
-    annotation:
-      source.kind === "workspace-annotation"
-        ? { ...state.annotation, status, ...timing }
-        : state.annotation,
     messages: state.messages.map((message) => {
       switch (source.kind) {
         case "message-annotation":
@@ -67,16 +62,9 @@ function beginCommand(
   return {
     ...state,
     ...commandSource(state, command, "steered", now),
-    stage: "running",
-    revision:
-      command.source.kind === "message-annotation" ||
-      command.source.kind === "workspace-annotation"
-        ? 2
-        : state.revision,
     activeSteer: { ...command, appliedAt: now },
     workspace: {
       ...state.workspace,
-      status: state.repository ? "running" : "disconnected",
       agentSession:
         state.workspace.agentSession ??
         (state.repository

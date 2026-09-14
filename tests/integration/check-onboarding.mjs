@@ -1,3 +1,4 @@
+import { taskExecution } from "../../src/lib/session/task-execution.ts";
 import { createTestDatabase } from "../helpers/test-database.mjs";
 import { registerTestModules } from "../helpers/test-modules.mjs";
 // Real route/auth/store behavior against a disposable, loopback-only Postgres DB.
@@ -264,7 +265,7 @@ try {
     [],
     "authenticated creation starts an empty conversation, not a fabricated agent reply"
   );
-  assert.equal(newSession.stage, "waiting");
+  assert.equal(taskExecution(newSession).kind, "idle");
   assert.equal(
     await store.isTaskSessionMember(ownTasks[0].id, owner.member.id),
     false
@@ -473,7 +474,10 @@ try {
   );
   assert.equal(discussed.status, 200);
   const discussion = (await discussed.json()).session;
-  assert.equal(discussion.stage, ownSnapshot.session.stage);
+  assert.equal(
+    taskExecution(discussion).kind,
+    taskExecution(ownSnapshot.session).kind
+  );
   assert.equal(discussion.version, ownSnapshot.session.version + 1);
   assert.equal(
     discussion.messages[0].annotations.at(-1).authorId,
@@ -646,8 +650,8 @@ try {
   assert.equal(sharedDiscussion.status, 200);
   const beforeArchive = (await sharedDiscussion.json()).session;
   assert.equal(
-    beforeArchive.stage,
-    "waiting",
+    taskExecution(beforeArchive).kind,
+    "idle",
     "a teammate discussion does not run the agent"
   );
   assert.equal(
@@ -757,13 +761,8 @@ try {
     });
   }
   await pool.query(
-    "UPDATE task_sessions SET workspace = $2, version = $3, stage = $4 WHERE id = $1",
-    [
-      privateTask.sessionId,
-      recoveryState.workspace,
-      recoveryState.version,
-      recoveryState.stage,
-    ]
+    "UPDATE task_sessions SET workspace = $2, version = $3 WHERE id = $1",
+    [privateTask.sessionId, recoveryState.workspace, recoveryState.version]
   );
   const restoreRequest = {
     id: randomUUID(),

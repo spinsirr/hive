@@ -29,6 +29,8 @@ Normal messages address Hive. Leading teammate mentions and ordinary Thread repl
 
 The store grants execution while holding task and membership row locks. Other submitted instructions queue in order. After a successful run, connected clients can request continuation of the exact queue head; the transaction grants it once. Errors and restored history pause automatic continuation. Closing every viewer delays continuation until reconnect.
 
+`task-execution.ts` derives idle, running, restoring, failed and completed from run timestamps, error and restore evidence. UI controls, tool permissions and store writes use these same rules; pending input and human review do not change execution state. Archive, reset and model settings share one idle-task condition. Result callbacks require the current run ID and an active run.
+
 Editing requires authorship and the expected revision. A queued edit must still refer to the same unapplied instruction. Structured answers are recorded once for the designated member. Human review verification names the completed workspace revision; a later run or restore invalidates stale verification. Finishing a turn does not close the conversation.
 
 Provider calls run outside task/member row locks. Checkpoint imports and environment updates compare the state they observed before writing, so delayed results cannot overwrite a newer run or restore. Renewals serialize per VM.
@@ -38,6 +40,8 @@ Execution remains request-bound. A committed execution grant is not a durable jo
 ## Public data and recovery
 
 Postgres stores the team history and private recovery state. Public SQL and in-memory projections share field allowlists. Native resume data, checkpoint payloads and restore VM identities stay server-side; public command evidence retains nullable exit codes.
+
+Retired prototype columns (`stage`, `revision`, `annotation`) remain in storage to preserve existing records, but are absent from domain state and public snapshots. The row reader converts old workspace failure flags into error evidence; new writes use the current state model. This consolidation requires no database migration.
 
 A checkpoint pairs files with native context. Restore preserves discussion and the queue, invalidates review and starts no agent turn. Late callbacks are fenced by run/restore identity. Files is a read-only inspection surface; the sandbox reader rejects unsafe paths and symlinks. Its asset and the native bridge files must remain in Next's output tracing.
 

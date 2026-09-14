@@ -1,3 +1,4 @@
+import { taskExecution } from "../session/task-execution.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
@@ -66,7 +67,7 @@ test("an author edits queued input without moving it, interrupting a run, or cha
     queued.messages.find((entry) => entry.memberId === "spencer")
   );
   assert.equal(next.workspace, queued.workspace);
-  assert.equal(next.stage, queued.stage);
+  assert.equal(taskExecution(next).kind, taskExecution(queued).kind);
   assert.equal(didStartHiveRun(queued, next), false);
   const finished = appendHiveReply(next, "Inspection finished", 5);
   const applied = reduceTaskSession(
@@ -103,7 +104,7 @@ test("editing completed discussion preserves execution evidence and marks subseq
     4
   );
   assert.equal(next.workspace, finished.workspace);
-  assert.equal(next.stage, finished.stage);
+  assert.equal(taskExecution(next).kind, taskExecution(finished).kind);
   assert.equal(
     next.title,
     finished.title,

@@ -6,7 +6,7 @@ import type {
 
 export type SubagentSession = Pick<
   TaskSessionState,
-  "sessionId" | "stage" | "repository"
+  "sessionId" | "repository"
 > & {
   workspace: Pick<
     TaskSessionState["workspace"],

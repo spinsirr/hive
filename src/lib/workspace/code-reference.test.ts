@@ -1,3 +1,4 @@
+import { taskExecution } from "../session/task-execution.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
@@ -48,7 +49,7 @@ function withRepository() {
 test("code annotations are durable discussion records, not implicit agent tasks", () => {
   const initial = withRepository();
   const annotated = reduceTaskSession(initial, action, 3);
-  assert.equal(annotated.stage, initial.stage);
+  assert.equal(taskExecution(annotated).kind, taskExecution(initial).kind);
   assert.deepEqual(annotated.workspace, initial.workspace);
   assert.deepEqual(annotated.steeringQueue, []);
   const message = annotated.messages.at(-1)!;
@@ -128,7 +129,7 @@ for (const running of [false, true]) {
     assert.ok(input.steer!.includes(reference.quote));
     assert.ok(input.steer!.includes(action.body));
     assert.match(input.steer!, /Re-read the current file before editing/);
-    assert.equal(session.stage, "running");
+    assert.equal(taskExecution(session).kind, "running");
   });
 }
 

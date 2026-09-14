@@ -582,7 +582,6 @@ try {
             new Promise((resolve) => {
               finishSend = () => {
                 const complete = structuredClone(navigationSnapshot);
-                complete.session.stage = "review";
                 complete.session.messages.push({
                   id: "accepted-ux-message",
                   memberId: demoMembers[0].id,

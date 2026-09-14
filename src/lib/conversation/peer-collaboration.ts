@@ -1,3 +1,4 @@
+import { isHiveRunActive, taskExecution } from "../session/task-execution.ts";
 import type { TaskRunScope } from "../session/task-session-contract.ts";
 import { z } from "zod";
 import type {
@@ -70,8 +71,7 @@ export function requestPeerInput(
     state.archived ||
     state.sessionId !== scope.sessionId ||
     state.workspace.liveReply?.id !== scope.runId ||
-    state.stage !== "running" ||
-    state.workspace.restore ||
+    !isHiveRunActive(state) ||
     !members.some((m) => m.id === scope.memberId)
   )
     throw new Error("Run no longer active.");
@@ -158,10 +158,10 @@ export function canResolvePeerReview(
     review.revision !== revision ||
     state.workspace.reviewRevision !== revision ||
     state.workspace.restore ||
-    state.workspace.status === "error" ||
+    taskExecution(state).kind === "failed" ||
     state.activeSteer ||
     state.steeringQueue.length ||
-    (state.stage === "running" && state.workspace.completedAt === undefined) ||
+    isHiveRunActive(state) ||
     (review.targetMemberId && review.targetMemberId !== actor)
   )
     return false;

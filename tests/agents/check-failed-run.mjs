@@ -1,3 +1,4 @@
+import { taskExecution } from "../../src/lib/session/task-execution.ts";
 import { registerTestModules } from "../helpers/test-modules.mjs";
 // Deterministic runner regression: external services are doubles; Hive's runner,
 // stream handling, and task-state transition are the production implementations.
@@ -417,8 +418,10 @@ for (const options of [
   const state = options.fail
     ? applyHiveRunError(initial, failure.message, 40, failure.checkpoint)
     : applyHiveRunResult(initial, result, 40);
-  assert.equal(state.workspace.status, options.fail ? "error" : "review");
-  assert.notEqual(state.stage, "approved");
+  assert.equal(
+    taskExecution(state).kind,
+    options.fail ? "failed" : "completed"
+  );
   assert.deepEqual(
     state.workspace.agentSession.resumeFrom,
     options.checkpointFailure
@@ -573,7 +576,7 @@ for (const status of [500, 401, 403]) {
       40,
       error.checkpoint
     );
-    assert.equal(state.workspace.status, "error");
+    assert.equal(taskExecution(state).kind, "failed");
     assert.equal(
       state.workspace.liveReply,
       undefined,

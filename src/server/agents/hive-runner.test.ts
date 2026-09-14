@@ -9,7 +9,6 @@ import {
 function sessionWithSandboxName(sandboxName?: string) {
   return {
     workspace: {
-      status: "ready" as const,
       sandboxName,
       diff: "",
       files: [],

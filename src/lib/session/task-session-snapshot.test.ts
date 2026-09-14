@@ -1,3 +1,4 @@
+import { taskExecution } from "./task-execution.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -85,7 +86,7 @@ test("late reconnect snapshots and action responses cannot roll back team messag
     deliverOld(before);
     await pendingOldResponse;
     assert.deepEqual(current.session.messages, after.session.messages, source);
-    assert.equal(current.session.stage, "running", source);
+    assert.equal(taskExecution(current.session).kind, "running", source);
   }
 });
 

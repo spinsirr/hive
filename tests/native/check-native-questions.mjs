@@ -41,8 +41,7 @@ let scope = {
 };
 let state = {
   ...createInitialTaskSessionState(1, scope.sessionId),
-  stage: "running",
-  workspace: { status: "running", liveReply: { id: scope.runId } },
+  workspace: { startedAt: 1, liveReply: { id: scope.runId } },
 };
 let turnNumber = 0,
   step = 0,

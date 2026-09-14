@@ -105,7 +105,6 @@ export const clientTaskSessionActionSchema = z.discriminatedUnion("type", [
     steerId: z.string(),
     direction: z.enum(["up", "down"]),
   }),
-  z.object({ type: z.literal("steer-agent") }),
   z.object({ type: z.literal("recover-stalled-run") }),
   z.object({ type: z.literal("reset") }),
 ]);
