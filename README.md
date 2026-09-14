@@ -44,7 +44,7 @@ Cloud execution is implemented. Durable unattended execution remains a separate 
 - **Make direction explicit.** Discussion does not become an instruction until someone steers it; queued input retains its authorship and order.
 - **Remember deliberately.** Save selected team decisions with provenance rather than turning every comment into a lasting rule.
 - **Keep judgment with the team.** The agent can ask for input; people verify the resulting revision.
-- **Reuse the coding runtime.** Focus Hive's modules on collaboration and control, using an existing harness for coding tools and native history.
+- **Reuse the coding runtime.** AI SDK Harness manages agent execution and native history. Hive owns the shared task: authorship, instruction order and review. See [state ownership](docs/DEVELOPMENT.md#state-ownership) for the boundary and reducer trade-off.
 
 ## Architecture
 
