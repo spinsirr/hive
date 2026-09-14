@@ -24,8 +24,6 @@ Imports point from routes/UI to shared domain code or server services. Shared co
 
 Within `src/lib/session`, `task-session-actions.ts` validates client actions, `task-session.ts` dispatches reducer transitions, and `task-session-commands.ts` owns frozen input admission and execution start. Public snapshot contracts and projections stay alongside the state model. `src/lib/utils.ts` contains the shared class-name helper; do not use it as a miscellaneous domain bucket.
 
-Task, file, checkpoint and child-control APIs use Hono through its Next/Vercel adapter. Next route files preserve the public URLs and per-endpoint execution budgets. Shared middleware authenticates cookies, checks task membership and applies private response headers; `@hono/zod-validator` validates JSON bodies and query parameters with the domain schemas. JSON mutations do not require a matching Origin. Hono's CSRF middleware checks form-capable requests, and these endpoints accept only validated JSON bodies. They do not enable credentialed cross-origin browser access: adding CORS requires an explicit trusted-origin policy. WebSocket upgrades retain their own Origin check because browser WebSockets do not use CORS preflight; MCP retains its SDK transport and actual streamed-body size limit.
-
 ## Input and execution
 
 Normal messages address Hive. Leading teammate mentions and ordinary Thread replies remain discussion. Explicit steering freezes the selected body, author, source and reply destination; later discussion cannot rewrite accepted input.
@@ -48,13 +46,11 @@ Retired prototype columns (`stage`, `revision`, `annotation`) remain in storage 
 
 A checkpoint pairs files with native context. Restore preserves discussion and the queue, invalidates review and starts no agent turn. Late callbacks are fenced by run/restore identity. Files is a read-only inspection surface; the sandbox reader rejects unsafe paths and symlinks. Its asset and the native bridge files must remain in Next's output tracing.
 
-`use-workspace-recovery` uses an XState actor for waiting, checking, retrying, exhaustion and confirmation. Each restore owns its actor and retry budget; ordinary snapshot revisions do not restart it. Manual checks cancel the previous invocation, while task changes and unmount stop the actor, cancel timers and ignore late results. This client actor sends read-only confirmation requests. Durable restore fencing and task admission remain in Postgres; the actor does not provide background job dispatch.
+`use-workspace-recovery` uses XState to poll restore completion. Postgres owns durable restore state and task admission.
 
 ## Live collaboration and tools
 
-Workspace reads use SWR: Files uses `useSWRInfinite` for pagination, checkpoints use revision-specific keys, and repository discovery stays disabled until requested. Task/member changes discard the workspace cache. Revalidation disables checkpoint confirmation and repository selection until current data arrives. These reads do not enable background focus polling or automatic error retries against GitHub or Sandbox.
-
-The client uses PartySocket's WebSocket hook for connection timeout, backoff, reconnection and lifecycle cleanup. It buffers no outgoing messages; reconnect sends only the latest typing state. Authentication expiry stops reconnection. Snapshot/reply version checks remain Hive's domain logic, and writes are never replayed by the transport.
+Client hooks use SWR for workspace reads and PartySocket for WebSocket reconnection.
 
 Authenticated WebSockets own presence. Postgres `LISTEN/NOTIFY` relays snapshots, reply changes and ephemeral member/typing announcements across instances. Presence counts people, not tabs; observers do not count as participants. It is a bounded observation, not proof that someone is actively looking at the page.
 
@@ -66,13 +62,9 @@ Codex research/review children use the parent's task, model, settings and permis
 
 ## Runtime changes
 
-Coding and subscription-backed planning use `HarnessAgent` with the Codex or Claude Code adapter. Harness owns the agent session, native tool loop, stream contract and bootstrap cache. Gateway-only planning uses AI SDK `streamText`; `@ai-sdk/mcp` discovers and converts the shared conversation tools. MCP calls keep a 15-second HTTP deadline, propagate cancellation and never retry writes automatically.
+Coding and subscription-backed planning use `HarnessAgent` with the Codex or Claude Code adapter. Gateway planning uses AI SDK `streamText` and `@ai-sdk/mcp`.
 
-Codex extends the adapter's bootstrap recipe with Hive's native bridge assets and an import check. Harness installs the adapter's locked dependencies and marks the recipe ready only after the check passes, including when upgrading a resumed sandbox. There is no second dependency installer in the coding or planning runner.
-
-The Codex extension uses the public Harness bridge runtime with an app-server turn driver. The pinned adapter already provides thread creation, resume and streaming through the official TypeScript SDK. Hive overrides its driver for external ChatGPT-token login, raw app-server events and bounded child control. The turn-scoped Gateway transport also retains a shared 429 retry budget; per-request or whole-turn retries cannot replace that policy without changing replay behavior. Evaluate these specific differences when replacing the driver; generic session management and streaming are SDK capabilities.
-
-Preserving subscription access is a requirement for SDK and harness changes. Codex uses native ChatGPT authentication; Claude uses its OAuth subscription token. Planning, coding, warm continuation and checkpoint resume must retain the selected authentication source. Invalid credentials or exhausted subscription quota must stop with an actionable error, never silently switch to paid API/Gateway credentials. Keep credentials in server-side storage and endpoint-scoped Sandbox forwarding rules; task VMs, snapshots and resume data must not receive real subscription tokens. Local login discovery in an adapter does not replace this credential boundary. Verify these requirements with the auth and native checks, then the real-account subscription journey in [production acceptance](RELEASE_ACCEPTANCE.md).
+Hive's Codex app-server driver handles external ChatGPT-token login, raw events and child control. Harness bootstrap installs its bridge assets and dependencies.
 
 Use the adapter versions pinned in `package.json` and the lockfile. Model/effort labels in `coding-models.ts` must match the installed adapter schema and bundled CLI; changing labels or the host CLI does not upgrade a Sandbox runtime. Native history stays bound to its harness and authentication boundary.
 
