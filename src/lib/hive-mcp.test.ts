@@ -165,13 +165,30 @@ test("Claude shares discussion and memory tools without advertising Codex child 
   try {
     assert.deepEqual(
       (await client.listTools()).tools.map((tool) => tool.name).sort(),
-      ["get_context", "remember_memory", "reply_to_thread", "search_memory"]
+      [
+        "get_context",
+        "get_presence",
+        "read_thread",
+        "remember_memory",
+        "reply_to_thread",
+        "search_memory",
+      ]
     );
     const result = await client.callTool({
       name: "get_context",
       arguments: {},
     });
     assert.match(JSON.stringify(result), /claude-code/);
+    const unavailable = await client.callTool({
+      name: "get_presence",
+      arguments: {},
+    });
+    assert.match(JSON.stringify(unavailable), /unavailable/);
+    assert.equal(
+      JSON.parse((unavailable.content as Array<{ text: string }>)[0].text)
+        .onlineCount,
+      null
+    );
     const reply = await client.callTool({
       name: "reply_to_thread",
       arguments: {
@@ -304,7 +321,14 @@ test("real MCP client can read, remember, recall and reply without starting anot
     await client.connect(transport);
     assert.deepEqual(
       (await client.listTools()).tools.map((tool) => tool.name).sort(),
-      ["get_context", "remember_memory", "reply_to_thread", "search_memory"]
+      [
+        "get_context",
+        "get_presence",
+        "read_thread",
+        "remember_memory",
+        "reply_to_thread",
+        "search_memory",
+      ]
     );
     const description = await client.callTool({
       name: "get_context",
@@ -441,6 +465,11 @@ for (const kind of [
       });
       assert.match(JSON.stringify(result), /queue-one/);
       assert.doesNotMatch(JSON.stringify(result), /FUTURE_REQUEST_ONLY/);
+      const thread = await client.callTool({
+        name: "read_thread",
+        arguments: { messageId },
+      });
+      assert.doesNotMatch(JSON.stringify(thread), /FUTURE_REQUEST_ONLY/);
       assert.equal(
         (
           await client.callTool({
@@ -460,3 +489,98 @@ for (const kind of [
     }
   });
 }
+
+test("multiplayer tools observe only task members and read older discussion without granting execution", async () => {
+  let context = fixture();
+  const original = context.messages[0];
+  original.annotations = Array.from({ length: 22 }, (_, i) => ({
+    id: `reply-${i}`,
+    authorId: "spencer",
+    body: `Discussion ${i}`,
+    createdAt: i + 1,
+    status: "open" as const,
+  }));
+  original.annotations.push({
+    id: "queued",
+    authorId: "spencer",
+    body: "Unapplied secret instruction",
+    createdAt: 30,
+    status: "queued",
+  });
+  context.messages.push(
+    ...Array.from({ length: 15 }, (_, i) => ({
+      ...original,
+      id: `later-${i}`,
+      annotations: [],
+    }))
+  );
+  let observed = 0;
+  const client = new Client({ name: "multiplayer-test", version: "1" });
+  await client.connect(
+    new StreamableHTTPClientTransport(
+      new URL("https://hive.test/agent-tools"),
+      {
+        fetch: (input, init) =>
+          handleHiveMcp(
+            new Request(input, init),
+            scope,
+            {
+              read: async () => context,
+              reply: async () => {
+                throw new Error("Read tools cannot post replies");
+              },
+              presence: async (sessionId) => {
+                observed++;
+                assert.equal(sessionId, scope.sessionId);
+                return {
+                  activeMembers: ["spencer", "spencer", "foreign"],
+                  observedAt: 123,
+                };
+              },
+            },
+            createHiveMemory(undefined)
+          ),
+      }
+    )
+  );
+  const read = async (name: string, args = {}) => {
+    const response = await client.callTool({ name, arguments: args });
+    assert.notEqual(response.isError, true);
+    return JSON.parse((response.content as Array<{ text: string }>)[0].text);
+  };
+  try {
+    const presence = await read("get_presence");
+    assert.equal(presence.onlineCount, 1);
+    assert.equal(presence.members[0].id, "spencer");
+    assert.equal(presence.observedAt, 123);
+    assert.doesNotMatch(JSON.stringify(presence), /foreign/);
+    const first = await read("read_thread", { messageId: original.id });
+    assert.equal(first.replies.length, 20);
+    assert.equal(first.nextOffset, 20);
+    const second = await read("read_thread", {
+      messageId: original.id,
+      offset: first.nextOffset,
+    });
+    assert.equal(second.replies.length, 2);
+    assert.equal(second.nextOffset, null);
+    assert.doesNotMatch(JSON.stringify([first, second]), /Unapplied secret/);
+    assert.equal(
+      (
+        await client.callTool({
+          name: "read_thread",
+          arguments: { messageId: "foreign" },
+        })
+      ).isError,
+      true
+    );
+    assert.equal(context.steeringQueue.length, 0);
+    context = { ...context, members: [] };
+    assert.equal(
+      (await client.callTool({ name: "get_presence", arguments: {} })).isError,
+      true
+    );
+    assert.equal(observed, 1, "revoked members cannot even observe presence");
+  } finally {
+    await client.close();
+  }
+});

@@ -145,6 +145,63 @@ try {
   console.log(
     "PASS: unnamed creation, concurrent first-message naming, manual rename during a run, stable task ID/list title and cross-task isolation."
   );
+  const queuedMessageId = named.steeringQueue[0].id;
+  const queueResult = {
+    sandboxName: "fixture",
+    summary: "First request complete",
+    diff: "",
+    files: [],
+    commands: [],
+    changedFiles: [],
+  };
+  await store.appendHiveReply(unnamed.sessionId, queueResult.summary, {
+    forReplyId: named.workspace.liveReply.id,
+    runResult: queueResult,
+  });
+  const messageContinuations = await Promise.all(
+    members.map((actor) =>
+      store.applyTaskSessionAction(
+        unnamed.sessionId,
+        {
+          type: "continue-queued-steer",
+          actor: actor.id,
+          steerId: queuedMessageId,
+        },
+        actor
+      )
+    )
+  );
+  assert.equal(
+    messageContinuations.filter((item) => item.startedRun).length,
+    1,
+    "two clients automatically continue an ordinary message only once"
+  );
+  const autoMessage = (
+    await store.getPublicTaskSessionSnapshot(unnamed.sessionId)
+  ).session;
+  assert.equal(autoMessage.activeSteer.id, queuedMessageId);
+  assert.equal(autoMessage.steeringQueue.length, 0);
+  await store.appendHiveReply(unnamed.sessionId, "Queued message complete", {
+    forReplyId: autoMessage.workspace.liveReply.id,
+    runResult: queueResult,
+  });
+  const staleMessage = await store.applyTaskSessionAction(
+    unnamed.sessionId,
+    {
+      type: "continue-queued-steer",
+      actor: members[0].id,
+      steerId: queuedMessageId,
+    },
+    members[0]
+  );
+  assert.equal(
+    staleMessage.startedRun,
+    false,
+    "late continuation never starts another run"
+  );
+  console.log(
+    "PASS: real Postgres grants queued-message continuation once across concurrent clients."
+  );
   const task = await store.createTaskSession(
     "Peer collaboration acceptance",
     members[0]
@@ -228,7 +285,7 @@ try {
     members.map((actor) =>
       store.applyTaskSessionAction(
         task.sessionId,
-        { type: "continue-peer-response", actor: actor.id, steerId: queueId },
+        { type: "continue-queued-steer", actor: actor.id, steerId: queueId },
         actor
       )
     )
@@ -874,7 +931,7 @@ try {
       await store.applyTaskSessionAction(
         task.sessionId,
         {
-          type: "continue-peer-response",
+          type: "continue-queued-steer",
           actor: members[0].id,
           steerId: pending.id,
         },

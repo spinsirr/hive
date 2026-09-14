@@ -162,7 +162,7 @@ export function SteeringQueue({
             disabled={disabled || !canApply}
             onClick={onApply}
             size="xs"
-            title="Starts the next steer only after the current run finishes"
+            title="Queued input continues automatically after a successful run. Use Run next to resume paused work."
             type="button"
             variant="ghost"
           >

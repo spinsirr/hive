@@ -4,6 +4,7 @@ import {
   releaseCommandSource,
 } from "./task-session-commands.ts";
 import {
+  nextAutomaticSteer,
   type TeamMember,
   resolveMember,
   type SteeringQueueItem,
@@ -290,22 +291,13 @@ export function applyNextSteer(
   return startNextCommand(state, now, members);
 }
 
-export function continuePeerResponse(
+export function continueQueuedSteer(
   state: TaskSessionState,
-  action: Extract<TaskSessionAction, { type: "continue-peer-response" }>,
+  action: Extract<TaskSessionAction, { type: "continue-queued-steer" }>,
   now: number,
   members: TeamMember[]
 ): TaskSessionState {
-  const next = state.steeringQueue[0];
-  if (
-    !next ||
-    next.id !== action.steerId ||
-    next.source.kind !== "peer-response" ||
-    state.workspace.status === "error" ||
-    (state.workspace.lastRestore &&
-      next.queuedAt <= state.workspace.lastRestore.at)
-  )
-    return state;
+  if (nextAutomaticSteer(state) !== action.steerId) return state;
   return startNextCommand(state, now, members);
 }
 

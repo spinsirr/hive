@@ -57,7 +57,7 @@ export const clientTaskSessionActionSchema = z.discriminatedUnion("type", [
     revision: z.string().min(1).max(200),
   }),
   z.object({
-    type: z.literal("continue-peer-response"),
+    type: z.literal("continue-queued-steer"),
     steerId: z.string().max(200),
   }),
   z.object({

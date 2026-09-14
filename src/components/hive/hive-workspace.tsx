@@ -1,14 +1,8 @@
 "use client";
 import { WorkspaceDetail } from "./workspace-detail";
 import { Code2, MessageSquare } from "lucide-react";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useQueuedContinuation } from "@/hooks/use-queued-continuation";
 import { useHiveClient } from "@/components/hive/hive-client";
 import { TaskAttention } from "@/components/hive/task-attention";
 
@@ -155,28 +149,7 @@ export function HiveWorkspaceView({
     Boolean(activeSteer) ||
     steeringQueue.length > 0;
   const canApplySteer = canApplyNextSteer(session);
-  const attemptedAnswer = useRef<string | null>(null);
-  const nextAnswer =
-    canApplySteer &&
-    workspace.status !== "error" &&
-    steeringQueue[0]?.source.kind === "peer-response" &&
-    (!workspace.lastRestore ||
-      steeringQueue[0].queuedAt > workspace.lastRestore.at)
-      ? steeringQueue[0].id
-      : null;
-  useEffect(() => {
-    if (
-      !nextAnswer ||
-      syncing ||
-      syncError ||
-      attemptedAnswer.current === nextAnswer
-    )
-      return;
-    attemptedAnswer.current = nextAnswer;
-    // Every connected teammate may observe readiness. The server checks this
-    // exact queue item under its task lock and grants execution only once.
-    void dispatch({ type: "continue-peer-response", steerId: nextAnswer });
-  }, [nextAnswer, syncing, syncError, dispatch]);
+  useQueuedContinuation(session, syncing || syncError, dispatch);
   const steered = annotation.status === "steered";
   const queued = annotation.status === "queued";
   const queuePosition =

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { hiveAgentFailureMessage } from "./hive-agent.ts";
-import { displayHiveErrorMessage } from "./hive-error-copy.ts";
+import { displayHiveErrorMessage, hiveErrorCopy } from "./hive-error-copy.ts";
 
 test("maps raw Codex bridge errors and wrapped errors to the same rate-limit message", () => {
   const bridgeError =
@@ -25,5 +25,18 @@ test("reduces legacy explanatory errors to quiet status copy", () => {
       "I saved the team’s input, but I couldn’t reach AI Gateway. The shared session is still live."
     ),
     "Run failed. Try again."
+  );
+});
+
+test("preserves the safe repository preparation error without echoing raw provider details", () => {
+  assert.equal(
+    displayHiveErrorMessage(hiveErrorCopy.repositoryAccess),
+    hiveErrorCopy.repositoryAccess
+  );
+  assert.equal(
+    displayHiveErrorMessage(
+      `${hiveErrorCopy.repositoryAccess} Authorization: fixture-secret`
+    ),
+    hiveErrorCopy.generic
   );
 });

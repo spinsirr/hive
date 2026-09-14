@@ -1,3 +1,4 @@
+import { sessionEvents } from "@/lib/session-events";
 import { handleHiveMcp } from "@/lib/hive-mcp";
 import { verifyHiveToolToken } from "@/lib/hive-tool-token";
 import {
@@ -54,6 +55,7 @@ export async function POST(
     signal: request.signal,
   });
   return handleHiveMcp(bounded, scope, {
+    presence: (sessionId) => sessionEvents.readPresence(sessionId),
     read: readHiveToolContext,
     reply: appendHiveToolReply,
     request: createHivePeerRequest,

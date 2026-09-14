@@ -119,6 +119,22 @@ try {
       "github-102",
     ]);
   }
+  const observer = new SessionEventHub();
+  const observation = await observer.readPresence(sessionId);
+  assert.deepEqual(
+    observation.activeMembers,
+    ["github-101", "github-102"],
+    "a separate agent-tools instance observes both people without counting itself"
+  );
+  assert.ok(observation.observedAt <= Date.now());
+  for (const { client } of [first, second])
+    assert.deepEqual(latestPresence.get(client)?.activeMembers, [
+      "github-101",
+      "github-102",
+    ]);
+  console.log(
+    "PASS: independent presence observer reads live members without fake users or durable writes."
+  );
   const typing = [first, second].map(({ client }) =>
     nextFrame(client, "presence", (presence) =>
       presence.typingMembers.includes("github-101")

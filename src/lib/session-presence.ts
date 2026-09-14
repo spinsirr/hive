@@ -46,7 +46,7 @@ export class SessionPresence {
   private instanceId = randomUUID();
   private local = new Map<
     string,
-    Map<symbol, { memberId: MemberId; typing: boolean }>
+    Map<symbol, { memberId?: MemberId; typing: boolean }>
   >();
   private remote = new Map<
     string,
@@ -66,7 +66,8 @@ export class SessionPresence {
     this.changed = changed;
   }
 
-  join(sessionId: string, memberId: MemberId) {
+  // An observer joins the relay without representing an online person.
+  join(sessionId: string, memberId?: MemberId) {
     if (this.disposed) throw new Error("Presence connection is closed.");
     const connections = this.local.get(sessionId) ?? new Map();
     const key = Symbol();
@@ -150,7 +151,8 @@ export class SessionPresence {
     const members = new Map<MemberId, boolean>();
     for (const { memberId, typing } of this.local.get(sessionId)?.values() ??
       []) {
-      members.set(memberId, Boolean(members.get(memberId) || typing));
+      if (memberId)
+        members.set(memberId, Boolean(members.get(memberId) || typing));
     }
     return [...members.entries()].sort(([a], [b]) => a.localeCompare(b));
   }

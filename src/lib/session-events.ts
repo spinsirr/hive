@@ -12,7 +12,7 @@ import type { MemberId } from "./task-session.ts";
 export type SessionEventKind = "snapshot" | "reply";
 type Subscription = {
   sessionId: string;
-  memberId: MemberId;
+  memberId?: MemberId;
   onChange: (kind: SessionEventKind) => void;
   onPresence: (presence: LivePresence) => void;
   onDisconnect: () => void;
@@ -145,6 +145,32 @@ export class SessionEventHub {
     } catch (error) {
       unsubscribe();
       throw error;
+    }
+  }
+
+  async readPresence(
+    sessionId: string
+  ): Promise<LivePresence & { observedAt: number }> {
+    let current: LivePresence = { activeMembers: [], typingMembers: [] };
+    let disconnected = false;
+    // A short-lived observer asks other instances for their connection-owned
+    // presence. It neither counts as a person nor persists a presence table.
+    const subscription = await this.subscribe({
+      sessionId,
+      onChange() {},
+      onPresence(next) {
+        current = next;
+      },
+      onDisconnect() {
+        disconnected = true;
+      },
+    });
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      if (disconnected) throw new Error("Live presence is unavailable.");
+      return { ...current, observedAt: Date.now() };
+    } finally {
+      subscription.unsubscribe();
     }
   }
 

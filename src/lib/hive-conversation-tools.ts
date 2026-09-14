@@ -23,7 +23,13 @@ export async function connectHiveConversationTools(
       tools: Object.fromEntries(
         tools
           .filter(({ name }) =>
-            ["get_context", "request_input", "reply_to_thread"].includes(name)
+            [
+              "get_context",
+              "get_presence",
+              "read_thread",
+              "request_input",
+              "reply_to_thread",
+            ].includes(name)
           )
           .map(({ name, description, inputSchema }) => [
             name,

@@ -540,6 +540,21 @@ export function canApplyNextSteer(state: TaskSessionState): boolean {
   );
 }
 
+/** Only already-submitted input may auto-continue. Errors and restored history
+ * require an explicit restart; the exact head ID fences competing clients. */
+export function nextAutomaticSteer(state: TaskSessionState): string | null {
+  const next = state.steeringQueue[0];
+  if (
+    !canApplyNextSteer(state) ||
+    !next ||
+    state.workspace.status === "error" ||
+    (state.workspace.lastRestore &&
+      next.queuedAt <= state.workspace.lastRestore.at)
+  )
+    return null;
+  return next.id;
+}
+
 export function didStartHiveRun(
   previous: TaskSessionState,
   next: TaskSessionState

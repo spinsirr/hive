@@ -790,7 +790,7 @@ test("interrupted runs preserve the answer and thread, but cannot auto-continue 
     reduceTaskSession(
       lost,
       {
-        type: "continue-peer-response",
+        type: "continue-queued-steer",
         actor: "maya",
         steerId: lost.steeringQueue[0].id,
       },
@@ -849,7 +849,7 @@ test("automatic continuation cannot consume a different queue item, run revoked 
   );
   const idle = applyHiveRunResult(answered, result(), 5);
   const action = {
-    type: "continue-peer-response",
+    type: "continue-queued-steer",
     actor: "spencer",
     steerId: idle.steeringQueue[0].id,
   } as const;
@@ -977,5 +977,112 @@ test("review completion covers only the feedback captured by that run, not a lat
     ),
     removed,
     "removing later queued feedback does not mean Hive addressed it"
+  );
+});
+
+test("queued messages continue in order after completion with a fenced execution grant", () => {
+  let state = reduceTaskSession(
+    working(),
+    {
+      type: "send-message",
+      actor: "maya",
+      body: "How many people are online?",
+      clientId: "queue-one",
+    },
+    3,
+    members
+  );
+  state = reduceTaskSession(
+    state,
+    {
+      type: "send-message",
+      actor: "spencer",
+      body: "Then summarize the task",
+      clientId: "queue-two",
+    },
+    4,
+    members
+  );
+  const [first, second] = state.steeringQueue;
+  const action = {
+    type: "continue-queued-steer",
+    actor: "spencer",
+    steerId: first.id,
+  } as const;
+  assert.equal(
+    reduceTaskSession(state, action, 5, members),
+    state,
+    "never overlaps an active run"
+  );
+  const idle = applyHiveRunResult(state, result(), 6);
+  assert.equal(
+    reduceTaskSession(idle, { ...action, steerId: second.id }, 7, members),
+    idle,
+    "never skips the queue head"
+  );
+  const resumed = reduceTaskSession(idle, action, 8, members);
+  assert.equal(resumed.activeSteer?.id, first.id);
+  assert.equal(resumed.steeringQueue[0].id, second.id);
+  assert.equal(
+    reduceTaskSession(resumed, { ...action, actor: "maya" }, 9, members),
+    resumed
+  );
+  assert.match(
+    buildHiveRunInput(resumed, action, members).steer!,
+    /How many people are online/
+  );
+  const nextIdle = applyHiveRunResult(resumed, result(), 10);
+  assert.equal(
+    reduceTaskSession(nextIdle, action, 11, members),
+    nextIdle,
+    "a late client cannot consume the following item"
+  );
+  assert.equal(
+    reduceTaskSession(nextIdle, { ...action, steerId: second.id }, 12, members)
+      .activeSteer?.id,
+    second.id
+  );
+});
+
+test("automatic message continuation pauses on error and restore, while manual resume remains available", () => {
+  const queued = reduceTaskSession(
+    working(),
+    {
+      type: "send-message",
+      actor: "maya",
+      body: "Next request",
+      clientId: "next",
+    },
+    3,
+    members
+  );
+  const action = {
+    type: "continue-queued-steer",
+    actor: "maya",
+    steerId: queued.steeringQueue[0].id,
+  } as const;
+  const failed = applyHiveRunError(queued, "Interrupted", 4);
+  assert.equal(reduceTaskSession(failed, action, 5, members), failed);
+  const idle = applyHiveRunResult(queued, result(), 4);
+  const restored = {
+    ...idle,
+    workspace: {
+      ...idle.workspace,
+      lastRestore: {
+        id: "restore",
+        snapshotId: "snapshot",
+        by: "spencer",
+        at: 5,
+      },
+    },
+  };
+  assert.equal(reduceTaskSession(restored, action, 6, members), restored);
+  assert.ok(
+    reduceTaskSession(
+      restored,
+      { type: "apply-next-steer", actor: "maya" },
+      7,
+      members
+    ).activeSteer
   );
 });

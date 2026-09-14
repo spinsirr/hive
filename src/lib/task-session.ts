@@ -21,7 +21,7 @@ import {
   steerMessageAnnotation,
   steerAgent,
   applyNextSteer,
-  continuePeerResponse,
+  continueQueuedSteer,
   removeQueuedSteer,
   reorderQueuedSteer,
 } from "./task-session-steering.ts";
@@ -92,8 +92,8 @@ export function reduceTaskSession(
       return steerAgent(state, action, now, actor, members);
     case "apply-next-steer":
       return applyNextSteer(state, action, now, members);
-    case "continue-peer-response":
-      return continuePeerResponse(state, action, now, members);
+    case "continue-queued-steer":
+      return continueQueuedSteer(state, action, now, members);
     case "remove-queued-steer":
       return removeQueuedSteer(state, action, now);
     case "reorder-queued-steer":

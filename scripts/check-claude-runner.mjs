@@ -73,6 +73,11 @@ mock.module("@vercel/sandbox", {
     Sandbox: {
       async getOrCreate(options) {
         assert.equal(
+          expectedResume,
+          undefined,
+          "A resumed Claude task must not create a new workspace"
+        );
+        assert.equal(
           options.resources.vcpus,
           2,
           "New Claude workspaces must have enough memory for native bootstrap"
@@ -82,6 +87,7 @@ mock.module("@vercel/sandbox", {
         return persistent;
       },
       async get() {
+        assert.ok(expectedResume);
         starts++;
         return persistent;
       },
@@ -98,6 +104,11 @@ mock.module("@ai-sdk/sandbox-vercel", {
 mock.module(new URL("../src/lib/github-app.ts", import.meta.url).href, {
   namedExports: {
     async getRepositoryCloneCredentials() {
+      assert.equal(
+        expectedResume,
+        undefined,
+        "Claude continuation must not depend on GitHub clone-token issuance"
+      );
       return {};
     },
   },

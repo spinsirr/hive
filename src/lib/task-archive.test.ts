@@ -105,7 +105,7 @@ test("archives reject every task mutation and checkpoint rollback until restored
     "steer-message-annotation": false,
     "steer-agent": false,
     "apply-next-steer": false,
-    "continue-peer-response": false,
+    "continue-queued-steer": false,
     "remove-queued-steer": false,
     "reorder-queued-steer": false,
   };

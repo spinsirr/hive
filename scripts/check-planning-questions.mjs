@@ -49,6 +49,10 @@ globalThis.fetch = async (url, init) => {
     scope,
     {
       read: async () => ({ ...state, members }),
+      presence: async () => ({
+        activeMembers: ["spencer", "maya"],
+        observedAt: 123,
+      }),
       reply: async () => {
         throw new Error("Asking must not create a Thread");
       },
@@ -82,12 +86,20 @@ try {
   });
   assert.deepEqual(Object.keys(connection.tools).sort(), [
     "get_context",
+    "get_presence",
+    "read_thread",
     "reply_to_thread",
     "request_input",
   ]);
   assert.deepEqual(
     availableTools,
-    ["get_context", "reply_to_thread", "request_input"],
+    [
+      "get_context",
+      "get_presence",
+      "read_thread",
+      "reply_to_thread",
+      "request_input",
+    ],
     "the native MCP endpoint also exposes conversation-only capabilities before repository attachment"
   );
   const options = {
@@ -97,6 +109,13 @@ try {
   };
   const context = await connection.tools.get_context.execute({}, options);
   assert.match(JSON.stringify(context), /Maya/);
+  const presence = await connection.tools.get_presence.execute({}, options);
+  assert.match(JSON.stringify(presence), /onlineCount/);
+  const currentThread = await connection.tools.read_thread.execute(
+    { messageId: state.messages[0].id },
+    options
+  );
+  assert.match(JSON.stringify(currentThread), /Ask Maya about spacing/);
   const input = {
     key: "spacing",
     prompt: "Compact or comfortable?",
@@ -152,6 +171,8 @@ try {
   );
   assert.deepEqual(toolNames, [
     "get_context",
+    "get_presence",
+    "read_thread",
     "request_input",
     "request_input",
   ]);
