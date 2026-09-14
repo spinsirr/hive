@@ -1,4 +1,5 @@
 "use client";
+import { SWRConfig } from "swr";
 import { WorkspaceDetail } from "./workspace/workspace-detail";
 import { Code2, MessageSquare } from "lucide-react";
 import { useCallback, useMemo, useState, type ReactNode } from "react";
@@ -39,6 +40,8 @@ import { cn } from "@/lib/utils";
 import { useWorkspaceNavigation } from "@/hooks/use-workspace-navigation";
 import { ProductHeader } from "./workspace/workspace-header";
 import { SharedSession } from "./conversation/shared-conversation";
+
+const workspaceCache = { provider: () => new Map() };
 
 type SharedProps = Parameters<typeof SharedSession>[0];
 
@@ -379,143 +382,150 @@ export function HiveWorkspaceView({
   };
 
   return (
-    <main className="flex h-dvh min-h-0 flex-col overflow-hidden bg-[#fafafa] text-[#171717]">
-      <ProductHeader
-        activeMembers={activeMembers}
-        copied={copied}
-        currentMember={currentMember}
-        members={teamMembers}
-        onCopyInvite={copyInvite}
-        onSignOut={signOut}
-        onReset={openReset}
-        repository={repository}
-        sessionTitle={session.title}
-        resetDisabled={resetDisabled}
-        syncing={syncing}
-        syncError={syncError}
-        homeHref={homeHref}
-        connectionLabel={connectionLabel}
-        accountActionsDisabled={accountActionsDisabled}
-        archived={archived}
-        archiveDisabled={
-          syncing || syncError || (!archived && !canChangeTaskSettings(session))
-        }
-        onArchiveChange={changeArchive}
-        renameDisabled={syncing || syncError || workspaceLocked}
-        onRename={renameTask}
-        attention={
-          <TaskAttention
-            messages={messages}
-            memberId={currentMember.id}
-            paused={workspaceLocked}
-            onOpen={openQuestion}
-          />
-        }
-      />
-      {notice}
-      {session.archived ? (
-        <div
-          className="shrink-0 border-b border-border bg-muted px-4 py-2 text-xs text-muted-foreground"
-          role="status"
-        >
-          Archived by{" "}
-          {resolveMember(session.archived.by, teamMembers).shortName} ·
-          Read-only for everyone. Restore this task to continue.
-        </div>
-      ) : null}
-      <Dialog onOpenChange={setResetOpen} open={resetOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Reset this task for everyone?</DialogTitle>
-            <DialogDescription>
-              This clears the shared conversation, Threads, queued steers and
-              approval for every member and starts a fresh agent workspace. It
-              cannot be undone. GitHub commits and pull requests are not
-              changed.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button onClick={() => setResetOpen(false)} variant="outline">
-              Cancel
-            </Button>
-            <Button disabled={resetDisabled} onClick={confirmReset}>
-              Reset task
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      {workspace.restore ? (
-        <div
-          className="flex shrink-0 items-center justify-between gap-3 border-b border-[#e8e8e8] px-4 py-2 text-xs text-[#737373]"
-          role="status"
-        >
-          <span>
-            {workspace.restore.status === "unconfirmed"
-              ? recoveryStatus.notice ||
-                "Still confirming recovery. You can keep reading."
-              : "Restoring workspace and agent context… You can keep reading."}
-          </span>
+    <SWRConfig
+      key={JSON.stringify([sessionId, currentMember.id])}
+      value={workspaceCache}
+    >
+      <main className="flex h-dvh min-h-0 flex-col overflow-hidden bg-[#fafafa] text-[#171717]">
+        <ProductHeader
+          activeMembers={activeMembers}
+          copied={copied}
+          currentMember={currentMember}
+          members={teamMembers}
+          onCopyInvite={copyInvite}
+          onSignOut={signOut}
+          onReset={openReset}
+          repository={repository}
+          sessionTitle={session.title}
+          resetDisabled={resetDisabled}
+          syncing={syncing}
+          syncError={syncError}
+          homeHref={homeHref}
+          connectionLabel={connectionLabel}
+          accountActionsDisabled={accountActionsDisabled}
+          archived={archived}
+          archiveDisabled={
+            syncing ||
+            syncError ||
+            (!archived && !canChangeTaskSettings(session))
+          }
+          onArchiveChange={changeArchive}
+          renameDisabled={syncing || syncError || workspaceLocked}
+          onRename={renameTask}
+          attention={
+            <TaskAttention
+              messages={messages}
+              memberId={currentMember.id}
+              paused={workspaceLocked}
+              onOpen={openQuestion}
+            />
+          }
+        />
+        {notice}
+        {session.archived ? (
+          <div
+            className="shrink-0 border-b border-border bg-muted px-4 py-2 text-xs text-muted-foreground"
+            role="status"
+          >
+            Archived by{" "}
+            {resolveMember(session.archived.by, teamMembers).shortName} ·
+            Read-only for everyone. Restore this task to continue.
+          </div>
+        ) : null}
+        <Dialog onOpenChange={setResetOpen} open={resetOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Reset this task for everyone?</DialogTitle>
+              <DialogDescription>
+                This clears the shared conversation, Threads, queued steers and
+                approval for every member and starts a fresh agent workspace. It
+                cannot be undone. GitHub commits and pull requests are not
+                changed.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button onClick={() => setResetOpen(false)} variant="outline">
+                Cancel
+              </Button>
+              <Button disabled={resetDisabled} onClick={confirmReset}>
+                Reset task
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+        {workspace.restore ? (
+          <div
+            className="flex shrink-0 items-center justify-between gap-3 border-b border-[#e8e8e8] px-4 py-2 text-xs text-[#737373]"
+            role="status"
+          >
+            <span>
+              {workspace.restore.status === "unconfirmed"
+                ? recoveryStatus.notice ||
+                  "Still confirming recovery. You can keep reading."
+                : "Restoring workspace and agent context… You can keep reading."}
+            </span>
+            <button
+              className="shrink-0 underline underline-offset-4"
+              onClick={openCheckpoints}
+              type="button"
+            >
+              View checkpoints
+            </button>
+          </div>
+        ) : null}
+        <div className="flex h-10 shrink-0 items-center gap-1 border-b border-[#e8e8e8] bg-[#fafafa] p-1 min-[960px]:hidden">
           <button
-            className="shrink-0 underline underline-offset-4"
-            onClick={openCheckpoints}
+            aria-pressed={pane === "chat"}
+            className={cn(
+              "flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md text-xs text-[#777]",
+              pane === "chat" &&
+                "border border-[#e1e1e1] bg-white text-[#171717] shadow-sm"
+            )}
+            onClick={() => showConversation()}
             type="button"
           >
-            View checkpoints
+            <MessageSquare className="size-3.5" /> Conversation
+          </button>
+          <button
+            aria-pressed={pane === "workspace"}
+            className={cn(
+              "flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md text-xs text-[#777]",
+              pane === "workspace" &&
+                "border border-[#e1e1e1] bg-white text-[#171717] shadow-sm"
+            )}
+            onClick={() => showWorkspace()}
+            type="button"
+          >
+            <Code2 className="size-3.5" />{" "}
+            {threadMessage ? "Thread" : "Workspace"}
+            {!threadMessage && workspace.changedFiles.length > 0 ? (
+              <span className="grid h-5 min-w-5 place-items-center rounded-full bg-[#171717] px-1 text-xs text-white">
+                {workspace.changedFiles.length}
+              </span>
+            ) : null}
           </button>
         </div>
-      ) : null}
-      <div className="flex h-10 shrink-0 items-center gap-1 border-b border-[#e8e8e8] bg-[#fafafa] p-1 min-[960px]:hidden">
-        <button
-          aria-pressed={pane === "chat"}
-          className={cn(
-            "flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md text-xs text-[#777]",
-            pane === "chat" &&
-              "border border-[#e1e1e1] bg-white text-[#171717] shadow-sm"
-          )}
-          onClick={() => showConversation()}
-          type="button"
-        >
-          <MessageSquare className="size-3.5" /> Conversation
-        </button>
-        <button
-          aria-pressed={pane === "workspace"}
-          className={cn(
-            "flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md text-xs text-[#777]",
-            pane === "workspace" &&
-              "border border-[#e1e1e1] bg-white text-[#171717] shadow-sm"
-          )}
-          onClick={() => showWorkspace()}
-          type="button"
-        >
-          <Code2 className="size-3.5" />{" "}
-          {threadMessage ? "Thread" : "Workspace"}
-          {!threadMessage && workspace.changedFiles.length > 0 ? (
-            <span className="grid h-5 min-w-5 place-items-center rounded-full bg-[#171717] px-1 text-xs text-white">
-              {workspace.changedFiles.length}
-            </span>
-          ) : null}
-        </button>
-      </div>
-      <WorkspaceSplit
-        activePane={pane}
-        conversation={<SharedSession {...shared} compact />}
-        workspace={
-          <WorkspaceDetail
-            session={session}
-            messages={messages}
-            currentMember={currentMember}
-            teamMembers={teamMembers}
-            navigation={navigation}
-            recoveryStatus={recoveryStatus}
-            receiveSnapshot={receiveSnapshot}
-            annotateCode={annotateCode}
-            annotate={annotate}
-            answerQuestion={answerQuestion}
-            steerThread={steerThread}
-            resolveReview={resolveReview}
-          />
-        }
-      />
-    </main>
+        <WorkspaceSplit
+          activePane={pane}
+          conversation={<SharedSession {...shared} compact />}
+          workspace={
+            <WorkspaceDetail
+              session={session}
+              messages={messages}
+              currentMember={currentMember}
+              teamMembers={teamMembers}
+              navigation={navigation}
+              recoveryStatus={recoveryStatus}
+              receiveSnapshot={receiveSnapshot}
+              annotateCode={annotateCode}
+              annotate={annotate}
+              answerQuestion={answerQuestion}
+              steerThread={steerThread}
+              resolveReview={resolveReview}
+            />
+          }
+        />
+      </main>
+    </SWRConfig>
   );
 }

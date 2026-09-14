@@ -2,6 +2,7 @@
 
 import { History, LoaderCircle, RotateCcw, RotateCw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import useSWR from "swr";
 
 import { Button } from "@/components/ui/button";
 import { useHiveClient } from "@/components/hive/hive-client";
@@ -39,13 +40,28 @@ export function WorkspaceCheckpoints({
   recoveryStatus: WorkspaceRecoveryStatus;
 }) {
   const client = useHiveClient();
-  const [refresh, setRefresh] = useState(0);
-  const key = `${sessionId}:${revision}:${refresh}`;
-  const [state, setState] = useState<{
-    key: string;
-    data?: WorkspaceCheckpointsResponse;
-    error?: string;
-  }>();
+  const { data, error, isLoading, isValidating, mutate } = useSWR<
+    WorkspaceCheckpointsResponse,
+    Error
+  >(
+    [client.request, sessionId, revision],
+    async () => {
+      const response = await client.request(
+        `/api/sessions/${encodeURIComponent(sessionId)}/checkpoints`,
+        { cache: "no-store", signal: AbortSignal.timeout(15_000) }
+      );
+      const body = await response.json();
+      if (!response.ok)
+        throw new Error(body.error || "Checkpoints could not be loaded.");
+      return workspaceCheckpointsResponse.parse(body);
+    },
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+      shouldRetryOnError: false,
+      keepPreviousData: false,
+    }
+  );
   const [confirm, setConfirm] = useState<{
     request: RestoreWorkspaceRequest;
     createdAt?: number;
@@ -56,49 +72,15 @@ export function WorkspaceCheckpoints({
   const { checking, notice: recoveryNotice, check } = recoveryStatus;
   const cancelButton = useRef<HTMLButtonElement>(null);
   const observedRecovery = useRef(false);
+  const recovery = data?.restore;
   useEffect(() => {
-    const controller = new AbortController();
-    async function load() {
-      try {
-        const response = await client.request(
-          `/api/sessions/${encodeURIComponent(sessionId)}/checkpoints`,
-          {
-            cache: "no-store",
-            signal: AbortSignal.any([
-              controller.signal,
-              AbortSignal.timeout(15_000),
-            ]),
-          }
-        );
-        const body = await response.json();
-        if (!response.ok)
-          throw new Error(body.error || "Checkpoints could not be loaded.");
-        const data = workspaceCheckpointsResponse.parse(body);
-        if (!controller.signal.aborted) setState({ key, data });
-      } catch (error) {
-        if (!controller.signal.aborted)
-          setState({
-            key,
-            error:
-              error instanceof Error
-                ? error.message
-                : "Checkpoints could not be loaded.",
-          });
-      }
-    }
-    void load();
-    return () => controller.abort();
-  }, [key, sessionId, client]);
-  const current = state?.key === key ? state : undefined;
-  const recovery = current?.data?.restore;
-  useEffect(() => {
-    if (current?.data?.restore) observedRecovery.current = true;
-    else if (current?.data && observedRecovery.current) {
+    if (data?.restore) observedRecovery.current = true;
+    else if (data && observedRecovery.current) {
       observedRecovery.current = false;
       setRestoreError("");
       setConfirm(undefined);
     }
-  }, [current?.data]);
+  }, [data]);
   const retrySeconds = recovery
     ? Math.max(0, Math.ceil((recovery.retryAfter - now) / 1000))
     : 0;
@@ -106,11 +88,13 @@ export function WorkspaceCheckpoints({
   const confirmDisabled =
     restoring ||
     checking ||
-    !current?.data ||
+    isValidating ||
+    Boolean(error) ||
+    !data ||
     (recovery
       ? retrySeconds > 0
-      : Boolean(current.data.blockedReason) ||
-        confirm?.request.version !== current.data.version);
+      : Boolean(data.blockedReason) ||
+        confirm?.request.version !== data.version);
   useEffect(() => {
     if (!recovery) return;
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -147,7 +131,7 @@ export function WorkspaceCheckpoints({
       setConfirm(undefined);
     } finally {
       setRestoring(false);
-      setRefresh((value) => value + 1);
+      void mutate();
     }
   };
   return (
@@ -157,17 +141,18 @@ export function WorkspaceCheckpoints({
         <Button
           aria-label="Refresh checkpoints"
           className="size-7 shrink-0"
-          onClick={() => setRefresh((value) => value + 1)}
+          disabled={isValidating}
+          onClick={() => void mutate()}
           size="icon"
           variant="ghost"
         >
           <RotateCw className="size-3.5" />
         </Button>
       </div>
-      {current?.data?.blockedReason ? (
+      {data?.blockedReason ? (
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#ebebeb] bg-[#fafafa] px-4 py-3 text-xs text-[#737373]">
           <div role="status" className="min-w-0 flex-1 basis-48">
-            <p>{current.data.blockedReason}</p>
+            <p>{data.blockedReason}</p>
             {recovery ? (
               <p className="mt-1">
                 {recoveryNotice ||
@@ -193,7 +178,7 @@ export function WorkspaceCheckpoints({
                     request: {
                       id: recovery.id,
                       snapshotId: recovery.snapshotId,
-                      version: current.data!.version,
+                      version: data.version,
                     },
                   });
                 }}
@@ -218,18 +203,18 @@ export function WorkspaceCheckpoints({
         </p>
       ) : null}
       <div className="min-h-0 flex-1 overflow-auto">
-        {!current ? (
+        {isLoading ? (
           <p className="p-6 text-xs text-[#737373]" role="status">
             Loading checkpoints…
           </p>
-        ) : current.error ? (
+        ) : error ? (
           <p className="p-6 text-xs text-[#737373]" role="status">
-            {current.error}
+            {error.message}
           </p>
-        ) : current.data?.checkpoints.length === 0 ? (
+        ) : data?.checkpoints.length === 0 ? (
           <p className="p-6 text-xs text-[#737373]">No saved checkpoint yet.</p>
         ) : (
-          current.data?.checkpoints.map((checkpoint) => (
+          data?.checkpoints.map((checkpoint) => (
             <div
               className="flex items-start gap-3 border-b border-[#ebebeb] px-4 py-4"
               key={checkpoint.id}
@@ -260,8 +245,9 @@ export function WorkspaceCheckpoints({
                 aria-label={`Restore checkpoint from ${dateLabel(checkpoint.createdAt)}`}
                 className="h-7 shrink-0 text-xs"
                 disabled={
+                  isValidating ||
                   !checkpoint.restorable ||
-                  Boolean(current.data?.blockedReason) ||
+                  Boolean(data?.blockedReason) ||
                   restoring
                 }
                 onClick={() => {
@@ -270,7 +256,7 @@ export function WorkspaceCheckpoints({
                     request: {
                       id: crypto.randomUUID(),
                       snapshotId: checkpoint.id,
-                      version: current.data!.version,
+                      version: data.version,
                     },
                     createdAt: checkpoint.createdAt,
                   });
@@ -287,8 +273,8 @@ export function WorkspaceCheckpoints({
       <p className="shrink-0 border-t border-[#ebebeb] px-4 py-3 text-xs text-[#737373]">
         The environment saves a checkpoint after 30 minutes without messages.
         Only checkpoints with matching agent context can be restored.
-        {current?.data?.retentionCount
-          ? ` Up to ${current.data.retentionCount} recovery points are retained.`
+        {data?.retentionCount
+          ? ` Up to ${data.retentionCount} recovery points are retained.`
           : ""}
       </p>
       <Dialog
@@ -308,9 +294,9 @@ export function WorkspaceCheckpoints({
               automatically. GitHub commits and pull requests are not changed.
             </DialogDescription>
           </DialogHeader>
-          {current?.data?.blockedReason && !recovery ? (
+          {data?.blockedReason && !recovery ? (
             <p className="text-xs text-muted-foreground" role="status">
-              {current.data.blockedReason}
+              {data.blockedReason}
             </p>
           ) : null}
           {restoring ? (

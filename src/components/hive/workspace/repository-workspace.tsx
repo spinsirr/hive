@@ -9,6 +9,8 @@ import {
   Search,
 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
+import useSWR from "swr";
+import { z } from "zod";
 import { useHiveClient } from "@/components/hive/hive-client";
 import { DiffPane } from "@/components/hive/workspace/diff-pane";
 import { WorkspaceFiles } from "@/components/hive/workspace/workspace-files";
@@ -27,12 +29,18 @@ import type { TaskSessionSnapshot } from "@/lib/session/task-session-contract";
 import { cn } from "@/lib/utils";
 import { type WorkspaceTab } from "@/hooks/use-workspace-navigation";
 
-type RepositoryOption = {
-  id: number;
-  name: string;
-  defaultBranch: string;
-  visibility: "private" | "public";
-};
+const repositoryCatalog = z.object({
+  repositories: z.array(
+    z.object({
+      id: z.number().int().positive(),
+      name: z.string(),
+      defaultBranch: z.string(),
+      visibility: z.enum(["private", "public"]),
+    })
+  ),
+  needsInstallation: z.boolean().optional(),
+  needsAuthorization: z.boolean().optional(),
+});
 
 const tabs: Array<{ key: WorkspaceTab; label: string; icon: typeof Code2 }> = [
   { key: "diff", label: "Diff", icon: Code2 },
@@ -49,15 +57,43 @@ function RepositorySetup({
   disabled: boolean;
 }) {
   const client = useHiveClient();
-  const [repositories, setRepositories] = useState<RepositoryOption[] | null>(
-    null
-  );
+  const [choosing, setChoosing] = useState(false);
   const [query, setQuery] = useState("");
-  const [loading, setLoading] = useState(false);
   const [connectingId, setConnectingId] = useState<number | null>(null);
-  const [needsInstallation, setNeedsInstallation] = useState(false);
-  const [needsAuthorization, setNeedsAuthorization] = useState(false);
-  const [error, setError] = useState("");
+  const [authorizationExpired, setAuthorizationExpired] = useState(false);
+  const [connectError, setConnectError] = useState("");
+  const {
+    data: catalog,
+    error: loadError,
+    isValidating: loading,
+    mutate,
+  } = useSWR<z.infer<typeof repositoryCatalog>, Error>(
+    choosing && !disabled ? [client.request, sessionId, "repositories"] : null,
+    async () => {
+      const response = await client.request(
+        `/api/github/repositories?session_id=${encodeURIComponent(sessionId)}`,
+        { cache: "no-store", signal: AbortSignal.timeout(15_000) }
+      );
+      if (response.status === 401) {
+        client.reload();
+        throw new Error("Sign in again to choose a repository.");
+      }
+      const payload = await response.json();
+      if (!payload.needsAuthorization && !response.ok)
+        throw new Error(payload.error || "Repositories are unavailable.");
+      return repositoryCatalog.parse(payload);
+    },
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+      shouldRetryOnError: false,
+    }
+  );
+  const repositories = catalog?.repositories;
+  const needsAuthorization =
+    authorizationExpired || catalog?.needsAuthorization;
+  const needsInstallation = catalog?.needsInstallation;
+  const error = connectError || loadError?.message;
   const filteredRepositories = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     if (!normalizedQuery) return repositories ?? [];
@@ -66,51 +102,19 @@ function RepositorySetup({
     );
   }, [query, repositories]);
 
-  const loadRepositories = useCallback(async () => {
+  const loadRepositories = async () => {
     if (disabled) return;
-    setLoading(true);
-    setError("");
-    try {
-      const response = await client.request(
-        `/api/github/repositories?session_id=${encodeURIComponent(sessionId)}`,
-        { cache: "no-store" }
-      );
-      if (response.status === 401) {
-        client.reload();
-        return;
-      }
-      const payload = (await response.json()) as {
-        error?: string;
-        needsInstallation?: boolean;
-        needsAuthorization?: boolean;
-        repositories?: RepositoryOption[];
-      };
-      setNeedsAuthorization(payload.needsAuthorization === true);
-      if (payload.needsAuthorization) {
-        setRepositories(null);
-        return;
-      }
-      if (!response.ok || !Array.isArray(payload.repositories)) {
-        throw new Error(payload.error || "Repositories are unavailable.");
-      }
-      setNeedsInstallation(payload.needsInstallation === true);
-      setRepositories(payload.repositories);
-    } catch (loadError) {
-      setError(
-        loadError instanceof Error
-          ? loadError.message
-          : "Repositories are unavailable."
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [sessionId, client, disabled]);
+    setConnectError("");
+    setAuthorizationExpired(false);
+    if (choosing) await mutate();
+    else setChoosing(true);
+  };
 
   const connectRepository = useCallback(
     async (repositoryId: number) => {
-      if (disabled) return;
+      if (disabled || loading || loadError) return;
       setConnectingId(repositoryId);
-      setError("");
+      setConnectError("");
       try {
         const response = await client.request(
           `/api/github/repositories?session_id=${encodeURIComponent(sessionId)}`,
@@ -129,8 +133,7 @@ function RepositorySetup({
           needsAuthorization?: boolean;
         };
         if (payload.needsAuthorization) {
-          setNeedsAuthorization(true);
-          setRepositories(null);
+          setAuthorizationExpired(true);
           setConnectingId(null);
           return;
         }
@@ -139,14 +142,14 @@ function RepositorySetup({
         }
       } catch (connectError) {
         setConnectingId(null);
-        setError(
+        setConnectError(
           connectError instanceof Error
             ? connectError.message
             : "Repository connection failed."
         );
       }
     },
-    [sessionId, client, disabled]
+    [sessionId, client, disabled, loading, loadError]
   );
 
   return (
@@ -197,7 +200,9 @@ function RepositorySetup({
               {filteredRepositories.map((candidate) => (
                 <button
                   className="flex w-full items-center justify-between gap-4 border-b border-[#eeeeee] px-3 py-3 text-left transition last:border-b-0 hover:bg-[#fafafa] disabled:cursor-wait disabled:opacity-60"
-                  disabled={connectingId !== null}
+                  disabled={
+                    loading || Boolean(loadError) || connectingId !== null
+                  }
                   key={candidate.id}
                   onClick={() => void connectRepository(candidate.id)}
                   type="button"

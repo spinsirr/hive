@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import useWebSocket from "partysocket/use-ws";
 
 import type { AgentReply } from "@/lib/session/task-session";
 import type {
@@ -32,7 +33,8 @@ export function useSharedSession(
   const [syncError, setSyncError] = useState(false);
   const typingRef = useRef(false);
   const connectedRef = useRef(false);
-  const socketRef = useRef<WebSocket | null>(null);
+  const [authExpired, setAuthExpired] = useState(false);
+  const [reconnectDelay] = useState(() => 500 + Math.random() * 250);
 
   const publish = useCallback(
     (nextSnapshot: TaskSessionSnapshot, fromLive = false) => {
@@ -108,43 +110,23 @@ export function useSharedSession(
     }
   }, [publish, sessionId]);
 
-  useEffect(() => {
-    let stopped = false;
-    let socket: WebSocket | undefined;
-    let retry: ReturnType<typeof setTimeout> | undefined;
-    let connecting: ReturnType<typeof setTimeout> | undefined;
-    let delay = 500;
-    const url = new URL(
-      `/api/sessions/${encodeURIComponent(sessionId)}/live`,
-      window.location.href
-    );
-    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-
-    function connect() {
-      if (
-        stopped ||
-        socket?.readyState === WebSocket.OPEN ||
-        socket?.readyState === WebSocket.CONNECTING
-      )
-        return;
-      clearTimeout(retry);
-      const current = new WebSocket(url);
-      socket = current;
-      socketRef.current = current;
-      connecting = setTimeout(() => current.close(), 15_000);
-      current.onopen = () => {
-        if (stopped || current !== socket) {
-          current.close();
-          return;
-        }
-        clearTimeout(connecting);
+  const socket = useWebSocket(
+    `/api/sessions/${encodeURIComponent(sessionId)}/live`,
+    [],
+    {
+      enabled: !authExpired,
+      connectionTimeout: 15_000,
+      minReconnectionDelay: reconnectDelay,
+      maxReconnectionDelay: 10_000,
+      reconnectionDelayGrowFactor: 2,
+      maxEnqueuedMessages: 0,
+      shouldReconnectOnClose: (event) => event.code !== 4401,
+      onOpen() {
         connectedRef.current = true;
-        delay = 500;
         if (typingRef.current)
-          current.send(JSON.stringify({ type: "typing", typing: true }));
-      };
-      current.onmessage = (message: MessageEvent<string>) => {
-        if (stopped || current !== socket) return;
+          socket.send(JSON.stringify({ type: "typing", typing: true }));
+      },
+      onMessage(message: MessageEvent<string>) {
         try {
           const event = JSON.parse(message.data) as
             | { type: "snapshot"; snapshot: TaskSessionSnapshot }
@@ -168,12 +150,10 @@ export function useSharedSession(
           setSyncing(false);
           setSyncError(false);
         } catch {
-          current.close();
+          socket.reconnect();
         }
-      };
-      current.onclose = (event) => {
-        if (stopped || current !== socket) return;
-        clearTimeout(connecting);
+      },
+      onClose(event) {
         connectedRef.current = false;
         setSnapshot((previous) => ({
           ...previous,
@@ -182,36 +162,29 @@ export function useSharedSession(
         }));
         setSyncing(true);
         if (event.code === 4401) {
+          setAuthExpired(true);
           window.location.reload();
           return;
         }
         setSyncError(!navigator.onLine);
-        retry = setTimeout(connect, delay + Math.random() * 250);
-        delay = Math.min(delay * 2, 10_000);
-      };
-      current.onerror = () => current.close();
+      },
     }
+  );
+
+  useEffect(() => {
+    if (authExpired) return;
     function reconnect() {
-      if (socket?.readyState === WebSocket.OPEN) return;
-      connect();
+      if (socket.readyState === socket.OPEN) return;
+      if (socket.readyState !== socket.CONNECTING) socket.reconnect();
       void refresh();
     }
-
-    connect();
     window.addEventListener("online", reconnect);
     window.addEventListener("focus", reconnect);
-
     return () => {
-      stopped = true;
-      connectedRef.current = false;
-      socketRef.current = null;
-      clearTimeout(retry);
-      clearTimeout(connecting);
       window.removeEventListener("online", reconnect);
       window.removeEventListener("focus", reconnect);
-      socket?.close();
     };
-  }, [publish, refresh, sessionId]);
+  }, [authExpired, refresh, socket]);
 
   const dispatch = useCallback(
     (action: SessionDispatchAction, options?: { throwOnError?: boolean }) =>
@@ -219,14 +192,16 @@ export function useSharedSession(
     [post]
   );
 
-  const setTyping = useCallback((typing: boolean) => {
-    if (typingRef.current === typing) return;
-    typingRef.current = typing;
-    const socket = socketRef.current;
-    if (socket?.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({ type: "typing", typing }));
-    }
-  }, []);
+  const setTyping = useCallback(
+    (typing: boolean) => {
+      if (typingRef.current === typing) return;
+      typingRef.current = typing;
+      if (socket.readyState === socket.OPEN) {
+        socket.send(JSON.stringify({ type: "typing", typing }));
+      }
+    },
+    [socket]
+  );
 
   return {
     snapshot,

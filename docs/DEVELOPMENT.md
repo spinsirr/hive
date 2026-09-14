@@ -52,6 +52,10 @@ A checkpoint pairs files with native context. Restore preserves discussion and t
 
 ## Live collaboration and tools
 
+Workspace reads use SWR: Files uses `useSWRInfinite` for pagination, checkpoints use revision-specific keys, and repository discovery stays disabled until requested. Task/member changes discard the workspace cache. Revalidation disables checkpoint confirmation and repository selection until current data arrives. These reads do not enable background focus polling or automatic error retries against GitHub or Sandbox.
+
+The client uses PartySocket's WebSocket hook for connection timeout, backoff, reconnection and lifecycle cleanup. It buffers no outgoing messages; reconnect sends only the latest typing state. Authentication expiry stops reconnection. Snapshot/reply version checks remain Hive's domain logic, and writes are never replayed by the transport.
+
 Authenticated WebSockets own presence. Postgres `LISTEN/NOTIFY` relays snapshots, reply changes and ephemeral member/typing announcements across instances. Presence counts people, not tabs; observers do not count as participants. It is a bounded observation, not proof that someone is actively looking at the page.
 
 Task-scoped MCP tools recheck membership and the active run. `get_context` returns bounded attributed context, `get_presence` observes online members, and `read_thread` reads a discussion while withholding pending instructions. These reads do not authorize execution. Replies, structured questions and review requests retain their source authors and destinations.
