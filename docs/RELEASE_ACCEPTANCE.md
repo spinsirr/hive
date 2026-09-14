@@ -47,7 +47,10 @@ Use natural requests for experience testing. Keep machine markers in explicitly 
 | Repository memory      | Explicitly save one harmless unique human contribution. A new task on the same repository recalls it with correct attribution; a distinct repository does not. Pending writes and missing second-repository coverage are not passes. Record test-memory IDs for authorized cleanup. |
 | Native children        | Observe real research/review child startup, inherited task/model/permissions, output and persistence. Stop one child from the other account; confirm stopping or show Unconfirmed. Parent and queue remain intact. Do not infer success from a placeholder row.                     |
 | Runtime/model controls | Exercise each advertised runtime and supported setting being released. A successful Codex turn does not qualify Claude or every model/effort. Native history and authentication boundaries must remain intact.                                                                      |
+| Subscriptions          | For each supported provider, run planning, repository coding, a warm second turn and checkpoint resume in isolated QA tasks. Confirm the expected account/authentication source and retained native context.                                                                        |
 | Recovery failures      | Test interrupted restore/worker loss only in an authorized controlled environment. Browser disconnect, hard worker loss and deleted Sandbox recovery are different cases; do not infer one from another.                                                                            |
+
+Verify expired subscription credentials and exhausted quota with controlled fixtures; never deliberately consume a real quota. These failures must not start an API/Gateway turn. Record real-account results separately from fixture results, without including tokens.
 
 ## Result
 
