@@ -1,12 +1,22 @@
 import "server-only";
 
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createOAuthUserAuth } from "@octokit/auth-app";
+import { Octokit } from "@octokit/core";
+import { paginateRest } from "@octokit/plugin-paginate-rest";
+import { z } from "zod";
 
 import type { GitHubInstallationRepository } from "@/server/auth/github-app";
 import { safeReturnTo } from "@/server/auth/return-to";
 
 const GITHUB_API_VERSION = "2026-03-10";
 const STATE_TTL_MS = 10 * 60 * 1000;
+const GitHub = Octokit.plugin(paginateRest);
+// GitHub's SDK also supports bigint IDs; Hive stores positive safe integers.
+const githubId = z
+  .union([z.number(), z.bigint()])
+  .transform(Number)
+  .pipe(z.int().positive());
 
 export const GITHUB_OAUTH_COOKIE = "hive_github_oauth";
 
@@ -22,29 +32,10 @@ type InstallStatePayload = {
   expiresAt: number;
 };
 
-type OAuthTokenPayload = {
-  access_token?: string;
-  expires_in?: number;
-  error?: string;
-};
-
-export type GitHubUserPayload = {
-  id: number;
-  login: string;
-  name: string | null;
-  avatar_url: string | null;
-};
-
-type InstallationRepositoriesPayload = {
-  repositories: Array<{
-    id: number;
-    full_name: string;
-    clone_url: string;
-    default_branch: string;
-    private: boolean;
-  }>;
-  total_count: number;
-};
+export type GitHubUserPayload = Pick<
+  Awaited<ReturnType<typeof getGitHubUser>>,
+  "id" | "login" | "name" | "avatar_url"
+>;
 
 function oauthCredentials() {
   const clientId = process.env.GITHUB_APP_CLIENT_ID?.trim();
@@ -156,25 +147,28 @@ export function githubOAuthAuthorizeUrl(state: string) {
 
 export async function exchangeGitHubOAuthCode(code: string) {
   const { callbackUrl, clientId, clientSecret } = oauthCredentials();
-  const response = await fetch("https://github.com/login/oauth/access_token", {
-    method: "POST",
-    cache: "no-store",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      client_id: clientId,
-      client_secret: clientSecret,
+  try {
+    const auth = createOAuthUserAuth({
+      clientType: "github-app",
+      clientId,
+      clientSecret,
+      redirectUrl: callbackUrl,
+      request: githubClient().request,
       code,
-      redirect_uri: callbackUrl,
-    }),
-  });
-  const payload = (await response.json()) as OAuthTokenPayload;
-  if (!response.ok || !payload.access_token || payload.error) {
+    });
+    const authentication = await auth();
+    if (!authentication.token) throw new Error("Missing GitHub token.");
+    return {
+      accessToken: authentication.token,
+      expiresIn:
+        "expiresAt" in authentication
+          ? (Date.parse(authentication.expiresAt) - Date.now()) / 1000
+          : undefined,
+    };
+  } catch {
+    // SDK errors carry request bodies containing the code and client secret.
     throw new Error("GitHub rejected the OAuth authorization code.");
   }
-  return { accessToken: payload.access_token, expiresIn: payload.expires_in };
 }
 
 export class GitHubUserAuthorizationError extends Error {
@@ -183,24 +177,31 @@ export class GitHubUserAuthorizationError extends Error {
   }
 }
 
-async function githubUserRequest<T>(accessToken: string, path: string) {
-  const response = await fetch(`https://api.github.com${path}`, {
-    cache: "no-store",
+function githubClient(accessToken?: string) {
+  const github = new GitHub({
+    auth: accessToken,
+    request: {
+      fetch: (input: RequestInfo | URL, init?: RequestInit) =>
+        fetch(input, { ...init, cache: "no-store" }),
+    },
+  });
+  github.request = github.request.defaults({
     headers: {
       Accept: "application/vnd.github+json",
-      Authorization: `Bearer ${accessToken}`,
       "X-GitHub-Api-Version": GITHUB_API_VERSION,
     },
   });
-  if (response.status === 401) throw new GitHubUserAuthorizationError();
-  if (!response.ok) {
+  github.hook.error("request", (error) => {
+    if ("status" in error && error.status === 401)
+      throw new GitHubUserAuthorizationError();
     throw new Error("The GitHub user cannot access this App installation.");
-  }
-  return (await response.json()) as T;
+  });
+  return github;
 }
 
-export function getGitHubUser(accessToken: string) {
-  return githubUserRequest<GitHubUserPayload>(accessToken, "/user");
+export async function getGitHubUser(accessToken: string) {
+  const { data } = await githubClient(accessToken).request("GET /user");
+  return { ...data, id: githubId.parse(data.id) };
 }
 
 export async function authorizeGitHubInstallation(
@@ -212,30 +213,24 @@ export async function authorizeGitHubInstallation(
 }> {
   const [user, repositories] = await Promise.all([
     getGitHubUser(accessToken),
-    getGitHubUserInstallationRepositories(accessToken, installationId),
+    getGitHubUserInstallationRepositories(
+      githubClient(accessToken),
+      installationId
+    ),
   ]);
   return { user, repositories };
 }
 
 async function getGitHubUserInstallationRepositories(
-  accessToken: string,
+  github: InstanceType<typeof GitHub>,
   installationId: number
 ): Promise<GitHubInstallationRepository[]> {
-  const repositories: InstallationRepositoriesPayload["repositories"] = [];
-  for (let page = 1; ; page++) {
-    const payload = await githubUserRequest<InstallationRepositoriesPayload>(
-      accessToken,
-      `/user/installations/${installationId}/repositories?per_page=100&page=${page}`
-    );
-    repositories.push(...payload.repositories);
-    if (
-      repositories.length >= payload.total_count ||
-      payload.repositories.length === 0
-    )
-      break;
-  }
+  const repositories = await github.paginate(
+    "GET /user/installations/{installation_id}/repositories",
+    { installation_id: installationId, per_page: 100 }
+  );
   return repositories.map((repository) => ({
-    id: repository.id,
+    id: githubId.parse(repository.id),
     name: repository.full_name,
     cloneUrl: repository.clone_url,
     defaultBranch: repository.default_branch,
@@ -244,29 +239,21 @@ async function getGitHubUserInstallationRepositories(
 }
 
 export async function listGitHubUserRepositories(accessToken: string) {
-  const installations: Array<{ id: number }> = [];
-  for (let page = 1; ; page++) {
-    const payload = await githubUserRequest<{
-      installations: Array<{ id: number }>;
-      total_count: number;
-    }>(accessToken, `/user/installations?per_page=100&page=${page}`);
-    installations.push(...payload.installations);
-    if (
-      installations.length >= payload.total_count ||
-      payload.installations.length === 0
-    )
-      break;
-  }
+  const github = githubClient(accessToken);
+  const installations = await github.paginate("GET /user/installations", {
+    per_page: 100,
+  });
   // The user endpoint returns the intersection of App and user permissions.
   // An installation token alone would expose other members' private repositories.
   const repositories = [];
   for (const { id } of installations) {
+    const installationId = githubId.parse(id);
     const accessible = await getGitHubUserInstallationRepositories(
-      accessToken,
-      id
+      github,
+      installationId
     );
     repositories.push(
-      ...accessible.map((repository) => ({ ...repository, installationId: id }))
+      ...accessible.map((repository) => ({ ...repository, installationId }))
     );
   }
   return repositories.sort((left, right) =>

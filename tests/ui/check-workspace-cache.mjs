@@ -530,6 +530,191 @@ try {
   console.log(
     "PASS: the real Monaco React wrapper remounts cleanly across repeated pane switches while file reads stay cached."
   );
+  cleanup();
+  const { HiveClientContext } =
+    await import("../../src/components/hive/hive-client.tsx");
+  const { Workspace } =
+    await import("../../src/components/hive/workspace/repository-workspace.tsx");
+  const { WorkspaceCheckpoints } =
+    await import("../../src/components/hive/workspace/workspace-checkpoints.tsx");
+  const catalogRequests = [];
+  const catalogClient = {
+    reload() {
+      throw new Error("A valid fixture login must not reload");
+    },
+    request(path, init) {
+      assert.notEqual(
+        init?.method,
+        "POST",
+        "Loading repositories never attaches one"
+      );
+      const pending = Promise.withResolvers();
+      catalogRequests.push({ ...pending, path });
+      return pending.promise;
+    },
+  };
+  const catalog = (sessionId = "catalog-one", disabled = false) =>
+    h(
+      HiveClientContext,
+      { value: catalogClient },
+      h(Workspace, { sessionId, fileCollaboration: { disabled } })
+    );
+  const repositoryView = render(catalog());
+  assert.equal(
+    catalogRequests.length,
+    0,
+    "Repository discovery stays on demand"
+  );
+  const choose = screen.getByRole("button", { name: "Choose repository" });
+  fireEvent.click(choose);
+  fireEvent.click(choose);
+  await waitFor(() => assert.equal(catalogRequests.length, 1));
+  const listing = (name) => ({
+    repositories: [
+      { id: 1, name, defaultBranch: "main", visibility: "private" },
+    ],
+  });
+  await act(async () =>
+    catalogRequests[0].resolve(response(listing("team/one")))
+  );
+  await screen.findByText("team/one");
+  fireEvent.click(screen.getByRole("button", { name: "Refresh repositories" }));
+  await waitFor(() => assert.equal(catalogRequests.length, 2));
+  assert.equal(
+    screen.getByRole("button", { name: /team\/one/ }).disabled,
+    true,
+    "A repository being revalidated cannot be selected from stale data"
+  );
+  await act(async () =>
+    catalogRequests[1].resolve(
+      response({ error: "Repository discovery failed" }, 503)
+    )
+  );
+  await screen.findByText("Repository discovery failed");
+  await act(async () => {
+    window.dispatchEvent(new Event("focus"));
+    window.dispatchEvent(new Event("online"));
+  });
+  assert.equal(
+    catalogRequests.length,
+    2,
+    "Focus and reconnect never start an unrequested repository lookup"
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Refresh repositories" }));
+  await waitFor(() => assert.equal(catalogRequests.length, 3));
+  repositoryView.rerender(catalog("catalog-two"));
+  await waitFor(() => assert.equal(catalogRequests.length, 4));
+  await act(async () =>
+    catalogRequests[3].resolve(response(listing("team/two")))
+  );
+  await screen.findByText("team/two");
+  await act(async () =>
+    catalogRequests[2].resolve(response(listing("team/stale")))
+  );
+  assert.equal(
+    screen.queryByText("team/stale"),
+    null,
+    "A late response cannot populate another task's repository picker"
+  );
+  repositoryView.rerender(catalog("catalog-two", true));
+  assert.equal(
+    screen.queryByRole("button", {
+      name: /Choose repository|Refresh repositories/,
+    }),
+    null
+  );
+  assert.equal(catalogRequests.length, 4);
+  console.log(
+    "PASS: SWR keeps repository reads on demand, gates stale selections, exposes errors, and isolates late responses by task."
+  );
+  cleanup();
+
+  const checkpointRequests = [];
+  const checkpointClient = {
+    reload() {},
+    request(path, init) {
+      assert.notEqual(
+        init?.method,
+        "POST",
+        "Refreshing checkpoints never restores files"
+      );
+      const pending = Promise.withResolvers();
+      checkpointRequests.push({ ...pending, path });
+      return pending.promise;
+    },
+  };
+  const checkpointList = (revision) =>
+    h(
+      HiveClientContext,
+      { value: checkpointClient },
+      h(WorkspaceCheckpoints, {
+        sessionId: "checkpoint-swr",
+        revision,
+        onRestored() {},
+        recoveryStatus: { checking: false, notice: "", check() {} },
+      })
+    );
+  const checkpointData = (version, id) => ({
+    checkpoints: [
+      {
+        id,
+        createdAt: version * 86400000,
+        sizeBytes: 100,
+        current: false,
+        restorable: true,
+      },
+    ],
+    retentionCount: 10,
+    version,
+    blockedReason: null,
+    restore: null,
+  });
+  const checkpointView = render(checkpointList(1));
+  await waitFor(() => assert.equal(checkpointRequests.length, 1));
+  checkpointView.rerender(checkpointList(2));
+  await waitFor(() => assert.equal(checkpointRequests.length, 2));
+  await act(async () =>
+    checkpointRequests[1].resolve(response(checkpointData(2, "checkpoint-new")))
+  );
+  await screen.findByText("checkpoint-new");
+  await act(async () =>
+    checkpointRequests[0].resolve(
+      response(checkpointData(1, "checkpoint-stale"))
+    )
+  );
+  assert.equal(screen.queryByText("checkpoint-stale"), null);
+  fireEvent.click(
+    screen.getByRole("button", { name: /^Restore checkpoint from/ })
+  );
+  assert.equal(
+    screen.getByRole("button", { name: "Restore checkpoint" }).disabled,
+    false
+  );
+  fireEvent.click(
+    screen.getByRole("button", { name: "Refresh checkpoints", hidden: true })
+  );
+  await waitFor(() => assert.equal(checkpointRequests.length, 3));
+  assert.equal(
+    screen.getByRole("button", { name: "Restore checkpoint" }).disabled,
+    true,
+    "An open restore dialog is gated while SWR revalidates its checkpoint version"
+  );
+  await act(async () =>
+    checkpointRequests[2].resolve(
+      response({
+        ...checkpointData(3, "checkpoint-new"),
+        blockedReason: "This task was archived.",
+      })
+    )
+  );
+  await screen.findAllByText("This task was archived.");
+  assert.equal(
+    screen.getByRole("button", { name: "Restore checkpoint" }).disabled,
+    true
+  );
+  console.log(
+    "PASS: SWR ignores stale checkpoint revisions and disables an open restore confirmation during refresh and after a teammate archives the task."
+  );
 } finally {
   cleanup();
   dom.close();

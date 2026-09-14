@@ -13,6 +13,7 @@ Hive owns collaboration state; the installed coding harness owns tools and nativ
 | `src/lib/tasks/`, `conversation/`, `workspace/`, `agents/` | Shared domain rules, selectors and validation; no server or UI dependencies.                                                         |
 | `src/lib/demo/`                                            | Local sample data and simulation using the same domain rules.                                                                        |
 | `src/server/sessions/`, `auth/`, `workspace/`              | Transactions/live relay, identity/repository authorization and sandbox lifecycle/artifacts.                                          |
+| `src/server/http/`                                         | Hono middleware for authenticated task membership, private responses and unexpected errors.                                          |
 | `src/server/agents/`                                       | Execution, prompts and streams; `codex/` and `claude/` own provider adapters/auth, `tools/` owns MCP, `memory/` owns recall/storage. |
 | `src/server/agents/codex/bridge/`                          | Portable native Codex connection, turn collection, transport and children, copied together into the sandbox.                         |
 | `src/db/`                                                  | Database connection and schema; migrations stay in `drizzle/`.                                                                       |
@@ -45,7 +46,11 @@ Retired prototype columns (`stage`, `revision`, `annotation`) remain in storage 
 
 A checkpoint pairs files with native context. Restore preserves discussion and the queue, invalidates review and starts no agent turn. Late callbacks are fenced by run/restore identity. Files is a read-only inspection surface; the sandbox reader rejects unsafe paths and symlinks. Its asset and the native bridge files must remain in Next's output tracing.
 
+`use-workspace-recovery` uses XState to poll restore completion. Postgres owns durable restore state and task admission.
+
 ## Live collaboration and tools
+
+Client hooks use SWR for workspace reads and PartySocket for WebSocket reconnection.
 
 Authenticated WebSockets own presence. Postgres `LISTEN/NOTIFY` relays snapshots, reply changes and ephemeral member/typing announcements across instances. Presence counts people, not tabs; observers do not count as participants. It is a bounded observation, not proof that someone is actively looking at the page.
 
@@ -56,6 +61,10 @@ Optional repository memory shares the installation/repository scope for automati
 Codex research/review children use the parent's task, model, settings and permissions in the same VM. They have separate native threads and bounded results attached to the parent message. Stop affects the selected child; an interrupt request is not confirmation that it stopped. Child lifecycle is not durable background orchestration.
 
 ## Runtime changes
+
+Coding and subscription-backed planning use `HarnessAgent` with the Codex or Claude Code adapter. Gateway planning uses AI SDK `streamText` and `@ai-sdk/mcp`.
+
+Hive's Codex app-server driver handles external ChatGPT-token login, raw events and child control. Harness bootstrap installs its bridge assets and dependencies.
 
 Use the adapter versions pinned in `package.json` and the lockfile. Model/effort labels in `coding-models.ts` must match the installed adapter schema and bundled CLI; changing labels or the host CLI does not upgrade a Sandbox runtime. Native history stays bound to its harness and authentication boundary.
 

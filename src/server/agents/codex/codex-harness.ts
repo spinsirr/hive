@@ -149,6 +149,15 @@ export function createHiveCodex(
       );
       return {
         ...recipe,
+        // HarnessAgent applies this recipe on fresh and resumed sandboxes and
+        // caches it only after installation and our native entrypoint check pass.
+        commands: [
+          ...recipe.commands,
+          {
+            command:
+              "node --input-type=module -e \"await import('ws'); await import('@openai/codex-sdk'); await import('./app-server.mjs')\"",
+          },
+        ],
         files: [
           ...recipe.files.filter(
             (file) => !files.some((asset) => asset.path === file.path)

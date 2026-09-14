@@ -1,6 +1,7 @@
 import { registerTestModules } from "../helpers/test-modules.mjs";
 // Real client synchronization hook; only browser/network boundaries are doubled.
 import assert from "node:assert/strict";
+import { mock } from "node:test";
 
 import { createDomFixture } from "../helpers/test-dom.mjs";
 
@@ -10,28 +11,31 @@ const dom = createDomFixture("<!doctype html><html><body></body></html>", {
 registerTestModules();
 const sockets = [],
   requests = [];
-class Socket {
+class Socket extends EventTarget {
   static OPEN = 1;
   static CONNECTING = 0;
   readyState = 0;
   sent = [];
   constructor(url) {
+    super();
     this.url = url;
     sockets.push(this);
   }
   open() {
     this.readyState = 1;
-    this.onopen?.();
+    this.dispatchEvent(new Event("open"));
   }
   receive(value) {
-    this.onmessage?.({ data: JSON.stringify(value) });
+    this.dispatchEvent(
+      new MessageEvent("message", { data: JSON.stringify(value) })
+    );
   }
   send(value) {
     this.sent.push(JSON.parse(value));
   }
   close(code = 1000) {
     this.readyState = 3;
-    this.onclose?.({ code });
+    this.dispatchEvent(new CloseEvent("close", { code }));
   }
 }
 globalThis.WebSocket = Socket;
@@ -56,6 +60,8 @@ const { createInitialTaskSessionState } =
   await import("../../src/lib/session/task-session.ts");
 const { useSharedSession } =
   await import("../../src/hooks/use-shared-session.ts");
+mock.timers.enable({ apis: ["setTimeout"] });
+const advance = async (ms) => act(async () => mock.timers.tick(ms));
 const initial = {
   session: createInitialTaskSessionState(1, "shared-qa"),
   members: [],
@@ -82,6 +88,7 @@ initial.members = presence.members;
 
 try {
   const view = renderHook(() => useSharedSession("shared-qa", initial));
+  await advance(0);
   assert.equal(
     tick,
     undefined,
@@ -234,6 +241,7 @@ try {
     view.result.current.setTyping(true);
     dom.window.dispatchEvent(new dom.window.Event("online"));
   });
+  await advance(1000);
   assert.equal(sockets.length, 2);
   await act(async () => {
     sockets[1].open();
@@ -312,6 +320,7 @@ try {
     "Updated shared discussion"
   );
   const second = renderHook(() => useSharedSession("shared-qa", recovered));
+  await advance(0);
   const secondSocket = sockets.at(-1);
   await act(async () => {
     secondSocket.open();
@@ -330,7 +339,59 @@ try {
   console.log(
     "PASS: edit errors preserve online state; saved text/history reach a second live viewer and cannot be reverted by a stale response."
   );
+  cleanup();
+  const retryView = renderHook(() => useSharedSession("shared-qa", initial));
+  await advance(0);
+  const beforeRetry = sockets.at(-1);
+  await act(async () => beforeRetry.open());
+  await advance(5000);
+  const countBeforeRetry = sockets.length;
+  await act(async () => beforeRetry.close(1006));
+  await advance(499);
+  assert.equal(
+    sockets.length,
+    countBeforeRetry,
+    "Reconnect uses backoff, not a tight loop"
+  );
+  await advance(251);
+  assert.equal(sockets.length, countBeforeRetry + 1);
+  const timedOut = sockets.at(-1);
+  await advance(15_000);
+  assert.equal(
+    timedOut.readyState,
+    3,
+    "The library closes a stalled handshake"
+  );
+  retryView.unmount();
+  const afterUnmount = sockets.length;
+  await advance(100_000);
+  assert.equal(
+    sockets.length,
+    afterUnmount,
+    "Unmount cannot leave a reconnecting socket"
+  );
+
+  const expired = renderHook(() => useSharedSession("shared-qa", initial));
+  await advance(0);
+  const authSocket = sockets.at(-1);
+  await act(async () => authSocket.close(4401));
+  const afterExpiry = sockets.length;
+  await act(async () => {
+    dom.window.dispatchEvent(new Event("online"));
+    dom.window.dispatchEvent(new Event("focus"));
+  });
+  await advance(100_000);
+  assert.equal(
+    sockets.length,
+    afterExpiry,
+    "Expired authentication stops both automatic and focus/online reconnection"
+  );
+  expired.unmount();
+  console.log(
+    "PASS: library-owned backoff and handshake timeout recover disconnects, while unmount and authentication expiry stop reconnecting."
+  );
 } finally {
   cleanup();
+  mock.timers.reset();
   dom.close();
 }

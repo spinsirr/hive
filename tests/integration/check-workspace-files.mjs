@@ -202,14 +202,23 @@ try {
     member = mode === "anonymous" ? null : { id: "github-101" };
     admitted = mode !== "non-member";
     assert.equal(
-      (await request(undefined, mode === "invalid-session" ? ".." : "files-qa"))
-        .status,
+      (
+        await request(
+          undefined,
+          mode === "invalid-session" ? "invalid_id" : "files-qa"
+        )
+      ).status,
       401
     );
     assert.equal(calls.length, 0);
   }
   member = { id: "github-101" };
   admitted = true;
+  assert.equal(
+    (await request(undefined, "..")).status,
+    404,
+    "URL normalization must not route a parent path as a task"
+  );
   assert.equal((await request("kind=file&path=../secret")).status, 400);
   assert.equal(calls.length, 0);
 
