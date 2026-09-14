@@ -24,6 +24,14 @@ Imports point from routes/UI to shared domain code or server services. Shared co
 
 Within `src/lib/session`, `task-session-actions.ts` validates client actions, `task-session.ts` dispatches reducer transitions, and `task-session-commands.ts` owns frozen input admission and execution start. Public snapshot contracts and projections stay alongside the state model. `src/lib/utils.ts` contains the shared class-name helper; do not use it as a miscellaneous domain bucket.
 
+## State ownership
+
+AI SDK Harness manages native agent sessions, tools and streamed execution. Hive stores the surrounding team task: attributed contributions, accepted input, queue order and review. A teammate's follow-up can queue behind an active run while discussion continues; that policy belongs to the shared task.
+
+Task changes use typed reducer functions applied under Postgres task and membership row locks. This gives the current workflow a direct read–transition–save path, with model calls outside the transaction. Execution status is derived from run and restore evidence using the shared rules in `task-execution.ts`.
+
+XState already manages client-side restore-confirmation polling in [`use-workspace-recovery`](../src/hooks/use-workspace-recovery.ts). Shared task updates remain typed reducers. XState's [pure transition API](https://stately.ai/docs/pure-transitions) could express those updates too; nested or parallel workflows could benefit from explicit statecharts. Either representation still needs the database coordination described below.
+
 ## Input and execution
 
 Normal messages address Hive. Leading teammate mentions and ordinary Thread replies remain discussion. Explicit steering freezes the selected body, author, source and reply destination; later discussion cannot rewrite accepted input.
