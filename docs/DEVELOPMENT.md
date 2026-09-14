@@ -66,6 +66,12 @@ Codex research/review children use the parent's task, model, settings and permis
 
 ## Runtime changes
 
+Coding and subscription-backed planning use `HarnessAgent` with the Codex or Claude Code adapter. Harness owns the agent session, native tool loop, stream contract and bootstrap cache. Gateway-only planning uses AI SDK `streamText`; `@ai-sdk/mcp` discovers and converts the shared conversation tools. MCP calls keep a 15-second HTTP deadline, propagate cancellation and never retry writes automatically.
+
+Codex extends the adapter's bootstrap recipe with Hive's native bridge assets and an import check. Harness installs the adapter's locked dependencies and marks the recipe ready only after the check passes, including when upgrading a resumed sandbox. There is no second dependency installer in the coding or planning runner.
+
+The Codex extension uses the public Harness bridge runtime with an app-server turn driver. It supplies external ChatGPT-token login, incremental native events and bounded child control that the pinned adapter's Codex SDK driver does not expose. The turn-scoped Gateway transport also retains a shared 429 retry budget; per-request or whole-turn retries cannot replace that policy without changing replay behavior. Hive owns these integrations and task credential restrictions, rather than another model/tool loop. Newer adapters' local subscription discovery does not replace Hive's server-side credential storage and endpoint-scoped forwarding.
+
 Use the adapter versions pinned in `package.json` and the lockfile. Model/effort labels in `coding-models.ts` must match the installed adapter schema and bundled CLI; changing labels or the host CLI does not upgrade a Sandbox runtime. Native history stays bound to its harness and authentication boundary.
 
 When upgrading an adapter, check its types and bundled runtime, run the [native protocol checks](TESTING.md#native-runtime-checks), verify output tracing, and repeat the relevant [production journeys](RELEASE_ACCEPTANCE.md). Code-quality conventions live in [CODE_QUALITY.md](CODE_QUALITY.md); historical investigations and review reports remain in Git history.

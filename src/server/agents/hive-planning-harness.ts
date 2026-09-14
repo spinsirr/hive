@@ -7,7 +7,6 @@ import { claudeSubscriptionToken } from "./claude/claude-subscription.ts";
 import { platformCodingModels } from "./platform-models.ts";
 import { selectedCodingModel } from "../../lib/agents/coding-models.ts";
 import { consumePlanningText } from "./planning-stream.ts";
-import { ensureCodexBridgeDependencies } from "./hive-runner.ts";
 import { HiveAgentError, hiveAgentFailureMessage } from "./hive-agent.ts";
 import type { CodexAccess } from "./codex/codex-subscription-broker.ts";
 import {
@@ -131,14 +130,6 @@ export async function runHivePlanningHarness(
       }),
       sandboxConfig: {
         workDir: "planning",
-        onSession: async ({ session, sessionWorkDir, abortSignal }) => {
-          if (runtime === "codex")
-            await ensureCodexBridgeDependencies(
-              session,
-              sessionWorkDir,
-              abortSignal
-            );
-        },
       },
       instructions: `${instructions} ${tools ? "Use Hive get_context for teammate IDs and existing questions, request_input to ask a structured question inline, and reply_to_thread only for a different existing discussion. No repository is needed for questions. The question card is already visible: end the turn after asking, without repeating it or polling for an answer." : "No collaboration tools are connected; do not claim to have sent a question card."} Do not create files, spawn agents, access secrets, or run commands. Apply routine tools silently; do not announce skills or narrate asking a question.`,
       // Codex only supports allow-all inside its isolated sandbox. Planning has

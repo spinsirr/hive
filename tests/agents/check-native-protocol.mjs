@@ -6,6 +6,9 @@ import { join } from "node:path";
 import { PassThrough, Writable } from "node:stream";
 import test from "node:test";
 import { pathToFileURL } from "node:url";
+import { prepareSandboxForHarness } from "@ai-sdk/harness/agent";
+import { createCodex } from "@ai-sdk/harness-codex";
+import { createHiveCodex } from "../../src/server/agents/codex/codex-harness.ts";
 import { connectAppServer } from "../../src/server/agents/codex/bridge/app-server-connection.mjs";
 
 function nativeServer(receive) {
@@ -26,6 +29,61 @@ function nativeServer(receive) {
   });
   return child;
 }
+
+test("Harness owns installation and validates an upgraded bridge before caching it", async () => {
+  const historyPath = "/sandbox/.codex/sessions/rollout.jsonl";
+  const files = new Map([[historyPath, "existing native context"]]);
+  const commands = [];
+  let failCheck = true;
+  const session = {
+    defaultWorkingDirectory: "/sandbox",
+    async readTextFile({ path }) {
+      return files.get(path) ?? null;
+    },
+    async writeTextFile({ path, content }) {
+      files.set(path, content);
+    },
+    async run({ command, workingDirectory }) {
+      commands.push(command);
+      if (!command.startsWith("mkdir"))
+        assert.equal(workingDirectory, "/sandbox/.harness-bootstrap/codex");
+      return {
+        exitCode: failCheck && command.includes("./app-server.mjs") ? 1 : 0,
+        stdout: "",
+        stderr: "",
+      };
+    },
+  };
+  const prepare = (harness) =>
+    prepareSandboxForHarness({ session, harnesses: [harness] });
+  // An existing sandbox has the upstream recipe marker, files and native history.
+  const previous = await prepare(createCodex({ auth: {} }));
+  const previousFiles = new Set(files.keys());
+  const hive = createHiveCodex({ auth: {} });
+  await assert.rejects(prepare(hive), /Bootstrap command failed/);
+  assert.equal(
+    [...files.keys()].filter(
+      (path) => !previousFiles.has(path) && path.endsWith(".ok")
+    ).length,
+    0,
+    "a failed bridge check must not cache a broken installation"
+  );
+  failCheck = false;
+  commands.length = 0;
+  const current = await prepare(hive);
+  assert.notEqual(current.identity, previous.identity);
+  assert.match(commands[1], /pnpm install --frozen-lockfile/);
+  assert.match(commands[2], /import\('@openai\/codex-sdk'\)/);
+  assert.match(commands[2], /import\('\.\/app-server\.mjs'\)/);
+  assert.equal(files.get(historyPath), "existing native context");
+  commands.length = 0;
+  assert.deepEqual(await prepare(hive), current);
+  assert.deepEqual(
+    commands,
+    [],
+    "an unchanged resumed sandbox reuses the SDK bootstrap cache"
+  );
+});
 
 test("copied native bridge loads collaboration skills from its sandbox directory", async () => {
   const directory = await mkdtemp(join(tmpdir(), "hive-native-bootstrap-"));

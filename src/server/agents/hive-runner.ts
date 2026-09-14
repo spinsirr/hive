@@ -49,57 +49,11 @@ import { collectArtifacts } from "../workspace/workspace-artifacts.ts";
 
 const HARNESS_BRIDGE_PORT = 4319;
 const MAX_OUTPUT_CHARS = 20_000;
-const CODEX_BRIDGE_DEPENDENCY_CHECK =
-  "node --input-type=module -e \"await import('ws'); await import('@openai/codex-sdk')\"";
 
 function truncate(value: string, max = MAX_OUTPUT_CHARS) {
   return value.length <= max
     ? value
     : `${value.slice(0, max)}\n\n[output truncated by Hive]`;
-}
-
-export async function ensureCodexBridgeDependencies(
-  sandbox: Experimental_SandboxSession,
-  sessionWorkDir: string,
-  abortSignal?: AbortSignal
-) {
-  const bootstrapDirectory = path.posix.join(
-    path.posix.dirname(sessionWorkDir),
-    ".harness-bootstrap/codex"
-  );
-  let check = await sandbox.run({
-    command: CODEX_BRIDGE_DEPENDENCY_CHECK,
-    workingDirectory: bootstrapDirectory,
-    abortSignal,
-  });
-  if (check.exitCode === 0) return;
-
-  const install = await sandbox.run({
-    command:
-      "npm install --no-package-lock --no-audit --no-fund --ignore-scripts=false ws@8.21.0 @openai/codex-sdk@0.149.1",
-    workingDirectory: bootstrapDirectory,
-    abortSignal,
-  });
-  if (install.exitCode !== 0) {
-    throw new Error(
-      `Codex bridge dependency repair failed: ${truncate(
-        install.stderr || install.stdout
-      )}`
-    );
-  }
-
-  check = await sandbox.run({
-    command: CODEX_BRIDGE_DEPENDENCY_CHECK,
-    workingDirectory: bootstrapDirectory,
-    abortSignal,
-  });
-  if (check.exitCode !== 0) {
-    throw new Error(
-      `Codex bridge dependencies are unavailable after install: ${truncate(
-        check.stderr || check.stdout
-      )}`
-    );
-  }
 }
 
 async function ensureRepositoryWorkingCopy(
@@ -516,12 +470,6 @@ export async function runHiveCodingTask(
         onSession: async ({ session, sessionWorkDir, abortSignal }) => {
           sandboxSession = session;
           sandboxWorkDir = sessionWorkDir;
-          if (runtime === "codex")
-            await ensureCodexBridgeDependencies(
-              session,
-              sessionWorkDir,
-              abortSignal
-            );
           await ensureRepositoryWorkingCopy(
             session,
             sessionWorkDir,

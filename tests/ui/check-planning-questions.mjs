@@ -36,6 +36,8 @@ state.workspace.liveReply = {
 const realFetch = globalThis.fetch;
 const toolNames = [];
 let availableTools;
+let unavailable = false;
+let waitForCancellation;
 globalThis.fetch = async (url, init) => {
   assert.equal(
     String(url),
@@ -43,8 +45,22 @@ globalThis.fetch = async (url, init) => {
   );
   const request = new Request(url, init);
   assert.equal(request.headers.get("authorization"), "Bearer fixture");
-  const body = await request.clone().json();
+  const body = request.method === "POST" ? await request.clone().json() : {};
   if (body.method === "tools/call") toolNames.push(body.params.name);
+  if (body.method === "tools/call" && unavailable)
+    return new Response("Tool service unavailable", { status: 503 });
+  if (body.method === "tools/call" && waitForCancellation) {
+    waitForCancellation();
+    return new Promise((_, reject) => {
+      request.signal.addEventListener(
+        "abort",
+        () => reject(request.signal.reason),
+        {
+          once: true,
+        }
+      );
+    });
+  }
   const response = await handleHiveMcp(
     request,
     scope,
@@ -179,6 +195,50 @@ try {
   ]);
   console.log(
     "PASS: no-repository question uses shared MCP schema and inline state, has no extra reply/Thread, and accepts one designated answer."
+  );
+
+  const currentState = state;
+  // The completed run no longer has permission to publish another question.
+  const rejected = await connection.tools.request_input.execute(input, options);
+  assert.equal(rejected.isError, true);
+  assert.equal(state, currentState);
+  const errorOutput = await connection.tools.request_input.toModelOutput({
+    toolCallId: "rejected",
+    input,
+    output: rejected,
+  });
+  assert.match(JSON.stringify(errorOutput), /could not complete/);
+  assert.doesNotMatch(JSON.stringify(errorOutput), /awaiting_answer/);
+
+  unavailable = true;
+  const beforeFailure = toolNames.length;
+  await assert.rejects(connection.tools.request_input.execute(input, options));
+  assert.equal(
+    toolNames.length,
+    beforeFailure + 1,
+    "failed writes must not replay"
+  );
+  unavailable = false;
+
+  const controller = new AbortController();
+  const started = new Promise((resolve) => {
+    waitForCancellation = resolve;
+  });
+  const cancelled = connection.tools.get_context.execute(
+    {},
+    {
+      ...options,
+      abortSignal: controller.signal,
+    }
+  );
+  const cancellation = assert.rejects(cancelled);
+  await started;
+  controller.abort(new Error("Planning was cancelled"));
+  await cancellation;
+  waitForCancellation = undefined;
+  assert.equal(state, currentState);
+  console.log(
+    "PASS: SDK MCP tools preserve error receipts, never replay failed writes, and cancel in-flight HTTP calls."
   );
 } finally {
   await connection?.close();

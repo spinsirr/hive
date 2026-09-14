@@ -1,6 +1,4 @@
-import { dynamicTool, jsonSchema } from "ai";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { createMCPClient } from "@ai-sdk/mcp";
 
 export type HiveToolConnection = { url: string; token: string };
 
@@ -9,47 +7,40 @@ export type HiveToolConnection = { url: string; token: string };
 export async function connectHiveConversationTools(
   connection: HiveToolConnection
 ) {
-  const client = new Client({ name: "hive-planning", version: "1" });
+  const client = await createMCPClient({
+    clientName: "hive-planning",
+    version: "1",
+    // Hive's MCP server uses the legacy initialize handshake.
+    protocolVersionDiscovery: false,
+    initializationOptions: { timeout: 15_000 },
+    maxRetries: 0,
+    transport: {
+      type: "http",
+      url: connection.url,
+      headers: { Authorization: `Bearer ${connection.token}` },
+      fetch: (input, init) =>
+        fetch(input, {
+          ...init,
+          signal: AbortSignal.any([
+            ...(init?.signal ? [init.signal] : []),
+            AbortSignal.timeout(15_000),
+          ]),
+        }),
+    },
+  });
   try {
-    await client.connect(
-      new StreamableHTTPClientTransport(new URL(connection.url), {
-        requestInit: {
-          headers: { Authorization: `Bearer ${connection.token}` },
-        },
-      })
-    );
-    const { tools } = await client.listTools();
+    const tools = await client.tools();
     return {
       tools: Object.fromEntries(
-        tools
-          .filter(({ name }) =>
-            [
-              "get_context",
-              "get_presence",
-              "read_thread",
-              "request_input",
-              "reply_to_thread",
-            ].includes(name)
-          )
-          .map(({ name, description, inputSchema }) => [
-            name,
-            dynamicTool({
-              description,
-              inputSchema: jsonSchema(inputSchema),
-              execute: async (input, { abortSignal }) => {
-                const result = await client.callTool(
-                  { name, arguments: input as Record<string, unknown> },
-                  undefined,
-                  { signal: abortSignal, timeout: 15_000 }
-                );
-                if (result.isError)
-                  throw new Error(
-                    "The collaboration tool could not complete. Do not claim the question or reply was sent."
-                  );
-                return result.content;
-              },
-            }),
-          ])
+        Object.entries(tools).filter(([name]) =>
+          [
+            "get_context",
+            "get_presence",
+            "read_thread",
+            "request_input",
+            "reply_to_thread",
+          ].includes(name)
+        )
       ),
       close: () => client.close(),
     };

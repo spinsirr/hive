@@ -90,7 +90,11 @@ for (const name of [
   assert.equal(assets.length, 1, `Ship exactly one ${name}`);
   assert.ok(assets[0].content.length > 100);
 }
-assert.deepEqual(recipe.commands, [{ command: "pinned-recipe" }]);
+assert.deepEqual(
+  recipe.commands[0],
+  { command: "pinned-recipe" },
+  "Hive validates the bridge after the adapter's pinned installation"
+);
 console.log(
   "PASS: Gateway diagnostics exclude raw sandbox logs; auth and pinned bootstrap are preserved; the private transport ships with the bridge."
 );
