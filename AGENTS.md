@@ -1,6 +1,10 @@
 # Project workflow
 
-- Read [the code quality guide](docs/CODE_QUALITY.md) before changing quality tooling. Run `pnpm check` for code changes; do not hide failures with blanket ignores or regenerated lint baselines. The [full repository review](docs/CODE_QUALITY_REVIEW.md) records the structural findings and their fixes; preserve those module boundaries.
+- Read [the code quality guide](docs/CODE_QUALITY.md) before changing quality tooling. Run `pnpm check` for code changes; do not hide failures with blanket ignores or regenerated lint baselines.
+
+- Follow the directory ownership and import directions in [DEVELOPMENT.md](docs/DEVELOPMENT.md). Shared contracts belong in `src/lib`; server implementation belongs in `src/server`. Keep feature UI together and import its implementation directly, without compatibility re-export files.
+
+- Keep reusable checks in `tests/` and build/operator commands in `scripts/`. Documentation describes current setup, architecture and verification; put one-off investigations and dated reports in the issue/PR or Git history.
 
 - The `ship` skill is disabled for Hive. Do not load or invoke any `ship` skill, directly or through another workflow.
 - Do not start the automatic external-review pipeline associated with `ship`. Follow the user's requested release scope and the repository's existing GitHub/Vercel workflow instead.

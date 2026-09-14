@@ -1,13 +1,13 @@
-import { sessionEvents } from "@/lib/session-events";
-import { handleHiveMcp } from "@/lib/hive-mcp";
-import { verifyHiveToolToken } from "@/lib/hive-tool-token";
+import { sessionEvents } from "@/server/sessions/session-events";
+import { handleHiveMcp } from "@/server/agents/tools/hive-mcp";
+import { verifyHiveToolToken } from "@/server/agents/tools/hive-tool-token";
 import {
   appendHiveToolReply,
   createHivePeerRequest,
   readHiveToolContext,
   withTaskSubagentControl,
-} from "@/lib/task-session-store";
-import { controlSubagent } from "@/lib/subagent-control";
+} from "@/server/sessions/task-session-store";
+import { controlSubagent } from "@/server/agents/tools/subagent-control";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";

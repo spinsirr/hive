@@ -1,9 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { getSessionMember, HIVE_SESSION_COOKIE } from "@/lib/auth-session";
-import { verifyGitHubInstallState } from "@/lib/github-oauth";
-import { isTaskSessionId } from "@/lib/task-session-id";
-import { isTaskSessionMember } from "@/lib/task-session-store";
+import {
+  getSessionMember,
+  HIVE_SESSION_COOKIE,
+} from "@/server/auth/auth-session";
+import { verifyGitHubInstallState } from "@/server/auth/github-oauth";
+import { isTaskSessionId } from "@/lib/tasks/task-session-id";
+import { isTaskSessionMember } from "@/server/sessions/task-session-store";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";

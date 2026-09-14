@@ -6,18 +6,18 @@ import {
   getGitHubUser,
   GITHUB_OAUTH_COOKIE,
   verifyGitHubOAuthState,
-} from "@/lib/github-oauth";
+} from "@/server/auth/github-oauth";
 import {
   createUserSession,
   HIVE_SESSION_COOKIE,
   sessionCookieOptions,
-} from "@/lib/auth-session";
+} from "@/server/auth/auth-session";
 import {
   GITHUB_USER_COOKIE,
   GITHUB_USER_MAX_AGE,
   githubUserCookieOptions,
   sealGitHubUserToken,
-} from "@/lib/github-user-session";
+} from "@/server/auth/github-user-session";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";

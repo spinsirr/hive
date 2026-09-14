@@ -261,6 +261,6 @@ Do not add ornamental entrance animation to each token/message. Judge motion by
 continuity, interruption and focus preservation, not by the amount of animation.
 
 The continuous production journeys and evidence rules in
-`docs/HAPPY_PATH_ACCEPTANCE.md` supplement functional regression checks. A passing
+`docs/RELEASE_ACCEPTANCE.md` supplement functional regression checks. A passing
 mock or final screenshot cannot certify stream smoothness, first-token timing,
 mobile keyboard behavior or attention management.

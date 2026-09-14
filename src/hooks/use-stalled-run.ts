@@ -6,7 +6,7 @@ import {
   isHiveRunActive,
   STALLED_RUN_AFTER_MS,
   type TaskSessionState,
-} from "@/lib/task-session";
+} from "@/lib/session/task-session";
 
 /**
  * Whether the active run has outlived the request that could still report for

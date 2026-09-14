@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useEffectEvent, useState } from "react";
 
 import { useHiveClient } from "@/components/hive/hive-client";
-import type { WorkspaceRestore } from "@/lib/task-session";
-import type { TaskSessionSnapshot } from "@/lib/task-session-contract";
+import type { WorkspaceRestore } from "@/lib/session/task-session";
+import type { TaskSessionSnapshot } from "@/lib/session/task-session-contract";
 
 /** Task-owned recovery: changing workspace tabs must not stop confirmation. */
 export function useWorkspaceRecovery(

@@ -9,8 +9,8 @@ import {
   failMessageSubmission,
   type MessageDraft,
   type MessageSubmission,
-} from "@/lib/message-draft";
-import { createMessageDraftStore } from "@/lib/message-draft-store";
+} from "@/lib/conversation/message-draft";
+import { createMessageDraftStore } from "@/lib/conversation/message-draft-store";
 
 const serverSnapshot = () => null;
 

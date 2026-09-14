@@ -1,8 +1,11 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { nextAutomaticSteer, type TaskSessionState } from "@/lib/task-session";
-import type { ClientTaskSessionAction } from "@/lib/task-session-actions";
+import {
+  nextAutomaticSteer,
+  type TaskSessionState,
+} from "@/lib/session/task-session";
+import type { ClientTaskSessionAction } from "@/lib/session/task-session-actions";
 
 type ContinueAction = Extract<
   ClientTaskSessionAction,

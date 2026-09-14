@@ -1,12 +1,7 @@
 "use client";
 
 import { createContext, useContext } from "react";
-
-/** Scoped IO for workspace controls; demos never replace browser globals. */
-export type HiveClient = {
-  request: (path: string, init?: RequestInit) => Promise<Response>;
-  reload: () => void;
-};
+import type { HiveClient } from "@/lib/session/task-session-contract";
 
 const liveClient: HiveClient = {
   request: (path, init) => fetch(path, init),

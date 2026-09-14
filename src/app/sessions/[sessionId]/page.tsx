@@ -1,21 +1,24 @@
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 
-import { HiveSignIn } from "@/components/hive/hive-sign-in";
+import { HiveSignIn } from "@/components/hive/tasks/hive-sign-in";
 import { HiveWorkspace } from "@/components/hive/hive-workspace";
-import { getSessionMember, HIVE_SESSION_COOKIE } from "@/lib/auth-session";
-import { isTaskSessionId } from "@/lib/task-session-id";
-import { publicTaskSessionSnapshot } from "@/lib/task-session-snapshot";
+import {
+  getSessionMember,
+  HIVE_SESSION_COOKIE,
+} from "@/server/auth/auth-session";
+import { isTaskSessionId } from "@/lib/tasks/task-session-id";
+import { publicTaskSessionSnapshot } from "@/lib/session/task-session-snapshot";
 import {
   getPublicTaskSessionSnapshot,
   isTaskSessionMember,
   joinTaskSession,
   taskSessionExists,
-} from "@/lib/task-session-store";
+} from "@/server/sessions/task-session-store";
 import {
   createSessionInviteToken,
   verifySessionInviteToken,
-} from "@/lib/session-invite";
+} from "@/server/sessions/session-invite";
 
 export const dynamic = "force-dynamic";
 
