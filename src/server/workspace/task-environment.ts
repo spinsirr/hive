@@ -33,8 +33,26 @@ export function createTaskEnvironment(
   let network: HarnessV1NetworkSandboxSession | undefined;
   return {
     wrap(harness: HarnessV1): HarnessV1 {
+      const getBootstrap = harness.getBootstrap;
       return {
         ...harness,
+        getBootstrap: getBootstrap
+          ? async (options) => {
+              const recipe = await getBootstrap(options);
+              return {
+                ...recipe,
+                files: [
+                  ...recipe.files,
+                  // The cloned repository can contain a parent pnpm workspace.
+                  // Keep Harness installation and its cache scoped to the runtime.
+                  {
+                    path: `${recipe.bootstrapDir}/pnpm-workspace.yaml`,
+                    content: "packages: []\n",
+                  },
+                ],
+              };
+            }
+          : undefined,
         async doStart(options) {
           const session = options.sandboxSession;
           if (!("id" in session) || !("setRequestTransformations" in session))
