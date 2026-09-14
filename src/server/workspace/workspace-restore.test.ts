@@ -1,3 +1,4 @@
+import { taskExecution } from "../../lib/session/task-execution.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
@@ -58,8 +59,10 @@ function fixture() {
       turn * 10
     );
   }
-  // A saved historical approval must not survive restoring a different revision.
-  return { ...state, stage: "approved" as const };
+  return {
+    ...state,
+    workspace: { ...state.workspace, reviewRevision: "reviewed-run" },
+  };
 }
 const request = {
   id: "ec594c84-9b30-4241-a31f-af8f76d270ff",
@@ -98,7 +101,7 @@ test("each completed sandbox snapshot is paired with its exact native agent stat
   );
 });
 
-test("restore replaces files and native context together, preserves conversation and queue, removes approval, and is idempotent", () => {
+test("restore replaces files and native context together, preserves conversation and queue, invalidates review, and is idempotent", () => {
   const session = fixture();
   session.steeringQueue = [
     {
@@ -137,7 +140,8 @@ test("restore replaces files and native context together, preserves conversation
     threadId: "native-2",
     secret: "DO NOT EXPOSE",
   });
-  assert.equal(restored.stage, "review");
+  assert.equal(taskExecution(restored).kind, "completed");
+  assert.equal(restored.workspace.reviewRevision, undefined);
   assert.deepEqual(restored.steeringQueue, session.steeringQueue);
   assert.deepEqual(restored.messages.slice(0, -1), session.messages);
   assert.equal(restored.messages.at(-1)!.memberId, "spencer");
@@ -164,7 +168,6 @@ test("stale, foreign, unpaired and actively-running restore attempts are rejecte
     [
       {
         ...session,
-        stage: "running",
         workspace: {
           ...session.workspace,
           startedAt: 45,
@@ -190,7 +193,7 @@ test("stale, foreign, unpaired and actively-running restore attempts are rejecte
     );
 });
 
-test("restoring a failed-run checkpoint keeps its failure status and cannot approve an unfinished change", () => {
+test("restoring a failed-run checkpoint keeps its failure and invalidates review", () => {
   const session = fixture();
   const failed = applyHiveRunError(session, "The run was interrupted.", 50, {
     ...session.workspace.checkpoints![0].result,
@@ -204,10 +207,10 @@ test("restoring a failed-run checkpoint keeps its failure status and cannot appr
     60
   );
   const restored = completeWorkspaceRestore(started, request.id, 70);
-  assert.equal(restored.workspace.status, "error");
+  assert.equal(taskExecution(restored).kind, "failed");
   assert.equal(restored.workspace.error, "The run was interrupted.");
   assert.equal(restored.workspace.commands[0].exitCode, 1);
-  assert.notEqual(restored.stage, "approved");
+  assert.equal(restored.workspace.reviewRevision, undefined);
 });
 
 test("a failed or interrupted restore keeps the task fenced and only permits the same bounded operation to retry", () => {

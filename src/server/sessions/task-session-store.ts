@@ -6,7 +6,11 @@ import {
   syncTaskIdleCheckpoint,
   refreshStoredTaskEnvironment,
 } from "../workspace/task-environment-store.ts";
-import { sessionState, sessionValues } from "./task-session-row.ts";
+import {
+  activeRunCondition,
+  sessionState,
+  sessionValues,
+} from "./task-session-row.ts";
 import { and, desc, eq, getTableColumns, sql } from "drizzle-orm";
 import { customAlphabet } from "nanoid";
 
@@ -57,6 +61,7 @@ import {
   appendHiveReply as appendHiveReplyToSession,
   createInitialTaskSessionState,
   didStartHiveRun,
+  isHiveRunActive,
   hiveReplyThreadId,
   type HiveRunResult,
   type HiveSessionCheckpoint,
@@ -83,13 +88,14 @@ const agentToolColumns = {
   sessionId: taskSessions.id,
   title: taskSessions.title,
   version: taskSessions.version,
-  stage: taskSessions.stage,
   messages: taskSessions.messages,
   repository: taskSessions.repository,
   steeringQueue: taskSessions.steeringQueue,
   activeSteer: taskSessions.activeSteer,
   workspace: sql<HiveToolContext["workspace"]>`jsonb_build_object(
-    'status', ${taskSessions.workspace}->'status',
+    'startedAt', ${taskSessions.workspace}->'startedAt',
+    'completedAt', ${taskSessions.workspace}->'completedAt',
+    'error', ${taskSessions.workspace}->'error',
     'runtime', ${taskSessions.workspace}->'agentSession'->'runtime',
     'restore', ${taskSessions.workspace}->'restore',
     'lastRestore', ${taskSessions.workspace}->'lastRestore',
@@ -237,9 +243,13 @@ export async function createTaskSession(
   });
 
   await db.transaction(async (transaction) => {
-    await transaction
-      .insert(taskSessions)
-      .values(sessionValues(initialSession));
+    await transaction.insert(taskSessions).values({
+      ...sessionValues(initialSession),
+      // Required slots from the retired prototype schema, not active state.
+      revision: 1,
+      stage: "waiting",
+      annotation: { status: "open", text: "" },
+    });
     await transaction.insert(taskSessionMembers).values({
       sessionId,
       memberId: creator.id,
@@ -525,22 +535,14 @@ export async function appendHiveReply(
   sessionId: string,
   body: string,
   options: {
-    forReplyId?: string;
-    forMessageId?: string;
-    forMessageAnnotation?: {
-      messageId: string;
-      annotationId: string;
-      steeredAt: number;
-    };
-    forActiveSteerAt?: number;
-    forSteerAt?: number;
+    forReplyId: string;
     status?: "error";
     runResult?: HiveRunResult;
     planningResult?: HivePlanningResult;
     runError?: string;
     runCheckpoint?: HiveSessionCheckpoint;
     subagents?: HiveSubagent[];
-  } = {},
+  },
   now = Date.now()
 ) {
   const environment = await db.transaction(async (transaction) => {
@@ -555,9 +557,9 @@ export async function appendHiveReply(
     }
 
     const currentSession = sessionState(storedSession);
-    if (currentSession.archived || currentSession.workspace.restore) return;
     if (
-      options.forReplyId &&
+      currentSession.archived ||
+      !isHiveRunActive(currentSession) ||
       currentSession.workspace.liveReply?.id !== options.forReplyId
     )
       return;
@@ -567,35 +569,6 @@ export async function appendHiveReply(
         subagents: options.subagents,
       };
     }
-    if (
-      options.forMessageId &&
-      !currentSession.messages.some(
-        (message) => message.id === options.forMessageId
-      )
-    ) {
-      return;
-    }
-    if (
-      options.forSteerAt &&
-      currentSession.annotation.steeredAt !== options.forSteerAt
-    ) {
-      return;
-    }
-    if (options.forMessageAnnotation) {
-      const { annotationId, messageId, steeredAt } =
-        options.forMessageAnnotation;
-      const annotation = currentSession.messages
-        .find((message) => message.id === messageId)
-        ?.annotations?.find((item) => item.id === annotationId);
-      if (annotation?.steeredAt !== steeredAt) return;
-    }
-    if (
-      options.forActiveSteerAt &&
-      currentSession.activeSteer?.appliedAt !== options.forActiveSteerAt
-    ) {
-      return;
-    }
-
     const nextSession = options.runResult
       ? applyHiveRunResult(currentSession, options.runResult, now)
       : options.runError
@@ -639,10 +612,8 @@ export async function checkpointAgentReply(
       .where(
         and(
           eq(taskSessions.id, sessionId),
-          eq(taskSessions.stage, "running"),
+          activeRunCondition,
           sql`${taskSessions.archived} IS NULL`,
-          sql`${taskSessions.workspace}->>'startedAt' IS NOT NULL`,
-          sql`${taskSessions.workspace}->>'completedAt' IS NULL`,
           sql`${taskSessions.workspace}->'liveReply'->>'id' = ${replyId}`,
           sql`(${taskSessions.workspace}->'liveReply'->>'sequence')::integer < ${sequence}`
         )
@@ -674,10 +645,8 @@ export async function checkpointSubagents(
       .where(
         and(
           eq(taskSessions.id, sessionId),
-          eq(taskSessions.stage, "running"),
+          activeRunCondition,
           sql`${taskSessions.archived} IS NULL`,
-          sql`${taskSessions.workspace}->>'startedAt' IS NOT NULL`,
-          sql`${taskSessions.workspace}->>'completedAt' IS NULL`,
           sql`${taskSessions.workspace}->'liveReply'->>'id' = ${replyId}`,
           sql`coalesce((${taskSessions.workspace}->'liveReply'->>'subagentSequence')::integer, 0) < ${update.sequence}`
         )
@@ -705,7 +674,6 @@ export async function withTaskSubagentControl<T>(
     const [row] = await transaction
       .select({
         sessionId: taskSessions.id,
-        stage: taskSessions.stage,
         repository: taskSessions.repository,
         archived: taskSessions.archived,
         workspace: sql<SubagentSession["workspace"]>`jsonb_build_object(
@@ -871,7 +839,8 @@ export async function getAgentReply(sessionId: string) {
   return row?.reply ?? null;
 }
 
-/** UI reads discard private recovery payloads in Postgres, before network transfer. */
+/** UI reads discard private recovery payloads in Postgres, before network transfer.
+ * Legacy display status reaches the row mapper only, to retain old failure evidence. */
 export async function getPublicTaskSessionSnapshot(
   sessionId: string
 ): Promise<TaskSessionSnapshot> {
@@ -882,12 +851,12 @@ export async function getPublicTaskSessionSnapshot(
         SELECT jsonb_object_agg(field.key, CASE field.key
           WHEN 'agentSession' THEN (
             SELECT jsonb_object_agg(entry.key, entry.value)
-            FROM jsonb_each(field.value) AS entry
+            FROM jsonb_each(NULLIF(field.value, 'null'::jsonb)) AS entry
             WHERE entry.key IN ('id', 'runtime')
           )
           WHEN 'restore' THEN (
             SELECT jsonb_object_agg(entry.key, entry.value)
-            FROM jsonb_each(field.value) AS entry
+            FROM jsonb_each(NULLIF(field.value, 'null'::jsonb)) AS entry
             WHERE entry.key IN (${sql.join(
               publicRestoreFields.map((key) => sql`${key}`),
               sql`, `
@@ -897,7 +866,7 @@ export async function getPublicTaskSessionSnapshot(
         END)
         FROM jsonb_each(${taskSessions.workspace}) AS field
         WHERE field.key IN (${sql.join(
-          [...publicWorkspaceFields, "agentSession", "restore"].map(
+          [...publicWorkspaceFields, "agentSession", "restore", "status"].map(
             (key) => sql`${key}`
           ),
           sql`, `

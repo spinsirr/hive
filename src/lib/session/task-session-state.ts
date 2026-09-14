@@ -1,3 +1,4 @@
+import { canChangeTaskSettings } from "./task-execution.ts";
 import type { ClientTaskSessionAction } from "./task-session-actions.ts";
 /**
  * The shared session is the product primitive: every teammate talks to the same
@@ -62,9 +63,6 @@ export function resolveMember(
     }
   );
 }
-// Historical approved snapshots remain readable; new reviews resolve only in their Thread.
-export type RunStage = "waiting" | "running" | "review" | "approved";
-
 export type SteeringSource =
   | {
       kind: "peer-response";
@@ -72,6 +70,7 @@ export type SteeringSource =
       annotationId: string;
       replyThreadId?: string;
     }
+  // Historical accepted input retains its source; new annotations use messages.
   | { kind: "workspace-annotation" }
   | { kind: "message"; messageId: string }
   | {
@@ -206,7 +205,6 @@ export type WorkspaceCommand = {
 
 export type WorkspaceState = {
   reviewRevision?: string;
-  status: "disconnected" | "ready" | "running" | "review" | "error";
   /** Shared coding preference, independent of the saved native conversation. */
   codingEffort?: CodingEffort;
   codingModel?: string;
@@ -241,14 +239,6 @@ export type WorkspaceState = {
 
 export const WORKSPACE_CHECKPOINT_LIMIT = 3;
 export { MESSAGE_BODY_LIMIT } from "../conversation/message-draft.ts";
-/**
- * A run that has not reported this long after starting has outlived the request
- * hosting it (the session route's `maxDuration` is 300 s). Members may then mark
- * it as lost; nothing reruns and the discussion/queue are kept.
- */
-export const STALLED_RUN_AFTER_MS = 6 * 60_000;
-export const STALLED_RUN_ERROR =
-  "Hive's execution process was lost before it reported a result.";
 export type SavedWorkspaceCheckpoint = {
   id: string;
   createdAt: number;
@@ -296,15 +286,6 @@ export type HivePlanningResult = Pick<
   "summary" | "sandboxName" | "agentSession" | "environment"
 >;
 
-export type Annotation = {
-  status: "open" | "queued" | "steered";
-  text: string;
-  queuedBy?: MemberId;
-  queuedAt?: number;
-  steeredBy?: MemberId;
-  steeredAt?: number;
-};
-
 export type TaskSessionState = {
   archived?: { at: number; by: MemberId };
   sessionId: string;
@@ -312,10 +293,7 @@ export type TaskSessionState = {
   createdBy: MemberId;
   createdAt: number;
   version: number;
-  revision: 1 | 2;
-  stage: RunStage;
   messages: ChatMessage[];
-  annotation: Annotation;
   steeringQueue: SteeringQueueItem[];
   activeSteer?: ActiveSteer;
   repository?: RepositoryState;
@@ -357,16 +335,9 @@ export function createInitialTaskSessionState(
     createdBy: options.createdBy ?? "hive-system",
     createdAt: now,
     version: 1,
-    revision: 1,
-    stage: "waiting",
     messages: [],
-    annotation: {
-      status: "open",
-      text: "",
-    },
     steeringQueue: [],
     workspace: {
-      status: "disconnected",
       diff: "",
       files: [],
       commands: [],
@@ -405,29 +376,6 @@ export function appendAgentMessage(
   ];
 }
 
-/** Execution phase is independent of the presentation stage and pending queue. */
-export type TaskExecution =
-  | { kind: "running"; startedAt: number }
-  | { kind: "restoring"; restore: WorkspaceRestore }
-  | { kind: "failed"; error?: string }
-  | { kind: "completed"; completedAt: number }
-  | { kind: "idle" };
-export function taskExecution(state: TaskSessionState): TaskExecution {
-  const workspace = state.workspace;
-  if (workspace.restore)
-    return { kind: "restoring", restore: workspace.restore };
-  if (workspace.startedAt !== undefined && workspace.completedAt === undefined)
-    return { kind: "running", startedAt: workspace.startedAt };
-  if (workspace.status === "error")
-    return { kind: "failed", error: workspace.error };
-  if (workspace.completedAt !== undefined)
-    return { kind: "completed", completedAt: workspace.completedAt };
-  return { kind: "idle" };
-}
-export function isHiveRunActive(state: TaskSessionState): boolean {
-  return taskExecution(state).kind === "running";
-}
-
 /** Pending requests are visible in the UI, but are not context for this run. */
 export function pendingMessageIds(
   state: Pick<TaskSessionState, "steeringQueue">
@@ -438,17 +386,6 @@ export function pendingMessageIds(
         ? [source.messageId]
         : []
     )
-  );
-}
-
-/** True once an active run has outlived the request that could still report for it. */
-export function isHiveRunStalled(
-  state: TaskSessionState,
-  now = Date.now()
-): boolean {
-  return (
-    isHiveRunActive(state) &&
-    now - state.workspace.startedAt! >= STALLED_RUN_AFTER_MS
   );
 }
 
@@ -533,38 +470,6 @@ export function conversationMessages(state: TaskSessionState): ChatMessage[] {
   );
 }
 
-export function canApplyNextSteer(state: TaskSessionState): boolean {
-  return (
-    !state.archived &&
-    !state.workspace.restore &&
-    state.steeringQueue.length > 0 &&
-    !state.activeSteer &&
-    !isHiveRunActive(state)
-  );
-}
-
-/** Only already-submitted input may auto-continue. Errors and restored history
- * require an explicit restart; the exact head ID fences competing clients. */
-export function nextAutomaticSteer(state: TaskSessionState): string | null {
-  const next = state.steeringQueue[0];
-  if (
-    !canApplyNextSteer(state) ||
-    !next ||
-    state.workspace.status === "error" ||
-    (state.workspace.lastRestore &&
-      next.queuedAt <= state.workspace.lastRestore.at)
-  )
-    return null;
-  return next.id;
-}
-
-export function didStartHiveRun(
-  previous: TaskSessionState,
-  next: TaskSessionState
-): boolean {
-  return !isHiveRunActive(previous) && isHiveRunActive(next);
-}
-
 /** Explicit steers hand work back to main; their source is provenance, not a
  * reply destination. Only a structured answer explicitly made in a Thread
  * continues there. Already-admitted runs retain their saved liveReply route. */
@@ -575,42 +480,6 @@ export function hiveReplyThreadId(state: TaskSessionState): string | undefined {
   return messageId && state.messages.some((message) => message.id === messageId)
     ? messageId
     : undefined;
-}
-
-/** A native conversation belongs to one harness; never reinterpret its history. */
-export function canSelectHarness(state: TaskSessionState) {
-  return (
-    !state.archived &&
-    !isHiveRunActive(state) &&
-    !state.workspace.restore &&
-    !state.activeSteer &&
-    state.steeringQueue.length === 0 &&
-    (!state.repository ||
-      (!state.workspace.sandboxName &&
-        !state.workspace.agentSession?.resumeFrom &&
-        !state.workspace.checkpoints?.length &&
-        state.workspace.startedAt === undefined))
-  );
-}
-
-export function canSetCodingEffort(state: TaskSessionState) {
-  return (
-    !state.archived &&
-    !isHiveRunActive(state) &&
-    !state.workspace.restore &&
-    !state.activeSteer &&
-    state.steeringQueue.length === 0
-  );
-}
-
-export function canArchiveTask(state: TaskSessionState) {
-  return (
-    !state.archived &&
-    !isHiveRunActive(state) &&
-    !state.workspace.restore &&
-    !state.activeSteer &&
-    state.steeringQueue.length === 0
-  );
 }
 
 export const ARCHIVED_TASK_MESSAGE =
@@ -629,7 +498,7 @@ export function taskActionBlockReason(
   if (
     action.type === "archive-task" &&
     !state.archived &&
-    !canArchiveTask(state)
+    !canChangeTaskSettings(state)
   )
     return "Finish the current run, queued instructions and workspace recovery before archiving.";
   return null;
@@ -644,12 +513,9 @@ export function appendHiveReply(
   return {
     ...state,
     activeSteer: undefined,
-    stage:
-      !state.repository && state.stage === "running" ? "waiting" : state.stage,
     workspace: !state.repository
       ? {
           ...state.workspace,
-          status: "disconnected",
           startedAt: undefined,
           completedAt: now,
           error: undefined,
@@ -673,16 +539,11 @@ export function applyHiveRunResult(
   now = Date.now()
 ): TaskSessionState {
   if (state.workspace.restore) return state;
-  const hasQueuedSteer = state.steeringQueue.length > 0;
-  const hasChanges = result.diff.trim().length > 0;
   return {
     ...state,
     version: state.version + 1,
-    revision: 2,
-    stage: hasQueuedSteer ? "running" : hasChanges ? "review" : "waiting",
     activeSteer: undefined,
     workspace: {
-      status: hasQueuedSteer ? "running" : hasChanges ? "review" : "ready",
       reviewRevision: state.workspace.liveReply?.id,
       codingEffort: state.workspace.codingEffort,
       codingModel: state.workspace.codingModel,
@@ -765,7 +626,6 @@ export function applyHiveRunError(
   return {
     ...state,
     version: state.version + 1,
-    stage: "waiting",
     activeSteer: undefined,
     workspace: {
       ...state.workspace,
@@ -778,7 +638,6 @@ export function applyHiveRunError(
       files: checkpoint?.files ?? state.workspace.files,
       commands: checkpoint?.commands ?? state.workspace.commands,
       changedFiles: checkpoint?.changedFiles ?? state.workspace.changedFiles,
-      status: "error",
       error: message,
       completedAt: now,
       liveReply: undefined,

@@ -1,10 +1,10 @@
+import { nextAutomaticSteer } from "./task-execution.ts";
 import {
   acceptCommand,
   startNextCommand,
   releaseCommandSource,
 } from "./task-session-commands.ts";
 import {
-  nextAutomaticSteer,
   type TeamMember,
   resolveMember,
   type SteeringQueueItem,
@@ -257,31 +257,6 @@ export function steerMessageAnnotation(
   );
 }
 
-export function steerAgent(
-  state: TaskSessionState,
-  action: Extract<TaskSessionAction, { type: "steer-agent" }>,
-  now: number,
-  actor: TeamMember,
-  members: TeamMember[]
-): TaskSessionState {
-  if (state.annotation.status !== "open" || !state.annotation.text.trim())
-    return state;
-
-  return acceptCommand(
-    { ...state, version: state.version + 1, updatedAt: now },
-    {
-      id: `steer-${now}-${state.version + 1}`,
-      body: state.annotation.text,
-      authorId: action.actor,
-      queuedAt: now,
-      source: { kind: "workspace-annotation" },
-      sourceLabel: "Preview annotation",
-    },
-    now,
-    members
-  );
-}
-
 export function applyNextSteer(
   state: TaskSessionState,
   action: Extract<TaskSessionAction, { type: "apply-next-steer" }>,
@@ -313,20 +288,9 @@ export function removeQueuedSteer(
   const steeringQueue = state.steeringQueue.filter(
     (item) => item.id !== action.steerId
   );
-  const queueDrained =
-    state.repository &&
-    state.stage === "running" &&
-    state.workspace.completedAt !== undefined &&
-    steeringQueue.length === 0;
-  const hasChanges = state.workspace.diff.trim().length > 0;
-
   return {
     ...state,
     version: state.version + 1,
-    stage: queueDrained ? (hasChanges ? "review" : "waiting") : state.stage,
-    workspace: queueDrained
-      ? { ...state.workspace, status: hasChanges ? "review" : "ready" }
-      : state.workspace,
     ...releaseCommandSource(state, queuedSteer),
     steeringQueue,
     updatedAt: now,

@@ -19,7 +19,6 @@ import {
   answerQuestion,
   steerThread,
   steerMessageAnnotation,
-  steerAgent,
   applyNextSteer,
   continueQueuedSteer,
   removeQueuedSteer,
@@ -39,6 +38,7 @@ import {
   type TeamMember,
 } from "./task-session-state.ts";
 export * from "./task-session-state.ts";
+export * from "./task-execution.ts";
 
 export function reduceTaskSession(
   state: TaskSessionState,
@@ -88,8 +88,6 @@ export function reduceTaskSession(
       return steerThread(state, action, now, actor, members);
     case "steer-message-annotation":
       return steerMessageAnnotation(state, action, now, actor, members);
-    case "steer-agent":
-      return steerAgent(state, action, now, actor, members);
     case "apply-next-steer":
       return applyNextSteer(state, action, now, members);
     case "continue-queued-steer":

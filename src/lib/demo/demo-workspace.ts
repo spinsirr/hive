@@ -138,7 +138,6 @@ function initialSnapshot(task: DashboardTask): TaskSessionSnapshot {
     session.workspace = {
       ...session.workspace,
       ...initial,
-      status: "ready",
       checkpoints: [
         { id: initial.snapshot!.id, createdAt: epoch, result: initial },
       ],

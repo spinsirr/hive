@@ -1,10 +1,10 @@
+import { taskExecution } from "../session/task-execution.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
   canApplyNextSteer,
-  canArchiveTask,
+  canChangeTaskSettings,
   canSelectHarness,
-  canSetCodingEffort,
   createInitialTaskSessionState,
   didStartHiveRun,
   memberDirectory,
@@ -70,7 +70,7 @@ test("team archive and restore preserve work, are idempotent and never grant exe
   assert.equal(restored.version, archived.version + 1);
   assert.equal(restored.workspace, initial.workspace);
   assert.equal(restored.messages, initial.messages);
-  assert.equal(restored.stage, initial.stage);
+  assert.equal(taskExecution(restored).kind, taskExecution(initial).kind);
   assert.equal(didStartHiveRun(archived, restored), false);
   assert.equal(
     reduceTaskSession(restored, { type: "restore-task", actor }, 5, members),
@@ -103,7 +103,6 @@ test("archives reject every task mutation and checkpoint rollback until restored
     "resolve-peer-review": false,
     "steer-thread": false,
     "steer-message-annotation": false,
-    "steer-agent": false,
     "apply-next-steer": false,
     "continue-queued-steer": false,
     "remove-queued-steer": false,
@@ -126,9 +125,8 @@ test("archives reject every task mutation and checkpoint rollback until restored
   }
   for (const allowed of [
     canApplyNextSteer,
-    canArchiveTask,
+    canChangeTaskSettings,
     canSelectHarness,
-    canSetCodingEffort,
   ])
     assert.equal(allowed(archived), false);
   assert.throws(
@@ -189,7 +187,7 @@ test("active work, pending instructions and uncertain recovery must finish befor
     { ...initial, steeringQueue: queued.steeringQueue },
     recovery,
   ]) {
-    assert.equal(canArchiveTask(state), false);
+    assert.equal(canChangeTaskSettings(state), false);
     assert.equal(
       reduceTaskSession(state, { type: "archive-task", actor }, 10, members),
       state

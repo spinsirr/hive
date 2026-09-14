@@ -1,3 +1,4 @@
+import { taskExecution } from "../../src/lib/session/task-execution.ts";
 import { createTestDatabase } from "../helpers/test-database.mjs";
 import { registerTestModules } from "../helpers/test-modules.mjs";
 // Real Postgres + task commands + MCP. Only a uniquely named disposable local DB.
@@ -40,7 +41,7 @@ try {
   );
   const unnamed = await store.createTaskSession("", members[0]);
   assert.equal(unnamed.title, "");
-  assert.equal(unnamed.stage, "waiting");
+  assert.equal(taskExecution(unnamed).kind, "idle");
   assert.equal(unnamed.workspace.liveReply, undefined);
   assert.equal(unnamed.workspace.agentSession, undefined);
   await store.joinTaskSession(unnamed.sessionId, members[1].id);
@@ -1055,7 +1056,9 @@ try {
     ),
     "archived files remain readable"
   );
-  await store.appendHiveReply(task.sessionId, "Late unscoped writer");
+  await store.appendHiveReply(task.sessionId, "Late writer", {
+    forReplyId: randomUUID(),
+  });
   assert.deepEqual(
     (await store.getTaskSessionSnapshot(task.sessionId)).session,
     archived.snapshot.session
@@ -1107,7 +1110,7 @@ try {
       .session;
     assert.notEqual(
       Boolean(winner.archived),
-      winner.stage === "running",
+      taskExecution(winner).kind === "running",
       "never archive a running task"
     );
   }

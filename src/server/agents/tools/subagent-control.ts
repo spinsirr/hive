@@ -6,7 +6,10 @@ import {
   type SubagentControl,
   type SubagentSession,
 } from "../../../lib/agents/hive-subagents.ts";
-import { createAgentSessionId } from "../../../lib/session/task-session.ts";
+import {
+  createAgentSessionId,
+  isHiveRunActive,
+} from "../../../lib/session/task-session.ts";
 import { resolvePersistentSandboxName } from "../../workspace/hive-sandbox.ts";
 
 export function subagentCapability(
@@ -40,10 +43,7 @@ export function assertSubagentRun(session: SubagentSession, runId: string) {
     throw new Error("Child controls are not available for Claude Code tasks.");
   if (
     !session.repository ||
-    session.stage !== "running" ||
-    session.workspace.startedAt == null ||
-    session.workspace.completedAt != null ||
-    session.workspace.restore ||
+    !isHiveRunActive(session) ||
     session.workspace.liveReply?.id !== runId
   )
     throw new Error("This run has ended. Refresh the task.");

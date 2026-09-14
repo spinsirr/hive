@@ -167,7 +167,11 @@ try {
   assert.ok(await call());
   await db
     .update(taskSessions)
-    .set({ createdBy: owner.member.id, stage: "review" })
+    .set({
+      createdBy: owner.member.id,
+      stage: "running",
+      workspace: { ...original.workspace, completedAt: Date.now() },
+    })
     .where(eq(taskSessions.id, id));
   await assert.rejects(call(), SubscriptionAccessDenied);
   await db
@@ -260,7 +264,10 @@ try {
   refresh = async () => {
     await db
       .update(taskSessions)
-      .set({ stage: "review" })
+      .set({
+        stage: "running",
+        workspace: { ...original.workspace, completedAt: Date.now() },
+      })
       .where(eq(taskSessions.id, id));
     return fresh;
   };
@@ -270,7 +277,7 @@ try {
   );
   await db
     .update(taskSessions)
-    .set({ stage: "running" })
+    .set({ workspace: original.workspace })
     .where(eq(taskSessions.id, id));
   refresh = async () => {
     await db

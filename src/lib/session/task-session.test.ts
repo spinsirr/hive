@@ -1,3 +1,4 @@
+import { taskExecution } from "./task-execution.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -7,7 +8,7 @@ import {
   appendHiveReply,
   canApplyNextSteer,
   canSelectHarness,
-  canSetCodingEffort,
+  canChangeTaskSettings,
   createInitialTaskSessionState,
   didStartHiveRun,
   isHiveRunActive,
@@ -157,7 +158,7 @@ test("selecting Claude before repository attachment does not reset discussion or
     2
   );
   assert.deepEqual(selected.messages, initial.messages);
-  assert.equal(selected.stage, "waiting");
+  assert.equal(taskExecution(selected).kind, "idle");
   const action = {
     type: "connect-repository" as const,
     actor: "spencer",
@@ -227,7 +228,7 @@ test("coding effort changes at idle boundaries without replacing native history 
   assert.equal(high.messages, finished.messages);
   assert.equal(high.version, finished.version + 1);
   assert.equal(canSelectHarness(high), false);
-  assert.equal(canSetCodingEffort(high), true);
+  assert.equal(canChangeTaskSettings(high), true);
   assert.equal(
     reduceTaskSession(
       high,
@@ -252,7 +253,7 @@ test("coding effort changes at idle boundaries without replacing native history 
     25
   );
   for (const busy of [running, queued, finishInspection(queued)]) {
-    assert.equal(canSetCodingEffort(busy), false);
+    assert.equal(canChangeTaskSettings(busy), false);
     assert.equal(
       reduceTaskSession(
         busy,
@@ -392,7 +393,7 @@ test("model selection preserves native history, normalizes effort, and respects 
   );
 });
 
-test("a successful read-only run returns to waiting without approval", () => {
+test("a read-only run completes without turning the task into an approval workflow", () => {
   const running = reduceTaskSession(
     connectedSession(),
     {
@@ -404,8 +405,7 @@ test("a successful read-only run returns to waiting without approval", () => {
     20
   );
   const finished = finishInspection(running);
-  assert.equal(finished.stage, "waiting");
-  assert.equal(finished.workspace.status, "ready");
+  assert.equal(taskExecution(finished).kind, "completed");
   assert.equal(finished.workspace.commands[0]?.exitCode, 0);
 });
 
@@ -428,7 +428,6 @@ test("the retired global approval action cannot change a task or its history", (
       ...review,
       workspace: {
         ...review.workspace,
-        status: "error",
         error: "Rate limit reached.",
       },
     },
@@ -465,7 +464,7 @@ test("the retired global approval action cannot change a task or its history", (
   }
 });
 
-test("removing the final steer after a read-only run returns to ready, not review", () => {
+test("removing pending input preserves the completed read-only run", () => {
   const running = reduceTaskSession(
     connectedSession(),
     {
@@ -496,8 +495,7 @@ test("removing the final steer after a read-only run returns to ready, not revie
     },
     50
   );
-  assert.equal(removed.stage, "waiting");
-  assert.equal(removed.workspace.status, "ready");
+  assert.equal(taskExecution(removed).kind, "completed");
   assert.deepEqual(removed.workspace.commands, finished.workspace.commands);
 });
 
@@ -596,10 +594,8 @@ test("team messages stay in discussion while Hive tasks start one shared run", (
     30
   );
 
-  assert.equal(discussion.stage, "waiting");
-  assert.equal(discussion.workspace.status, "ready");
-  assert.equal(task.stage, "running");
-  assert.equal(task.workspace.status, "running");
+  assert.equal(taskExecution(discussion).kind, "idle");
+  assert.equal(taskExecution(task).kind, "running");
   assert.equal(task.messages.at(-1)?.memberId, "maya");
 });
 
@@ -619,9 +615,8 @@ test("a task can begin with Hive before a repository is attached", () => {
     2
   );
 
-  assert.equal(running.stage, "running");
+  assert.equal(taskExecution(running).kind, "running");
   assert.equal(running.repository, undefined);
-  assert.equal(running.workspace.status, "disconnected");
   assert.equal(running.workspace.agentSession, undefined);
   assert.equal(running.workspace.startedAt, 2);
 
@@ -630,7 +625,7 @@ test("a task can begin with Hive before a repository is attached", () => {
     "Let’s first define the active route behavior.",
     3
   );
-  assert.equal(replied.stage, "waiting");
+  assert.equal(taskExecution(replied).kind, "completed");
   assert.equal(replied.workspace.startedAt, undefined);
   assert.equal(replied.workspace.completedAt, 3);
 });
@@ -689,7 +684,7 @@ test("attaching a repository preserves discussion but never treats the planning 
   assert.equal(ignoredReplacement.repository?.name, "team/project");
 });
 
-test("historically approved tasks remain open for discussion and another steer", () => {
+test("completed tasks remain open for discussion and another steer", () => {
   const running = reduceTaskSession(
     connectedSession(),
     {
@@ -702,10 +697,9 @@ test("historically approved tasks remain open for discussion and another steer",
   );
   const finished = finishInspection(running, "+ keyboard support");
   assert.equal(isHiveRunActive(finished), false);
-  const approved: TaskSessionState = { ...finished, stage: "approved" };
-  const parent = approved.messages.at(-1)!;
+  const parent = finished.messages.at(-1)!;
   const discussed = reduceTaskSession(
-    approved,
+    finished,
     {
       type: "annotate-message",
       clientId: crypto.randomUUID(),
@@ -715,8 +709,8 @@ test("historically approved tasks remain open for discussion and another steer",
     },
     60
   );
-  assert.equal(discussed.stage, "approved");
-  assert.deepEqual(discussed.workspace, approved.workspace);
+  assert.equal(taskExecution(discussed).kind, "completed");
+  assert.deepEqual(discussed.workspace, finished.workspace);
   const reply = discussed.messages.at(-1)!.annotations!.at(-1)!;
   assert.equal(reply.authorId, "maya");
   const steered = reduceTaskSession(
@@ -730,10 +724,10 @@ test("historically approved tasks remain open for discussion and another steer",
     70
   );
   assert.equal(isHiveRunActive(steered), true);
-  assert.equal(steered.sessionId, approved.sessionId);
+  assert.equal(steered.sessionId, finished.sessionId);
   assert.equal(
     steered.workspace.agentSession!.id,
-    approved.workspace.agentSession!.id
+    finished.workspace.agentSession!.id
   );
   assert.ok(steered.messages.some((message) => message.id === parent.id));
 });
@@ -784,7 +778,7 @@ test("authenticated GitHub members keep real attribution and mentions human-only
     members
   );
 
-  assert.equal(discussion.stage, "waiting");
+  assert.equal(taskExecution(discussion).kind, "idle");
   assert.equal(discussion.messages.at(-1)?.name, "Ada Lovelace");
   assert.equal(discussion.messages.at(-1)?.memberId, "github-101");
 });
@@ -901,7 +895,7 @@ test("a failed run releases the next queued steer without losing its author or c
   assert.equal(applied.activeSteer?.body, "Keep keyboard navigation intact");
   assert.equal(applied.activeSteer?.authorId, "maya");
   assert.equal(applied.steeringQueue.length, 0);
-  assert.equal(applied.stage, "running");
+  assert.equal(taskExecution(applied).kind, "running");
   assert.equal(applied.workspace.startedAt, 50);
   assert.equal(applied.workspace.completedAt, undefined);
   assert.equal(applied.workspace.error, undefined);
@@ -1092,8 +1086,7 @@ test("a review annotation can start the next turn in the same Codex session", ()
     50
   );
 
-  assert.equal(steered.stage, "running");
-  assert.equal(steered.workspace.status, "running");
+  assert.equal(taskExecution(steered).kind, "running");
   assert.equal(
     steered.workspace.agentSession?.id,
     review.workspace.agentSession?.id
@@ -1105,10 +1098,9 @@ test("a review annotation can start the next turn in the same Codex session", ()
   );
 });
 
-test("a completed run stays running when another steer is queued", () => {
+test("a completed run stays completed while the next instruction waits in the queue", () => {
   const running = {
     ...connectedSession(),
-    stage: "running" as const,
     steeringQueue: [
       {
         id: "steer-1",
@@ -1134,12 +1126,11 @@ test("a completed run stays running when another steer is queued", () => {
     30
   );
 
-  assert.equal(completed.stage, "running");
-  assert.equal(completed.workspace.status, "running");
+  assert.equal(taskExecution(completed).kind, "completed");
   assert.equal(completed.workspace.changedFiles[0], "nav.tsx");
 });
 
-test("removing the final pending steer after a completed run returns to review", () => {
+test("removing the final pending steer preserves completed workspace evidence", () => {
   const running = reduceTaskSession(
     connectedSession(),
     {
@@ -1182,8 +1173,7 @@ test("removing the final pending steer after a completed run returns to review",
     },
     50
   );
-  assert.equal(removed.stage, "review");
-  assert.equal(removed.workspace.status, "review");
+  assert.equal(taskExecution(removed).kind, "completed");
   assert.equal(removed.workspace.diff, "+ update");
 });
 
@@ -1191,10 +1181,8 @@ test("reset preserves the repository but clears run artifacts", () => {
   const connected = connectedSession();
   const session = {
     ...connected,
-    stage: "review" as const,
     workspace: {
       ...connected.workspace,
-      status: "review" as const,
       diff: "+ change",
       files: [{ path: "nav.tsx", content: "change" }],
       commands: [{ command: "pnpm test", output: "ok", exitCode: 0 }],
@@ -1209,8 +1197,7 @@ test("reset preserves the repository but clears run artifacts", () => {
 
   assert.equal(reset.version, session.version + 1);
   assert.equal(reset.repository?.name, "spinsirr/hive");
-  assert.equal(reset.stage, "waiting");
-  assert.equal(reset.workspace.status, "ready");
+  assert.equal(taskExecution(reset).kind, "idle");
   assert.deepEqual(reset.workspace.changedFiles, []);
   assert.deepEqual(
     reset.messages,
@@ -1246,7 +1233,7 @@ test("a second task sent during a run joins the attributed steering queue", () =
     30
   );
 
-  assert.equal(queued.stage, "running");
+  assert.equal(taskExecution(queued).kind, "running");
   assert.equal(queued.workspace.startedAt, 20);
   assert.equal(queued.workspace.agentSession?.id, sessionId);
   assert.equal(queued.steeringQueue.length, 1);
@@ -1422,7 +1409,7 @@ test("a run that outlives its request can be marked lost without losing discussi
     late
   );
   assert.equal(isHiveRunActive(recovered), false);
-  assert.equal(recovered.workspace.status, "error");
+  assert.equal(taskExecution(recovered).kind, "failed");
   assert.equal(recovered.workspace.liveReply, undefined);
   assert.equal(
     recovered.workspace.agentSession?.id,

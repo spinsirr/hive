@@ -12,10 +12,8 @@ const { createInitialTaskSessionState } =
   await import("../../src/lib/session/task-session.ts");
 const session = createInitialTaskSessionState(1, "subagent-qa");
 session.repository = { url: "https://github.com/example/repo", connectedAt: 1 };
-session.stage = "running";
 session.workspace = {
   ...session.workspace,
-  status: "running",
   startedAt: 1,
   liveReply: { id: "active-run", body: "", sequence: 0, startedAt: 1 },
 };

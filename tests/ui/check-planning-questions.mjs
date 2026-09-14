@@ -1,3 +1,4 @@
+import { taskExecution } from "../../src/lib/session/task-execution.ts";
 // Purpose: without a repository, use the production MCP definition and reducers
 // to ask inline, save exactly one designated answer, and continue once.
 // Only persistence and provider transport are replaced; no production writes.
@@ -163,7 +164,7 @@ try {
     "peer-response",
     "an idle task starts exactly one answer continuation"
   );
-  assert.equal(state.stage, "running");
+  assert.equal(taskExecution(state).kind, "running");
   assert.equal(
     reduceTaskSession(state, answer, 7, members),
     state,

@@ -1,3 +1,7 @@
+import {
+  isHiveRunActive,
+  taskExecution,
+} from "../../src/lib/session/task-execution.ts";
 import { createTestDatabase } from "../helpers/test-database.mjs";
 import { registerTestModules } from "../helpers/test-modules.mjs";
 // Opt-in integration check. Creates and drops only its own uniquely named local
@@ -136,6 +140,84 @@ try {
   session.workspace.commands = [
     { command: "unfinished command", output: "partial", exitCode: null },
   ];
+  const { activeRunCondition } =
+    await import("../../src/server/sessions/task-session-row.ts");
+  const { publicTaskSessionSnapshot } =
+    await import("../../src/lib/session/task-session-snapshot.ts");
+  for (const [evidence, kind] of [
+    [{}, "idle"],
+    [{ startedAt: null, completedAt: null, restore: null }, "idle"],
+    [{ startedAt: 0 }, "running"],
+    [{ startedAt: 10, completedAt: null, restore: null }, "running"],
+    [{ startedAt: 10, completedAt: 20 }, "completed"],
+    [{ startedAt: 10, completedAt: 20, error: "Failed" }, "failed"],
+    [{ status: "error" }, "failed"],
+    [
+      {
+        startedAt: 10,
+        restore: {
+          id: "restore",
+          snapshotId: "snapshot",
+          by: members[0],
+          startedAt: 20,
+          retryAfter: 30,
+          status: "restoring",
+        },
+      },
+      "restoring",
+    ],
+  ]) {
+    await db
+      .update(taskSessions)
+      .set({
+        // Deliberately contradict execution evidence: these retired flags confer no authority.
+        stage: kind === "running" ? "waiting" : "running",
+        workspace: {
+          ...session.workspace,
+          status: "running",
+          ...evidence,
+          liveReply: {
+            id: "state-fixture",
+            body: "",
+            sequence: 0,
+            startedAt: 10,
+          },
+        },
+      })
+      .where(eq(taskSessions.id, session.sessionId));
+    const snapshot = await store.getTaskSessionSnapshot(session.sessionId);
+    assert.equal(taskExecution(snapshot.session).kind, kind);
+    const [stored] = await db
+      .select({ active: activeRunCondition })
+      .from(taskSessions)
+      .where(eq(taskSessions.id, session.sessionId));
+    assert.equal(
+      stored.active,
+      isHiveRunActive(snapshot.session),
+      "SQL and in-memory run admission must agree, including JSON nulls"
+    );
+    assert.deepEqual(
+      await store.getPublicTaskSessionSnapshot(session.sessionId),
+      publicTaskSessionSnapshot(snapshot),
+      "legacy rows must project identically through SQL and memory"
+    );
+    if (kind !== "running") {
+      await store.appendHiveReply(session.sessionId, "Late reply", {
+        forReplyId: "state-fixture",
+      });
+      await store.checkpointAgentReply(
+        session.sessionId,
+        "state-fixture",
+        "Late chunk",
+        1
+      );
+      assert.deepEqual(
+        (await store.getTaskSessionSnapshot(session.sessionId)).session,
+        snapshot.session,
+        "retained run IDs cannot admit callbacks after execution ends"
+      );
+    }
+  }
   await db
     .update(taskSessions)
     .set({ workspace: session.workspace })
@@ -374,7 +456,8 @@ try {
   };
   const toolWorkspace = {
     ...session.workspace,
-    status: "running",
+    startedAt: Date.now(),
+
     liveReply: {
       id: toolScope.runId,
       body: "",
@@ -394,7 +477,6 @@ try {
   await db
     .update(taskSessions)
     .set({
-      stage: "running",
       workspace: toolWorkspace,
       messages: [toolMessage],
     })
@@ -472,7 +554,7 @@ try {
   );
   assert.equal(afterReply.messages[0].annotations[0].role, "agent");
   assert.equal(afterReply.messages[0].annotations[0].authorId, "hive-agent");
-  assert.equal(afterReply.stage, "running");
+  assert.equal(taskExecution(afterReply).kind, "running");
   assert.deepEqual(afterReply.steeringQueue, session.steeringQueue);
   assert.deepEqual(
     afterReply.workspace,

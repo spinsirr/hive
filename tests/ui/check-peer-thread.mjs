@@ -34,7 +34,6 @@ const { requestPeerInput } =
 const members = Object.values(memberDirectory);
 const scope = { sessionId: "ui-peer", memberId: "spencer", runId: "run-one" };
 let session = createInitialTaskSessionState(1, scope.sessionId);
-session.stage = "running";
 session.workspace.startedAt = 2;
 session.workspace.liveReply = {
   id: "run-one",

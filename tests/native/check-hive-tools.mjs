@@ -43,7 +43,6 @@ let scope = {
 const initial = createInitialTaskSessionState(1, scope.sessionId);
 let context = {
   ...initial,
-  stage: "running",
   repository: {
     id: 20,
     installationId: 10,
@@ -67,7 +66,7 @@ let context = {
       role: "human",
     },
   ],
-  workspace: { status: "running", liveReply: { id: scope.runId } },
+  workspace: { startedAt: 1, liveReply: { id: scope.runId } },
   members: [memberDirectory.spencer, memberDirectory.maya],
 };
 let saved;

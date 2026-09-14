@@ -1,3 +1,9 @@
+import {
+  STALLED_RUN_ERROR,
+  isHiveRunStalled,
+  canSelectHarness,
+  canChangeTaskSettings,
+} from "./task-execution.ts";
 import { isCodingEffort } from "../agents/coding-effort.ts";
 import { selectedCodingModel, modelEffort } from "../agents/coding-models.ts";
 import type { CodingModelOption } from "../agents/coding-models.ts";
@@ -5,16 +11,11 @@ import { normalizeTaskTitle } from "../tasks/task-title.ts";
 import {
   type TeamMember,
   type RepositoryState,
-  STALLED_RUN_ERROR,
   type TaskSessionState,
   type TaskSessionAction,
   createAgentSessionId,
   createInitialTaskSessionState,
   appendAgentMessage,
-  isHiveRunActive,
-  isHiveRunStalled,
-  canSelectHarness,
-  canSetCodingEffort,
   applyHiveRunError,
 } from "./task-session-state.ts";
 
@@ -85,7 +86,7 @@ export function setCodingEffort(
     (action.modelId && action.modelId !== model.modelId) ||
     !model.efforts.includes(action.effort) ||
     !isCodingEffort(action.effort) ||
-    !canSetCodingEffort(state) ||
+    !canChangeTaskSettings(state) ||
     (state.workspace.codingEffort ?? "low") === action.effort
   )
     return state;
@@ -107,7 +108,7 @@ export function selectHarness(
   const model = selectedCodingModel(models, action.runtime, action.modelId);
   if (
     !model ||
-    !canSetCodingEffort(state) ||
+    !canChangeTaskSettings(state) ||
     (action.runtime !== runtime && !canSelectHarness(state))
   )
     return state;
@@ -165,12 +166,7 @@ export function reset(
 ): TaskSessionState {
   // Reset is destructive for the whole team: never while Hive is working or
   // while accepted input is still waiting to be applied.
-  if (
-    isHiveRunActive(state) ||
-    state.activeSteer ||
-    state.steeringQueue.length > 0
-  )
-    return state;
+  if (!canChangeTaskSettings(state)) return state;
   const initialSession = createInitialTaskSessionState(now, state.sessionId, {
     title: state.title,
     createdBy: state.createdBy,
@@ -189,7 +185,6 @@ export function reset(
     ...initialSession,
     repository: state.repository,
     workspace: {
-      status: "ready",
       codingEffort: state.workspace.codingEffort,
       codingModel: state.workspace.codingModel,
       agentSession: {
@@ -229,11 +224,8 @@ export function connectRepository(
   return {
     ...state,
     version: state.version + 1,
-    revision: 1,
-    stage: "waiting",
     repository,
     workspace: {
-      status: "ready",
       codingEffort: state.workspace.codingEffort,
       codingModel: state.workspace.codingModel,
       // Planning has no working copy. Attaching a repository creates a new

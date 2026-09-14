@@ -12,11 +12,9 @@ import {
 
 import type {
   ActiveSteer,
-  Annotation,
   ChatMessage,
   MemberId,
   RepositoryState,
-  RunStage,
   SteeringQueueItem,
   WorkspaceState,
 } from "@/lib/session/task-session";
@@ -70,23 +68,28 @@ export const taskSessions = pgTable("task_sessions", {
     withTimezone: true,
   }),
   version: integer("version").notNull(),
+  // Retired prototype state. Keep stored history and existing NOT NULL constraints;
+  // only new inserts initialize these slots. Application state never reads/writes them.
   revision: integer("revision").notNull(),
-  stage: text("stage").$type<RunStage>().notNull(),
+  stage: text("stage").notNull(),
   messages: jsonb("messages").$type<ChatMessage[]>().notNull(),
-  annotation: jsonb("decision").$type<Annotation>().notNull(),
+  annotation: jsonb("decision").$type<Record<string, unknown>>().notNull(),
   steeringQueue: jsonb("steering_queue")
     .$type<SteeringQueueItem[]>()
     .notNull()
     .default([]),
   activeSteer: jsonb("active_steer").$type<ActiveSteer>(),
   repository: jsonb("repository").$type<RepositoryState>(),
-  workspace: jsonb("workspace").$type<WorkspaceState>().notNull().default({
-    status: "disconnected",
-    diff: "",
-    files: [],
-    commands: [],
-    changedFiles: [],
-  }),
+  workspace: jsonb("workspace")
+    .$type<WorkspaceState & { status?: string }>()
+    .notNull()
+    .default({
+      status: "disconnected",
+      diff: "",
+      files: [],
+      commands: [],
+      changedFiles: [],
+    }),
   updatedAt: timestamp("updated_at", {
     mode: "date",
     withTimezone: true,

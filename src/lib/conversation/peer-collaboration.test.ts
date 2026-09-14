@@ -1,3 +1,4 @@
+import { taskExecution } from "../session/task-execution.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -30,10 +31,8 @@ function working(): TaskSessionState {
   const initial = createInitialTaskSessionState(1, scope.sessionId);
   return {
     ...initial,
-    stage: "running",
     workspace: {
       ...initial.workspace,
-      status: "running",
       startedAt: 2,
       liveReply: { id: scope.runId, body: "", sequence: 0, startedAt: 2 },
     },
@@ -390,8 +389,8 @@ test("steering discussion on an unanswered question cannot create the same quest
     members
   );
   assert.equal(
-    discussion.stage,
-    idle.stage,
+    taskExecution(discussion).kind,
+    taskExecution(idle).kind,
     "an ordinary reply must not wake the agent"
   );
   assert.equal(discussion.steeringQueue.length, 0);
@@ -664,10 +663,10 @@ for (const steerKind of ["thread", "reply"])
       "maya"
     );
     assert.equal(reduceTaskSession(resolved, resolve, 7, members), resolved);
-    assert.notEqual(
-      resolved.stage,
-      "approved",
-      "thread resolution is not a PR or workspace approval"
+    assert.deepEqual(
+      taskExecution(resolved),
+      taskExecution(ready),
+      "Resolving human review must not change the execution lifecycle"
     );
     const discussion = reduceTaskSession(
       ready,

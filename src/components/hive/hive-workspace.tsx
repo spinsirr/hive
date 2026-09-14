@@ -25,9 +25,8 @@ import type { CodingEffort } from "@/lib/agents/coding-effort";
 
 import {
   canApplyNextSteer,
-  canArchiveTask,
   canSelectHarness,
-  canSetCodingEffort,
+  canChangeTaskSettings,
   type CodingRuntime,
   isHiveRunActive,
   conversationMessages,
@@ -85,14 +84,7 @@ export function HiveWorkspaceView({
     ],
     [currentMember, members]
   );
-  const {
-    activeSteer,
-    annotation,
-    repository,
-    stage,
-    steeringQueue,
-    workspace,
-  } = session;
+  const { activeSteer, repository, steeringQueue, workspace } = session;
   const recoveryStatus = useWorkspaceRecovery(
     sessionId,
     session.version,
@@ -141,22 +133,11 @@ export function HiveWorkspaceView({
     [dispatch]
   );
   const harnessLocked = !canSelectHarness(session);
-  const effortLocked = !canSetCodingEffort(session);
+  const effortLocked = !canChangeTaskSettings(session);
   // Reset is irreversible for every member; require an idle task and a confirmation.
-  const resetDisabled =
-    workspaceLocked ||
-    runActive ||
-    Boolean(activeSteer) ||
-    steeringQueue.length > 0;
+  const resetDisabled = !canChangeTaskSettings(session);
   const canApplySteer = canApplyNextSteer(session);
   useQueuedContinuation(session, syncing || syncError, dispatch);
-  const steered = annotation.status === "steered";
-  const queued = annotation.status === "queued";
-  const queuePosition =
-    steeringQueue.findIndex(
-      (item) => item.source.kind === "workspace-annotation"
-    ) + 1;
-
   const copyInvite = useCallback(() => {
     const url = new URL(window.location.href);
     url.search = "";
@@ -276,9 +257,6 @@ export function HiveWorkspaceView({
     },
     [currentMember.id, dispatch]
   );
-  const steer = useCallback(() => {
-    void dispatch({ type: "steer-agent" });
-  }, [dispatch]);
   const steerThread = useCallback(
     async (messageId: string, throughReplyId: string) => {
       const nextSnapshot = await dispatch({
@@ -374,19 +352,12 @@ export function HiveWorkspaceView({
     runActive,
     runStalled,
     onRecoverRun: recoverRun,
-    queued,
-    queuedBy: annotation.queuedBy,
-    queuePosition: queuePosition || undefined,
-    steered,
-    steeredBy: annotation.steeredBy,
     currentMember: currentMember.id,
     disabled: workspaceLocked || harnessSaving,
     members: teamMembers,
     messages,
-    stage,
     typingMembers,
     steeringQueue,
-    workspaceAnnotation: annotation.text,
     codingRuntime: workspace.agentSession?.runtime ?? "codex",
     codingModel: workspace.codingModel,
     codingModels: snapshot.codingModels,
@@ -402,7 +373,6 @@ export function HiveWorkspaceView({
     selectedThreadId,
     onMoveSteer: moveSteer,
     onRemoveSteer: removeSteer,
-    onSteer: steer,
     onSend: send,
     onTyping: setTyping,
     onApplySteer: applySteer,
@@ -428,7 +398,7 @@ export function HiveWorkspaceView({
         accountActionsDisabled={accountActionsDisabled}
         archived={archived}
         archiveDisabled={
-          syncing || syncError || (!archived && !canArchiveTask(session))
+          syncing || syncError || (!archived && !canChangeTaskSettings(session))
         }
         onArchiveChange={changeArchive}
         renameDisabled={syncing || syncError || workspaceLocked}

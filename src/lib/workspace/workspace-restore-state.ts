@@ -156,17 +156,13 @@ export function completeWorkspaceRestore(
       409,
       "The saved agent checkpoint is unavailable."
     );
-  const hasChanges = checkpoint.result.diff.trim().length > 0;
   return {
     ...session,
     version: session.version + 1,
     updatedAt: now,
-    revision: 2,
-    stage: hasChanges && !checkpoint.error ? "review" : "waiting",
     activeSteer: undefined,
     workspace: {
       ...checkpoint.result,
-      status: checkpoint.error ? "error" : hasChanges ? "review" : "ready",
       error: checkpoint.error,
       completedAt: now,
       environment: undefined,

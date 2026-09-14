@@ -1,5 +1,5 @@
 "use client";
-import { Check, LoaderCircle, MessageSquare, WifiOff } from "lucide-react";
+import { LoaderCircle, MessageSquare, WifiOff } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import {
   Conversation,
@@ -27,91 +27,10 @@ import {
   type MemberId,
   type MessageEdit,
   resolveMember,
-  type RunStage,
   type SteeringQueueItem,
   type TeamMember,
 } from "@/lib/session/task-session";
 import { cn } from "@/lib/utils";
-
-function AnnotationCard({
-  members,
-  queued,
-  queuedBy,
-  queuePosition,
-  steered,
-  steeredBy,
-  onSteer,
-  stage,
-}: {
-  members: TeamMember[];
-  queued: boolean;
-  queuedBy?: MemberId;
-  queuePosition?: number;
-  steered: boolean;
-  steeredBy?: MemberId;
-  onSteer: () => void;
-  stage: RunStage;
-}) {
-  return (
-    <div className="mx-4 mb-3 overflow-hidden rounded-lg border border-[#d5d5d5] bg-white shadow-[0_8px_24px_rgba(0,0,0,0.05)]">
-      <div className="flex items-center justify-between border-b border-[#eeeeee] px-3 py-2">
-        <div className="flex items-center gap-2">
-          <span className="grid size-6 shrink-0 place-items-center rounded-full bg-[#171717] text-xs font-semibold text-white">
-            MC
-          </span>
-          <span className="text-xs font-medium">Maya annotated Preview</span>
-        </div>
-        <span className="text-xs text-[#8a8a8a]">Preview</span>
-      </div>
-      <div className="space-y-2 px-3 py-3">
-        <p className="text-sm font-medium leading-5">
-          Keep the parent expanded, but highlight only the active child route.
-        </p>
-      </div>
-      <div className="flex items-center justify-between gap-1.5 border-t border-[#eeeeee] bg-[#fafafa] px-2.5 py-2">
-        {steered ? (
-          <span className="flex items-center gap-1.5 px-1 text-xs font-medium">
-            <Check className="size-3.5" /> Steered by{" "}
-            {steeredBy ? resolveMember(steeredBy, members).shortName : "team"} ·
-            added to run
-          </span>
-        ) : queued ? (
-          <span className="flex items-center gap-1.5 px-1 text-xs font-medium">
-            <span className="grid h-5 min-w-5 shrink-0 place-items-center rounded bg-[#171717] px-1 text-xs text-white">
-              {queuePosition ?? "·"}
-            </span>{" "}
-            Queued by{" "}
-            {queuedBy ? resolveMember(queuedBy, members).shortName : "team"}
-          </span>
-        ) : (
-          <>
-            <span className="px-1 text-xs text-[#777]">
-              {stage === "running"
-                ? "Hive is working"
-                : "Start a follow-up turn"}
-            </span>
-            <div className="flex items-center gap-1.5">
-              <Button
-                className="h-7 rounded-md text-xs"
-                size="sm"
-                variant="ghost"
-              >
-                Reply
-              </Button>
-              <Button
-                className="h-7 rounded-md bg-[#171717] px-2.5 text-xs text-white"
-                onClick={onSteer}
-                size="sm"
-              >
-                {stage === "waiting" ? "Steer Hive" : "Queue steer"}
-              </Button>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
 
 export function SharedSession({
   sessionId,
@@ -121,11 +40,6 @@ export function SharedSession({
   runActive,
   runStalled,
   onRecoverRun,
-  queued,
-  queuedBy,
-  queuePosition,
-  steered,
-  steeredBy,
   steeringQueue,
   currentMember,
   disabled,
@@ -138,12 +52,9 @@ export function SharedSession({
   selectedThreadId,
   onMoveSteer,
   onRemoveSteer,
-  onSteer,
   onSend,
   onTyping,
-  stage,
   typingMembers,
-  workspaceAnnotation,
   codingRuntime,
   codingModel,
   codingModels,
@@ -162,11 +73,6 @@ export function SharedSession({
   runActive: boolean;
   runStalled: boolean;
   onRecoverRun: () => void;
-  queued: boolean;
-  queuedBy?: MemberId;
-  queuePosition?: number;
-  steered: boolean;
-  steeredBy?: MemberId;
   steeringQueue: SteeringQueueItem[];
   currentMember: MemberId;
   disabled: boolean;
@@ -183,12 +89,9 @@ export function SharedSession({
   selectedThreadId: string | null;
   onMoveSteer: (steerId: string, direction: "up" | "down") => void;
   onRemoveSteer: (steerId: string) => void;
-  onSteer: () => void;
   onSend: (submission: MessageSubmission) => Promise<boolean>;
   onTyping: (typing: boolean) => void;
-  stage: RunStage;
   typingMembers: MemberId[];
-  workspaceAnnotation: string;
   codingRuntime: CodingRuntime;
   codingModel?: string;
   codingModels?: CodingModelOption[];
@@ -350,18 +253,6 @@ export function SharedSession({
         </ConversationContent>
         <ConversationScrollButton />
       </Conversation>
-      {workspaceAnnotation ? (
-        <AnnotationCard
-          members={members}
-          onSteer={onSteer}
-          queuePosition={queuePosition}
-          queued={queued}
-          queuedBy={queuedBy}
-          stage={stage}
-          steered={steered}
-          steeredBy={steeredBy}
-        />
-      ) : null}
       <SteeringQueue
         activeSteer={activeSteer}
         canApply={canApplySteer}
